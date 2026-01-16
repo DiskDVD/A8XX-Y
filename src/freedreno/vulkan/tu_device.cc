@@ -42,6 +42,9 @@
 #include "tu_tracepoints.h"
 #include "tu_wsi.h"
 
+#include "git_sha1.h"
+#include "tu_version.h"
+
 #if DETECT_OS_ANDROID
 #include <vndk/hardware_buffer.h>
 #endif
@@ -1266,7 +1269,10 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->sparseResidencyAlignedMipSize = false;
    props->sparseResidencyNonResidentStrict = true;
 
-   strcpy(props->deviceName, pdevice->name);
+   char devname[128];
+   strcpy(devname, pdevice->name);
+   strcat(devname, MESA_GIT_SHA1 "/" TUGEN8_DRV_VERSION);
+   strcpy(props->deviceName, devname);
    memcpy(props->pipelineCacheUUID, pdevice->cache_uuid, VK_UUID_SIZE);
 
    if (TU_DEBUG(DECK_EMU)) {
