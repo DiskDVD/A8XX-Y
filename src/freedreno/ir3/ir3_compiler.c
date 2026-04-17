@@ -62,19 +62,19 @@ ir3_get_gpu_profile(uint32_t chip_id)
 {
     switch (chip_id) {
     case 0x44010000: /* Adreno 810 */
-        return (struct ir3_gpu_profile){90, 4, 4, false, 128};
+        return (struct ir3_gpu_profile){90, 4, 4, false};
     case 0x44030000: /* Adreno 825 */
-        return (struct ir3_gpu_profile){85, 8, 8, false, 0};
+        return (struct ir3_gpu_profile){85, 8, 8, true};
     case 0x44030A20: /* Adreno 829 */
-        return (struct ir3_gpu_profile){80, 10, 8, true, 64};
+        return (struct ir3_gpu_profile){80, 10, 8, true};
     case 0x44050001: /* Adreno 830 */
-        return (struct ir3_gpu_profile){75, 16, 12, false, 0};
+        return (struct ir3_gpu_profile){75, 16, 12, true};
     case 0x43050A31: /* Adreno 830 variant */
-        return (struct ir3_gpu_profile){75, 16, 12, false, 0};
+        return (struct ir3_gpu_profile){75, 16, 12, true};
     case 0x43050A32: /* Adreno 840 */
-        return (struct ir3_gpu_profile){70, 20, 16, false, 0};
+        return (struct ir3_gpu_profile){70, 20, 16, true};
     default:
-        return (struct ir3_gpu_profile){85, 8, 8, false, 0};
+        return (struct ir3_gpu_profile){85, 8, 8, false};
     }
 }
 

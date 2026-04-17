@@ -63,7 +63,6 @@ struct ir3_gpu_profile {
     uint32_t max_sy_inflight;
     uint32_t max_ss_inflight;
     bool force_double_threadsize;
-    uint32_t ubo_coalesce_gap;
 };
 
 struct ir3_compiler {
