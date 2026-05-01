@@ -866,12 +866,27 @@ fd6_emit_static_non_context_regs(struct fd_context *ctx, fd_cs &cs)
                         ? A6XX_TPL1_DBG_ECO_CNTL_LINEAR_MIPMAP_FALLBACK_IN_BLOCKS
                         : 0);
             break;
-         case REG_A6XX_TPL1_DBG_ECO_CNTL1:
+         case REG_A6XX_TPL1_DBG_ECO_CNTL1: {
+            bool tp_ubwc_flag_hint = screen->info->props.enable_tp_ubwc_flag_hint;
+
+            /*
+             * Per-chip A8XX tuning:
+             *  - Adreno 810 is bandwidth limited, so keep this hint disabled.
+             *  - Adreno 829 benefits from the hint in texture-heavy workloads.
+             */
+            if (CHIP == A8XX) {
+               const uint64_t chip_id = screen->chip_id;
+               const bool is_a810 = chip_id == 0x44010000ull ||
+                                    chip_id == 0xffff44010000ull;
+
+               /* Enable TP_UBWC hint for all A8XX, except Adreno 810. */
+               tp_ubwc_flag_hint = !is_a810;
+            }
+
             value = (value & ~A6XX_TPL1_DBG_ECO_CNTL1_TP_UBWC_FLAG_HINT) |
-                    (screen->info->props.enable_tp_ubwc_flag_hint
-                        ? A6XX_TPL1_DBG_ECO_CNTL1_TP_UBWC_FLAG_HINT
-                        : 0);
+                    (tp_ubwc_flag_hint ? A6XX_TPL1_DBG_ECO_CNTL1_TP_UBWC_FLAG_HINT : 0);
             break;
+         }
          case REG_A6XX_SP_CHICKEN_BITS:
             value = (value & ~A6XX_SP_CHICKEN_BITS_EOLM_ENABLE) |
                     (screen->info->props.has_eolm_eogm
