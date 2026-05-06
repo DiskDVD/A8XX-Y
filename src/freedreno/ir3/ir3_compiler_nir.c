@@ -3024,6 +3024,8 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
       break;
    case nir_intrinsic_store_output:
    case nir_intrinsic_store_per_view_output:
+   case nir_intrinsic_set_vertex_and_primitive_count:
+   case nir_intrinsic_launch_mesh_workgroups_with_payload_deref:
       setup_output(ctx, intr);
       break;
    case nir_intrinsic_load_base_vertex:
@@ -5443,11 +5445,13 @@ uses_store_output(struct ir3_shader_variant *so)
    case MESA_SHADER_TESS_EVAL:
       return !so->key.has_gs;
    case MESA_SHADER_GEOMETRY:
+   case MESA_SHADER_MESH:
    case MESA_SHADER_FRAGMENT:
       return true;
    case MESA_SHADER_TESS_CTRL:
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_KERNEL:
+   case MESA_SHADER_TASK:
       return false;
    default:
       UNREACHABLE("unknown stage");
@@ -6244,7 +6248,8 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
                               !so->writes_stencilref;
    }
 
-   if (mesa_shader_stage_is_compute(so->type)) {
+   if (mesa_shader_stage_is_compute(so->type) || so->type == MESA_SHADER_TASK ||
+       so->type == MESA_SHADER_MESH) {
       so->cs.local_invocation_id =
          ir3_find_sysval_regid(so, SYSTEM_VALUE_LOCAL_INVOCATION_ID);
       so->cs.work_group_id =
