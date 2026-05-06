@@ -88,6 +88,18 @@ struct tu_shader
     */
    bool per_layer_viewport;
 
+   struct {
+      uint32_t max_vertices_out;
+      uint32_t max_primitives_out;
+      uint8_t primitive_type;
+      bool has_payload;
+      bool writes_primitive_indices;
+      bool writes_cull_primitive;
+      bool writes_layer;
+      bool writes_viewport_index;
+      bool writes_position;
+   } mesh;
+
    union {
       struct {
          unsigned patch_type;
