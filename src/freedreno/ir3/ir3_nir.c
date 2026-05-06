@@ -1987,6 +1987,27 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
          ir3_const_reserve_space(&const_state->allocs,
                                  IR3_CONST_ALLOC_PRIMITIVE_PARAM, 1, 1);
          break;
+      case MESA_SHADER_MESH:
+         /*
+          * Mesh layout parameters:
+          *  x = per-vertex output stride in dwords
+          *  y = per-primitive output stride in dwords
+          *  z = per-vertex region offset in dwords
+          *  w = per-primitive region offset in dwords
+          */
+         ir3_const_reserve_space(&const_state->allocs,
+                                 IR3_CONST_ALLOC_PRIMITIVE_PARAM, 1, 1);
+         break;
+      case MESA_SHADER_TASK:
+         /*
+          * Task payload layout parameters:
+          *  x = payload base offset in dwords
+          *  y = payload dispatch stride in dwords
+          *  z = payload size in dwords
+          */
+         ir3_const_reserve_space(&const_state->allocs,
+                                 IR3_CONST_ALLOC_PRIMITIVE_PARAM, 1, 1);
+         break;
       default:
          break;
       }
@@ -1998,6 +2019,14 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
          ir3_const_reserve_space(&const_state->allocs,
                                  IR3_CONST_ALLOC_PRIMITIVE_MAP,
                                  DIV_ROUND_UP(v->input_size, 4), 1);
+         break;
+      case MESA_SHADER_MESH:
+         /* Explicit location->offset map for mesh per-vertex/per-primitive
+          * output addressing.
+          */
+         ir3_const_reserve_space(&const_state->allocs,
+                                 IR3_CONST_ALLOC_PRIMITIVE_MAP,
+                                 DIV_ROUND_UP(v->output_size, 4), 1);
          break;
       default:
          break;
