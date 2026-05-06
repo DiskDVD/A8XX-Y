@@ -289,6 +289,48 @@ tu_spirv_to_nir(struct tu_device *dev,
 }
 
 static void
+tu_validate_mesh_task_ext_io(nir_shader *nir)
+{
+   unsigned payload_vars = 0;
+
+   nir_foreach_variable_with_modes(var, nir, nir_var_mem_task_payload) {
+      payload_vars++;
+      assert(var->data.mode == nir_var_mem_task_payload);
+   }
+
+   if (nir->info.stage == MESA_SHADER_TASK) {
+      assert(payload_vars <= 1 &&
+             "TaskPayloadWorkgroupEXT requires at most one payload variable per entrypoint");
+   }
+
+   nir_foreach_variable_with_modes(var, nir, nir_var_shader_in | nir_var_shader_out) {
+      if (!var->data.per_primitive)
+         continue;
+
+      const bool valid_stage = nir->info.stage == MESA_SHADER_MESH ||
+                               nir->info.stage == MESA_SHADER_FRAGMENT;
+      assert(valid_stage &&
+             "PerPrimitiveEXT only valid on mesh outputs or fragment inputs");
+   }
+
+   nir_function_impl *entrypoint = nir_shader_get_entrypoint(nir);
+   nir_foreach_block(block, entrypoint) {
+      nir_foreach_instr(instr, block) {
+         if (instr->type != nir_instr_type_intrinsic)
+            continue;
+
+         nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+         if (intrin->intrinsic !=
+             nir_intrinsic_launch_mesh_workgroups_with_payload_deref)
+            continue;
+
+         nir_deref_instr *deref = nir_src_as_deref(intrin->src[1]);
+         assert(deref && deref->modes == nir_var_mem_task_payload);
+      }
+   }
+}
+
+static void
 lower_load_push_constant(struct tu_device *dev,
                          nir_builder *b,
                          nir_intrinsic_instr *instr,
@@ -3327,6 +3369,8 @@ tu_compile_shaders(struct tu_device *device,
          goto fail;
       }
 
+      tu_validate_mesh_task_ext_io(nir[stage]);
+
       stage_feedbacks[stage].flags = VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
       stage_feedbacks[stage].duration += os_time_get_nano() - stage_start;
    }
@@ -3359,6 +3403,12 @@ tu_compile_shaders(struct tu_device *device,
    }
 
    tu_link_shaders(device, nir, MESA_SHADER_STAGES);
+
+   for (mesa_shader_stage stage = MESA_SHADER_VERTEX; stage < MESA_SHADER_STAGES;
+        stage = (mesa_shader_stage) (stage + 1)) {
+      if (nir[stage])
+         tu_validate_mesh_task_ext_io(nir[stage]);
+   }
 
    if (nir_out) {
       for (mesa_shader_stage stage = MESA_SHADER_VERTEX;
