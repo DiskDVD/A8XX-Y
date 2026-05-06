@@ -4522,6 +4522,27 @@ vk_shader_stage_to_pipeline_library_flags(VkShaderStageFlagBits stage)
    }
 }
 
+
+static VkResult
+tu_validate_graphics_stage_topology(const struct tu_pipeline *pipeline)
+{
+   const bool has_task = pipeline->shaders[MESA_SHADER_TASK] != NULL;
+   const bool has_mesh = pipeline->shaders[MESA_SHADER_MESH] != NULL;
+   const bool has_vs_path =
+      pipeline->shaders[MESA_SHADER_VERTEX] ||
+      pipeline->shaders[MESA_SHADER_TESS_CTRL] ||
+      pipeline->shaders[MESA_SHADER_TESS_EVAL] ||
+      pipeline->shaders[MESA_SHADER_GEOMETRY];
+
+   if ((has_mesh && has_vs_path) || (has_task && !has_mesh))
+      return VK_ERROR_FEATURE_NOT_PRESENT;
+
+   if (has_task && !pipeline->shaders[MESA_SHADER_TASK]->mesh.has_payload)
+      return VK_ERROR_FEATURE_NOT_PRESENT;
+
+   return VK_SUCCESS;
+}
+
 template <chip CHIP>
 static VkResult
 tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
@@ -4599,6 +4620,13 @@ tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
          vk_object_free(&builder->device->vk, builder->alloc, *pipeline);
          return result;
       }
+   }
+
+   result = tu_validate_graphics_stage_topology(*pipeline);
+   if (result != VK_SUCCESS) {
+      tu_pipeline_finish(*pipeline, builder->device, builder->alloc);
+      vk_object_free(&builder->device->vk, builder->alloc, *pipeline);
+      return result;
    }
 
    result = tu_pipeline_allocate_cs(builder->device, *pipeline,

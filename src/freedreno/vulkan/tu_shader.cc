@@ -2958,6 +2958,10 @@ tu_shader_serialize(struct vk_pipeline_cache_object *object,
    case MESA_SHADER_FRAGMENT:
       blob_write_bytes(blob, &shader->fs, sizeof(shader->fs));
       break;
+   case MESA_SHADER_TASK:
+   case MESA_SHADER_MESH:
+      blob_write_bytes(blob, &shader->mesh, sizeof(shader->mesh));
+      break;
    default:
       break;
    }
@@ -2998,6 +3002,10 @@ tu_shader_deserialize(struct vk_pipeline_cache *cache,
       break;
    case MESA_SHADER_FRAGMENT:
       blob_copy_bytes(blob, &shader->fs, sizeof(shader->fs));
+      break;
+   case MESA_SHADER_TASK:
+   case MESA_SHADER_MESH:
+      blob_copy_bytes(blob, &shader->mesh, sizeof(shader->mesh));
       break;
    default:
       break;
@@ -3206,6 +3214,7 @@ tu_shader_create(struct tu_device *dev,
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    shader->per_layer_viewport = info->per_layer_viewport;
+   shader->mesh = info->mesh;
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        key->fdm_per_layer) {
