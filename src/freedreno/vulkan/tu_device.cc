@@ -311,6 +311,7 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_line_rasterization = true,
       .EXT_load_store_op_none = true,
       .EXT_map_memory_placed = true,
+      .EXT_mesh_shader = device->info->chip >= A8XX,
       .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_multisampled_render_to_single_sampled = true,
@@ -739,6 +740,14 @@ tu_get_features(struct tu_physical_device *pdevice,
    features->memoryMapPlaced = true;
    features->memoryMapRangePlaced = false;
    features->memoryUnmapReserve = true;
+
+   /* VK_EXT_mesh_shader */
+   const bool has_mesh_shader = pdevice->vk.supported_extensions.EXT_mesh_shader;
+   features->taskShader = has_mesh_shader;
+   features->meshShader = has_mesh_shader;
+   features->multiviewMeshShader = has_mesh_shader && tu_has_multiview(pdevice);
+   features->primitiveFragmentShadingRateMeshShader = has_mesh_shader;
+   features->meshShaderQueries = has_mesh_shader;
 
    /* VK_EXT_multi_draw */
    features->multiDraw = true;
@@ -1407,6 +1416,47 @@ tu_get_properties(struct tu_physical_device *pdevice,
 
    /* VK_EXT_multi_draw */
    props->maxMultiDrawCount = 2048;
+
+   /* VK_EXT_mesh_shader */
+   if (pdevice->vk.supported_extensions.EXT_mesh_shader) {
+      props->maxTaskWorkGroupTotalCount = 1 << 22;
+      props->maxTaskWorkGroupCount[0] = 65535;
+      props->maxTaskWorkGroupCount[1] = 65535;
+      props->maxTaskWorkGroupCount[2] = 65535;
+      props->maxTaskWorkGroupInvocations = 128;
+      props->maxTaskWorkGroupSize[0] = 128;
+      props->maxTaskWorkGroupSize[1] = 128;
+      props->maxTaskWorkGroupSize[2] = 128;
+      props->maxTaskPayloadSize = 16384;
+      props->maxTaskSharedMemorySize = 32768;
+      props->maxTaskPayloadAndSharedMemorySize = 49152;
+
+      props->maxMeshWorkGroupTotalCount = 1 << 22;
+      props->maxMeshWorkGroupCount[0] = 65535;
+      props->maxMeshWorkGroupCount[1] = 65535;
+      props->maxMeshWorkGroupCount[2] = 65535;
+      props->maxMeshWorkGroupInvocations = 128;
+      props->maxMeshWorkGroupSize[0] = 128;
+      props->maxMeshWorkGroupSize[1] = 128;
+      props->maxMeshWorkGroupSize[2] = 128;
+      props->maxMeshSharedMemorySize = 32768;
+      props->maxMeshPayloadAndSharedMemorySize = 49152;
+      props->maxMeshOutputMemorySize = 32768;
+      props->maxMeshPayloadAndOutputMemorySize = 49152;
+      props->maxMeshOutputComponents = 128;
+      props->maxMeshOutputVertices = 256;
+      props->maxMeshOutputPrimitives = 256;
+      props->maxMeshOutputLayers = MAX_VIEWS;
+      props->maxMeshMultiviewViewCount = MAX_VIEWS;
+      props->meshOutputPerVertexGranularity = 1;
+      props->meshOutputPerPrimitiveGranularity = 1;
+      props->maxPreferredTaskWorkGroupInvocations = 128;
+      props->maxPreferredMeshWorkGroupInvocations = 128;
+      props->prefersLocalInvocationVertexOutput = false;
+      props->prefersLocalInvocationPrimitiveOutput = false;
+      props->prefersCompactVertexOutput = false;
+      props->prefersCompactPrimitiveOutput = false;
+   }
 
    /* VK_EXT_nested_command_buffer */
    props->maxCommandBufferNestingLevel = UINT32_MAX;
