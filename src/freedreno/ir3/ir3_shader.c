@@ -548,6 +548,24 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
    case MESA_SHADER_KERNEL:
       v->cs.req_local_mem = shader->cs.req_local_mem;
       break;
+   case MESA_SHADER_TASK:
+      v->task.payload_to_mesh = info->task.payload_to_mesh;
+      v->task.req_local_mem = shader->cs.req_local_mem;
+      break;
+   case MESA_SHADER_MESH:
+      v->mesh.max_vertices_out = info->mesh.max_vertices_out;
+      v->mesh.max_primitives_out = info->mesh.max_primitives_out;
+      v->mesh.primitive_type = info->mesh.primitive_type;
+      v->mesh.writes_primitive_indices =
+         info->outputs_written & VARYING_BIT_PRIMITIVE_INDICES;
+      v->mesh.writes_cull_primitive =
+         info->outputs_written & VARYING_BIT_CULL_PRIMITIVE;
+      v->mesh.writes_layer = info->outputs_written & VARYING_BIT_LAYER;
+      v->mesh.writes_viewport_index =
+         info->outputs_written & VARYING_BIT_VIEWPORT;
+      v->mesh.writes_position = info->outputs_written & VARYING_BIT_POS;
+      v->mesh.req_local_mem = shader->cs.req_local_mem;
+      break;
 
    default:
       break;
@@ -614,13 +632,17 @@ create_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
       shader->nir_finalized = true;
    }
 
-   if (ir3_shader_compute(v)) {
+   if (ir3_shader_compute(v) || v->type == MESA_SHADER_TASK ||
+       v->type == MESA_SHADER_MESH) {
       v->cs.force_linear_dispatch = shader->cs.force_linear_dispatch;
 
       v->local_size[0] = shader->nir->info.workgroup_size[0];
       v->local_size[1] = shader->nir->info.workgroup_size[1];
       v->local_size[2] = shader->nir->info.workgroup_size[2];
       v->local_size_variable = shader->nir->info.workgroup_size_variable;
+
+      if (v->type == MESA_SHADER_TASK)
+         v->task.has_payload = true;
    }
 
    struct ir3_const_state *const_state = ir3_const_state_mut(v);

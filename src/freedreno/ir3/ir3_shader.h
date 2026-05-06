@@ -964,6 +964,23 @@ struct ir3_shader_variant {
          uint32_t local_invocation_id;
          uint32_t work_group_id;
       } cs;
+      struct {
+         unsigned req_local_mem;
+         uint32_t max_vertices_out;
+         uint32_t max_primitives_out;
+         uint16_t primitive_type;
+         bool has_payload : 1;
+         bool writes_primitive_indices : 1;
+         bool writes_cull_primitive : 1;
+         bool writes_layer : 1;
+         bool writes_viewport_index : 1;
+         bool writes_position : 1;
+      } mesh;
+      struct {
+         unsigned req_local_mem;
+         bool has_payload : 1;
+         bool payload_to_mesh : 1;
+      } task;
    };
 
    uint32_t vtxid_base;
@@ -995,6 +1012,10 @@ ir3_shader_stage(struct ir3_shader_variant *v)
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_KERNEL:
       return "CL";
+   case MESA_SHADER_TASK:
+      return "TASK";
+   case MESA_SHADER_MESH:
+      return "MESH";
    default:
       UNREACHABLE("invalid type");
       return NULL;
