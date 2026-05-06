@@ -549,7 +549,7 @@ alloc_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
       v->cs.req_local_mem = shader->cs.req_local_mem;
       break;
    case MESA_SHADER_TASK:
-      v->task.payload_to_mesh = info->task.payload_to_mesh;
+      v->task.payload_to_mesh = info->next_stage == MESA_SHADER_MESH;
       v->task.req_local_mem = shader->cs.req_local_mem;
       break;
    case MESA_SHADER_MESH:

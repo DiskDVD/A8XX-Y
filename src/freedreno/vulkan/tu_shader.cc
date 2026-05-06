@@ -310,13 +310,13 @@ tu_validate_mesh_output_semantics(nir_shader *nir)
       return;
 
    const bool writes_primitive_indices =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_PRIMITIVE_INDICES);
+      (nir->info.outputs_written & VARYING_BIT_PRIMITIVE_INDICES);
    const bool writes_cull_primitive =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_CULL_PRIMITIVE);
+      (nir->info.outputs_written & VARYING_BIT_CULL_PRIMITIVE);
    const bool writes_layer =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_LAYER);
+      (nir->info.outputs_written & VARYING_BIT_LAYER);
    const bool writes_viewport =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_VIEWPORT);
+      (nir->info.outputs_written & VARYING_BIT_VIEWPORT);
 
    if (writes_primitive_indices || writes_cull_primitive || writes_layer || writes_viewport) {
       assert(nir->info.mesh.max_primitives_out > 0 &&
@@ -3185,15 +3185,15 @@ tu_lower_nir(struct tu_device *dev,
    info->mesh.primitive_type = nir->info.mesh.primitive_type;
    info->mesh.has_payload = nir->info.stage == MESA_SHADER_TASK;
    info->mesh.writes_primitive_indices =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_PRIMITIVE_INDICES);
+      (nir->info.outputs_written & VARYING_BIT_PRIMITIVE_INDICES);
    info->mesh.writes_cull_primitive =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_CULL_PRIMITIVE);
+      (nir->info.outputs_written & VARYING_BIT_CULL_PRIMITIVE);
    info->mesh.writes_layer =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_LAYER);
+      (nir->info.outputs_written & VARYING_BIT_LAYER);
    info->mesh.writes_viewport_index =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_VIEWPORT);
+      (nir->info.outputs_written & VARYING_BIT_VIEWPORT);
    info->mesh.writes_position =
-      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_POS);
+      (nir->info.outputs_written & VARYING_BIT_POS);
 }
 
 VkResult
@@ -3214,7 +3214,15 @@ tu_shader_create(struct tu_device *dev,
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 
    shader->per_layer_viewport = info->per_layer_viewport;
-   shader->mesh = info->mesh;
+   shader->mesh.max_vertices_out = info->mesh.max_vertices_out;
+   shader->mesh.max_primitives_out = info->mesh.max_primitives_out;
+   shader->mesh.primitive_type = info->mesh.primitive_type;
+   shader->mesh.has_payload = info->mesh.has_payload;
+   shader->mesh.writes_primitive_indices = info->mesh.writes_primitive_indices;
+   shader->mesh.writes_cull_primitive = info->mesh.writes_cull_primitive;
+   shader->mesh.writes_layer = info->mesh.writes_layer;
+   shader->mesh.writes_viewport_index = info->mesh.writes_viewport_index;
+   shader->mesh.writes_position = info->mesh.writes_position;
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT &&
        key->fdm_per_layer) {
