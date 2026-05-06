@@ -219,12 +219,19 @@ enum ir3_const_alloc_type {
    IR3_CONST_ALLOC_TFBO = 9,
    /* Common, stage-dependent primitive params:
     *  vs, gs: uvec4(primitive_stride, vertex_stride, 0, 0)
-    *  hs, ds: uvec4(primitive_stride, vertex_stride,
-    *                patch_stride, patch_vertices_in)
-    *          uvec4(tess_param_base, tess_factor_base)
+   *  hs, ds: uvec4(primitive_stride, vertex_stride,
+   *                patch_stride, patch_vertices_in)
+   *          uvec4(tess_param_base, tess_factor_base)
+    *  mesh:   uvec4(per_vertex_dw, per_primitive_dw,
+    *                per_vertex_offset_dw, per_primitive_offset_dw)
+    *  task:   uvec4(payload_base_dw, payload_stride_dw, payload_size_dw, 0)
     */
    IR3_CONST_ALLOC_PRIMITIVE_PARAM = 10,
-   /* Common, mapping from varying location to offset. */
+   /* Common, mapping from varying location to offset.
+    * For mesh this is used for explicit location->dword offset mapping for:
+    *  - per-vertex outputs, relative to per_vertex_offset_dw
+    *  - per-primitive outputs, relative to per_primitive_offset_dw
+    */
    IR3_CONST_ALLOC_PRIMITIVE_MAP = 11,
    IR3_CONST_ALLOC_MAX = 12,
 };
