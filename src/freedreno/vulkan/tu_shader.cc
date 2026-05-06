@@ -2580,7 +2580,7 @@ tu6_emit_variant(struct tu_cs *cs,
                  uint32_t view_mask,
                  uint64_t binary_iova)
 {
-   if (stage == MESA_SHADER_COMPUTE) {
+   if (stage == MESA_SHADER_COMPUTE || stage == MESA_SHADER_TASK) {
       tu6_emit_cs_config<CHIP>(cs, xs, pvtmem_config, binary_iova);
       return;
    }
@@ -2605,8 +2605,11 @@ tu6_emit_variant(struct tu_cs *cs,
    case MESA_SHADER_FRAGMENT:
       tu6_emit_fs<CHIP>(cs, xs);
       break;
+   case MESA_SHADER_MESH:
+      /* Mesh shader setup is handled by the generic xs + pipeline state. */
+      break;
    default:
-      UNREACHABLE("unknown shader stage");
+      return;
    }
 
    tu6_emit_xs_constants(cs, stage, xs, binary_iova);
@@ -3025,6 +3028,8 @@ tu_lower_nir(struct tu_device *dev,
 
    if (nir->info.stage != MESA_SHADER_FRAGMENT &&
        nir->info.stage != MESA_SHADER_COMPUTE &&
+       nir->info.stage != MESA_SHADER_TASK &&
+       nir->info.stage != MESA_SHADER_MESH &&
        !key->multiview_mask &&
        key->fdm_per_layer) {
       NIR_PASS(_, nir, tu_nir_lower_layered_fdm, &info->per_layer_viewport);
@@ -3044,7 +3049,8 @@ tu_lower_nir(struct tu_device *dev,
    ir3_nir_lower_io_vars_to_temporaries(nir);
 
    bool is_last_stage =
-    (nir->info.stage == MESA_SHADER_VERTEX && !ir3_key->has_gs && !ir3_key->tessellation);
+    (nir->info.stage == MESA_SHADER_VERTEX && !ir3_key->has_gs && !ir3_key->tessellation) ||
+    nir->info.stage == MESA_SHADER_MESH;
 
    if (nir->info.stage == MESA_SHADER_VERTEX && key->multiview_mask)
       tu_nir_lower_multiview(nir, key->multiview_mask, dev, is_last_stage);
@@ -3107,7 +3113,8 @@ tu_lower_nir(struct tu_device *dev,
     */
    if (nir->info.stage == MESA_SHADER_VERTEX ||
          nir->info.stage == MESA_SHADER_TESS_EVAL ||
-         nir->info.stage == MESA_SHADER_GEOMETRY)
+         nir->info.stage == MESA_SHADER_GEOMETRY ||
+         nir->info.stage == MESA_SHADER_MESH)
       nir_shader_gather_xfb_info(nir);
 
    {
@@ -3124,6 +3131,21 @@ tu_lower_nir(struct tu_device *dev,
 
    if (key->emulate_alpha_to_coverage)
       lower_alpha_to_coverage(nir);
+
+   info->mesh.max_vertices_out = nir->info.mesh.max_vertices_out;
+   info->mesh.max_primitives_out = nir->info.mesh.max_primitives_out;
+   info->mesh.primitive_type = nir->info.mesh.primitive_type;
+   info->mesh.has_payload = nir->info.stage == MESA_SHADER_TASK;
+   info->mesh.writes_primitive_indices =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_PRIMITIVE_INDICES);
+   info->mesh.writes_cull_primitive =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_CULL_PRIMITIVE);
+   info->mesh.writes_layer =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_LAYER);
+   info->mesh.writes_viewport_index =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_VIEWPORT);
+   info->mesh.writes_position =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_POS);
 }
 
 VkResult
@@ -3201,6 +3223,7 @@ tu_shader_create(struct tu_device *dev,
    }
 
    ir3_shader_destroy(ir3_shader);
+
 
    shader->view_mask = key->multiview_mask;
 

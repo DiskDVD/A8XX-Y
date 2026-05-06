@@ -139,6 +139,18 @@ struct tu_shader_key {
  */
 struct tu_shader_info {
    bool per_layer_viewport;
+
+   struct {
+      uint32_t max_vertices_out;
+      uint32_t max_primitives_out;
+      uint8_t primitive_type;
+      bool has_payload;
+      bool writes_primitive_indices;
+      bool writes_cull_primitive;
+      bool writes_layer;
+      bool writes_viewport_index;
+      bool writes_position;
+   } mesh;
 };
 
 extern const struct vk_pipeline_cache_object_ops tu_shader_ops;
