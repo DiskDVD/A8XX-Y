@@ -1370,9 +1370,17 @@ tu6_emit_program_config(struct tu_cs *cs,
 
    crb.flush();
 
-   for (size_t stage_idx = MESA_SHADER_VERTEX;
-        stage_idx <= MESA_SHADER_FRAGMENT; stage_idx++) {
-      mesa_shader_stage stage = (mesa_shader_stage) stage_idx;
+   static const mesa_shader_stage dynamic_offset_stages[] = {
+      MESA_SHADER_VERTEX,
+      MESA_SHADER_TESS_CTRL,
+      MESA_SHADER_TESS_EVAL,
+      MESA_SHADER_GEOMETRY,
+      MESA_SHADER_TASK,
+      MESA_SHADER_MESH,
+      MESA_SHADER_FRAGMENT,
+   };
+   for (unsigned i = 0; i < ARRAY_SIZE(dynamic_offset_stages); i++) {
+      mesa_shader_stage stage = dynamic_offset_stages[i];
       tu6_emit_dynamic_offset(cs, variants[stage], shaders[stage], prog);
    }
 
@@ -1421,7 +1429,27 @@ contains_all_shader_state(VkGraphicsPipelineLibraryFlagsEXT state)
       (VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT |
        VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT)) ==
       (VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT |
-       VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT);
+      VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT);
+}
+
+static mesa_shader_stage
+tu_get_last_prerast_stage(uint32_t stage_mask)
+{
+   static const mesa_shader_stage prerast_order[] = {
+      MESA_SHADER_GEOMETRY,
+      MESA_SHADER_MESH,
+      MESA_SHADER_TESS_EVAL,
+      MESA_SHADER_TESS_CTRL,
+      MESA_SHADER_VERTEX,
+      MESA_SHADER_TASK,
+   };
+
+   for (unsigned i = 0; i < ARRAY_SIZE(prerast_order); i++) {
+      if (stage_mask & BITFIELD_BIT(prerast_order[i]))
+         return prerast_order[i];
+   }
+
+   return MESA_SHADER_NONE;
 }
 
 static bool
@@ -1894,20 +1922,30 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
 
    if (builder->state &
        VK_GRAPHICS_PIPELINE_LIBRARY_PRE_RASTERIZATION_SHADERS_BIT_EXT) {
-      for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
-         if (nir[i] || stage_infos[i]) {
-            keys[i].multiview_mask =
-               builder->graphics_state.mv->view_mask;
-         }
+      static const mesa_shader_stage prerast_key_stages[] = {
+         MESA_SHADER_VERTEX,
+         MESA_SHADER_TESS_CTRL,
+         MESA_SHADER_TESS_EVAL,
+         MESA_SHADER_GEOMETRY,
+         MESA_SHADER_TASK,
+         MESA_SHADER_MESH,
+      };
+      for (unsigned i = 0; i < ARRAY_SIZE(prerast_key_stages); i++) {
+         mesa_shader_stage stage = prerast_key_stages[i];
+         if (nir[stage] || stage_infos[stage])
+            keys[stage].multiview_mask = builder->graphics_state.mv->view_mask;
       }
 
-      mesa_shader_stage last_pre_rast_stage = MESA_SHADER_VERTEX;
-      for (int i = MESA_SHADER_GEOMETRY; i >= MESA_SHADER_VERTEX; i--) {
-         if (nir[i]) {
-            last_pre_rast_stage = (mesa_shader_stage)i;
-            break;
-         }
+      uint32_t prerast_stage_mask = 0;
+      for (unsigned i = 0; i < ARRAY_SIZE(prerast_key_stages); i++) {
+         mesa_shader_stage stage = prerast_key_stages[i];
+         if (nir[stage])
+            prerast_stage_mask |= BITFIELD_BIT(stage);
       }
+
+      mesa_shader_stage last_pre_rast_stage =
+         tu_get_last_prerast_stage(prerast_stage_mask);
+      assert(last_pre_rast_stage != MESA_SHADER_NONE);
 
       /* === ИЗМЕНЕНО: Отключаем FDM per layer на A810 === */
       keys[last_pre_rast_stage].fdm_per_layer =
@@ -2396,14 +2434,16 @@ tu_emit_program_state(struct tu_cs *sub_cs,
    tu6_emit_program_config<CHIP>(&prog_cs, prog, shaders, variants);
    prog->config_state = tu_cs_end_draw_state(sub_cs, &prog_cs);
 
-   prog->vs_state = draw_states[MESA_SHADER_VERTEX];
+   const bool has_mesh = variants[MESA_SHADER_MESH];
+
+   prog->vs_state = has_mesh ? (struct tu_draw_state) {} : draw_states[MESA_SHADER_VERTEX];
 
   /* Don't use the binning pass variant when GS is present because we don't
    * support compiling correct binning pass variants with GS.
    */
-   if (variants[MESA_SHADER_GEOMETRY]) {
+   if (has_mesh || variants[MESA_SHADER_GEOMETRY]) {
       prog->vs_binning_state = prog->vs_state;
-   } else {
+   } else if (shaders[MESA_SHADER_VERTEX]) {
       prog->vs_binning_state =
          (safe_variants & (1u << MESA_SHADER_VERTEX))
             ? shaders[MESA_SHADER_VERTEX]->safe_const_binning_state
@@ -2434,6 +2474,9 @@ tu_emit_program_state(struct tu_cs *sub_cs,
    if (gs) {
       last_shader = shaders[MESA_SHADER_GEOMETRY];
       last_variant = gs;
+   } else if (variants[MESA_SHADER_MESH]) {
+      last_shader = shaders[MESA_SHADER_MESH];
+      last_variant = variants[MESA_SHADER_MESH];
    } else if (ds) {
       last_shader = shaders[MESA_SHADER_TESS_EVAL];
       last_variant = ds;
@@ -4524,6 +4567,27 @@ tu_pipeline_builder_build(struct tu_pipeline_builder *builder,
    (*pipeline)->active_stages = stages;
    for (unsigned i = 0; i < builder->num_libraries; i++)
       (*pipeline)->active_stages |= builder->libraries[i]->base.active_stages;
+
+   const VkShaderStageFlags graphics_vs_path_stages =
+      VK_SHADER_STAGE_VERTEX_BIT |
+      VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+      VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT |
+      VK_SHADER_STAGE_GEOMETRY_BIT;
+   const bool has_mesh = (*pipeline)->active_stages & VK_SHADER_STAGE_MESH_BIT_EXT;
+   const bool has_task = (*pipeline)->active_stages & VK_SHADER_STAGE_TASK_BIT_EXT;
+   const bool has_vs_path = (*pipeline)->active_stages & graphics_vs_path_stages;
+
+   assert(!(has_mesh && has_vs_path));
+   assert(!has_task || has_mesh);
+   if ((has_mesh && has_vs_path) || (has_task && !has_mesh))
+      return VK_ERROR_FEATURE_NOT_PRESENT;
+
+   if (has_mesh && builder->graphics_state.vi &&
+       (builder->graphics_state.vi->attributes_valid ||
+        builder->graphics_state.vi->bindings_valid)) {
+      assert(!"mesh pipeline must not use VFD vertex fetch state");
+      return VK_ERROR_FEATURE_NOT_PRESENT;
+   }
 
    /* Compile and upload shaders unless a library has already done that. */
    if ((*pipeline)->program.vs_state.size == 0) {
