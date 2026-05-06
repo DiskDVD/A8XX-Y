@@ -288,6 +288,42 @@ tu_spirv_to_nir(struct tu_device *dev,
    return nir;
 }
 
+
+static void
+tu_lower_nir_stage_pre_io(nir_shader *nir)
+{
+   switch (nir->info.stage) {
+   case MESA_SHADER_TASK:
+   case MESA_SHADER_MESH:
+      NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_task_payload,
+               nir_address_format_32bit_offset);
+      break;
+   default:
+      break;
+   }
+}
+
+static void
+tu_validate_mesh_output_semantics(nir_shader *nir)
+{
+   if (nir->info.stage != MESA_SHADER_MESH)
+      return;
+
+   const bool writes_primitive_indices =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_PRIMITIVE_INDICES);
+   const bool writes_cull_primitive =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_CULL_PRIMITIVE);
+   const bool writes_layer =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_LAYER);
+   const bool writes_viewport =
+      BITSET_TEST(nir->info.outputs_written, VARYING_SLOT_VIEWPORT);
+
+   if (writes_primitive_indices || writes_cull_primitive || writes_layer || writes_viewport) {
+      assert(nir->info.mesh.max_primitives_out > 0 &&
+             "Mesh builtins require max_primitives_out > 0 (OpSetMeshOutputsEXT invariant)");
+   }
+}
+
 static void
 tu_validate_mesh_task_ext_io(nir_shader *nir)
 {
@@ -3077,6 +3113,8 @@ tu_lower_nir(struct tu_device *dev,
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
             nir_address_format_64bit_global);
 
+   tu_lower_nir_stage_pre_io(nir);
+
    if (nir->info.stage == MESA_SHADER_COMPUTE) {
       NIR_PASS(_, nir, nir_lower_vars_to_explicit_types,
                nir_var_mem_shared, shared_type_info);
@@ -3128,6 +3166,8 @@ tu_lower_nir(struct tu_device *dev,
    }
 
    ir3_nir_lower_io(nir);
+
+   tu_validate_mesh_output_semantics(nir);
 
    if (key->emulate_alpha_to_coverage)
       lower_alpha_to_coverage(nir);
