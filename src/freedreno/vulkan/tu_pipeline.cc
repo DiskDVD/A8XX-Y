@@ -1849,7 +1849,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
    if (builder->state &
        VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
       keys[MESA_SHADER_FRAGMENT].custom_resolve =
-         is_a8xx ? false : builder->graphics_state.rp->custom_resolve;
+         builder->graphics_state.rp->custom_resolve;
+      
 
       if (builder->device->physical_device->instance->emulate_alpha_to_coverage) {
          keys[MESA_SHADER_FRAGMENT].emulate_alpha_to_coverage = true;
