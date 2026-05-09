@@ -1720,6 +1720,7 @@ tu_physical_device_init(struct tu_physical_device *device,
    device->level1_dcache_size = util_cache_granularity();
    device->has_cached_non_coherent_memory =
       device->level1_dcache_size > 0 && !DETECT_ARCH_ARM;
+   device->preferred_uncached_as_cached_index = -1;
 
    device->memory.type_count = 1;
    device->memory.types[0] =
@@ -1733,6 +1734,11 @@ tu_physical_device_init(struct tu_physical_device *device,
          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
          VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+      if (instance->override_uncached_as_cache_coherent) {
+          /* Retain this memory type index to override later. */
+          device->preferred_uncached_as_cached_index = device->memory.type_count;
+      }
       device->memory.type_count++;
    }
 
@@ -1884,6 +1890,7 @@ static const driOptionDescription tu_dri_options[] = {
       DRI_CONF_TU_ENABLE_SOFTFLOAT32(false)
       DRI_CONF_TU_EMULATE_ALPHA_TO_COVERAGE(false)
       DRI_CONF_TU_AUTOTUNE_ALGORITHM()
+      DRI_CONF_TU_OVERRIDE_UNCACHED_AS_CACHE_COHERENT(false)
    DRI_CONF_SECTION_END
 };
 
@@ -1918,6 +1925,8 @@ tu_init_dri_options(struct tu_instance *instance)
          driQueryOptionb(&instance->dri_options, "tu_emulate_alpha_to_coverage");
    instance->autotune_algo =
          driQueryOptionstr(&instance->dri_options, "tu_autotune_algorithm");
+   instance->override_uncached_as_cache_coherent =
+         driQueryOptionb(&instance->dri_options, "tu_override_uncached_as_cache_coherent");
 }
 
 static uint32_t instance_count = 0;
