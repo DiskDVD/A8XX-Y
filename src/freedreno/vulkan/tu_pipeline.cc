@@ -1743,7 +1743,12 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
    };
    VkPipelineCreationFeedback stage_feedbacks[MESA_SHADER_STAGES] = { 0 };
 
-   const bool is_a8xx = fd_dev_gen(&builder->device->physical_device->dev_id) == 8;
+   const uint64_t chip_id = builder->device->physical_device->dev_id.chip_id;
+   const bool disable_fdm_msaa_quirk =
+      chip_id == 0xffff44010000ull || /* Adreno 810 */
+      chip_id == 0x44030a20ull   ||   /* Adreno 829 */
+      chip_id == 0xffff44050000ull || /* Adreno 830 */
+      chip_id == 0x44050001ull;      /* Adreno 830 (KGSL) */
 
    const bool executable_info =
       builder->create_flags &
@@ -1904,7 +1909,7 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
       }
 
       keys[last_pre_rast_stage].fdm_per_layer =
-         is_a8xx ? false : builder->fdm_per_layer;
+         disable_fdm_msaa_quirk ? false : builder->fdm_per_layer;
    }
 
    if (builder->state & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
@@ -1946,7 +1951,7 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
        * tu_shader_key::force_sample_interp in a bit.
        */
       keys[MESA_SHADER_FRAGMENT].force_sample_interp =
-         is_a8xx ? false : (!builder->rasterizer_discard && msaa_info && msaa_info->sampleShadingEnable);
+         disable_fdm_msaa_quirk ? false : (!builder->rasterizer_discard && msaa_info && msaa_info->sampleShadingEnable);
    }
 
    unsigned char pipeline_blake3[BLAKE3_KEY_LEN];
