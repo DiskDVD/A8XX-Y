@@ -43,10 +43,7 @@ tu_cmd_buffer_setup_status_tracking(struct tu_device *device)
       device, NULL, &status_bo, sizeof(enum tu_cmd_buffer_status), 0,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-         (device->physical_device->preferred_uncached_as_cached_index >= 0 ?
-          VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0)
-         ,
+         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
       TU_BO_ALLOC_INTERNAL_RESOURCE, NULL, "cmd_buffer_status");
    if (result != VK_SUCCESS)
       return NULL;
@@ -1417,44 +1414,6 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
 
    const struct tu_vsc_config *vsc = tu_vsc_config(cmd, cmd->state.tiling);
 
-   if (cmd->device->physical_device->info->chip >= A8XX) {
-      const uint32_t gpu_id = fd_dev_gpu_id(&cmd->device->physical_device->dev_id);
-      const VkExtent2D extent = cmd->state.render_areas[0].extent;
-      const uint64_t render_area_px = (uint64_t) extent.width * extent.height;
-
-      uint64_t force_sysmem_px = 0;
-      uint64_t force_gmem_px = 0;
-
-      switch (gpu_id) {
-      case 810:
-         force_sysmem_px = 220 * 220;
-         force_gmem_px = 700 * 700;
-         break;
-      case 825:
-      case 829:
-         force_sysmem_px = 180 * 180;
-         force_gmem_px = 840 * 840;
-         break;
-      case 830:
-      case 840:
-         force_sysmem_px = 144 * 144;
-         force_gmem_px = 960 * 960;
-         break;
-      default:
-         break;
-      }
-
-      if (force_sysmem_px && render_area_px <= force_sysmem_px) {
-         cmd->state.rp.gmem_disable_reason = "A8xx heuristic: tiny render area";
-         return true;
-      }
-
-      if (force_gmem_px && render_area_px >= force_gmem_px) {
-         cmd->state.rp.gmem_disable_reason = "A8xx heuristic: large render area";
-         return false;
-      }
-   }
-   
    /* XFB is incompatible with non-hw binning GMEM rendering, see use_hw_binning */
    if (cmd->state.rp.xfb_used && !vsc->binning_possible) {
       cmd->state.rp.gmem_disable_reason =

@@ -506,17 +506,8 @@ tu_tiling_config_update_pipes(struct tu_vsc_config *vsc,
 static void
 tu_tiling_config_update_binning(struct tu_vsc_config *vsc, const struct tu_device *device)
 {
-   const uint32_t tile_count = vsc->tile_count.width * vsc->tile_count.height;
-   uint32_t binning_tile_threshold = 3;
+   vsc->binning_useful = (vsc->tile_count.width * vsc->tile_count.height) > 2;
 
-   if (device->physical_device->info->chip >= A8XX) {
-      if (device->physical_device->gmem_size <= (1024 * 1024))
-         binning_tile_threshold = 2;
-      else if (device->physical_device->gmem_size <= (2 * 1024 * 1024))
-         binning_tile_threshold = 2;
-   }
-
-   vsc->binning_useful = tile_count >= binning_tile_threshold;
    if (TU_DEBUG(FORCEBIN))
       vsc->binning_useful = true;
    if (TU_DEBUG(NOBIN))
