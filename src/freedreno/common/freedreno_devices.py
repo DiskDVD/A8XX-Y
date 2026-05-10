@@ -1389,6 +1389,7 @@ add_gpus([
             has_fs_tex_prefetch = False,
             has_salu_int_narrowing_quirk = True,
             shading_rate_matches_vk = True,
+            enable_tp_ubwc_flag_hint = True,
         )],
         num_ccu = 1,
         num_slices = 1,
@@ -1409,7 +1410,8 @@ add_gpus([
         GPUId(chip_id=0x44050001, name="Adreno (TM) 830"), # KGSL
     ], A6xxGPUInfo(
         CHIP.A8XX,
-        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1],
+        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1,
+         GPUProps(enable_tp_ubwc_flag_hint = True)],
         num_ccu = 6,
         num_slices = 3,
         tile_align_w = 96,
@@ -1445,6 +1447,7 @@ add_gpus([
             disable_gmem = False,
             gmem_size = 2 * 1024 * 1024,
             shading_rate_matches_vk = True,
+            enable_tp_ubwc_flag_hint = True,
         )],
         num_ccu = 4,
         num_slices = 2,
@@ -1506,7 +1509,8 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
-         GPUProps(shading_rate_matches_vk = True)],
+         GPUProps(shading_rate_matches_vk = True,
+                  enable_tp_ubwc_flag_hint = True)],
         num_ccu = 6,
         num_slices = 3,
         tile_align_w = 96,
