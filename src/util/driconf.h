@@ -668,6 +668,9 @@
    DRI_CONF_OPT_S_NODEF(tu_autotune_algorithm, \
                         "Set the preferred autotune algorithm")
 
+#define DRI_CONF_TU_OVERRIDE_UNCACHED_AS_CACHE_COHERENT(def) \
+   DRI_CONF_OPT_B(tu_override_uncached_as_cache_coherent, def, \
+                  "Replaces uncached-host allocations with cached-coherent-host when possible. Only useful under x86 emulation where memory accesses tend to be atomic")
 /**
  * \brief Honeykrisp specific configuration options
  */

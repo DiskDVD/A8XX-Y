@@ -43,7 +43,10 @@ tu_cmd_buffer_setup_status_tracking(struct tu_device *device)
       device, NULL, &status_bo, sizeof(enum tu_cmd_buffer_status), 0,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+         (device->physical_device->preferred_uncached_as_cached_index >= 0 ?
+          VK_MEMORY_PROPERTY_HOST_CACHED_BIT : 0)
+         ,
       TU_BO_ALLOC_INTERNAL_RESOURCE, NULL, "cmd_buffer_status");
    if (result != VK_SUCCESS)
       return NULL;
@@ -4115,6 +4118,7 @@ tu_create_cmd_buffer(struct vk_command_pool *pool,
 
    u_trace_init(&cmd_buffer->trace, &device->trace_context);
    u_trace_init(&cmd_buffer->rp_trace, &device->trace_context);
+   u_trace_init(&cmd_buffer->pre_chain.rp_trace, &device->trace_context);
    cmd_buffer->trace_renderpass_start =
       u_trace_begin_iterator(&cmd_buffer->rp_trace);
    new (&cmd_buffer->autotune_ctx) tu_autotune::cmd_buf_ctx(*device->autotune);
@@ -4165,6 +4169,7 @@ tu_cmd_buffer_destroy(struct vk_command_buffer *vk_cmd_buffer)
 
    u_trace_fini(&cmd_buffer->trace);
    u_trace_fini(&cmd_buffer->rp_trace);
+   u_trace_fini(&cmd_buffer->pre_chain.rp_trace);
 
    cmd_buffer->autotune_ctx.~cmd_buf_ctx();
 
@@ -4273,6 +4278,9 @@ tu_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
    u_trace_init(&cmd_buffer->trace, &cmd_buffer->device->trace_context);
    u_trace_fini(&cmd_buffer->rp_trace);
    u_trace_init(&cmd_buffer->rp_trace, &cmd_buffer->device->trace_context);
+   u_trace_fini(&cmd_buffer->pre_chain.rp_trace);
+   u_trace_init(&cmd_buffer->pre_chain.rp_trace,
+                &cmd_buffer->device->trace_context);
    cmd_buffer->trace_renderpass_start =
       u_trace_begin_iterator(&cmd_buffer->rp_trace);
 
