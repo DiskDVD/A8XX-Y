@@ -1744,10 +1744,9 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
    VkPipelineCreationFeedback stage_feedbacks[MESA_SHADER_STAGES] = { 0 };
 
    const uint64_t chip_id = builder->device->physical_device->dev_id.chip_id;
-   const bool is_a810 = chip_id == 0x44010000ull;
-   const bool is_a829 = chip_id == 0x44030A20ull;
-   const bool is_a830 = chip_id == 0x44050000ull;
-   const bool disable_msaa_workarounds = is_a810 || is_a829 || is_a830;
+   const bool is_a840 = chip_id == 0x44080000ull;
+   const bool disable_msaa_workarounds =
+      builder->device->physical_device->info->chip >= A8XX && !is_a840;
 
    const bool executable_info =
       builder->create_flags &
@@ -4798,11 +4797,19 @@ tu_pipeline_builder_init_graphics(
                                    NULL);
 
    if (builder->graphics_state.rp) {
-      builder->fragment_density_map = (builder->graphics_state.pipeline_flags &
-         VK_PIPELINE_CREATE_2_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT) ||
-         TU_DEBUG(FDM);
-      builder->fdm_per_layer = (builder->graphics_state.pipeline_flags &
-                                VK_PIPELINE_CREATE_2_PER_LAYER_FRAGMENT_DENSITY_BIT_VALVE);
+      const uint64_t chip_id = dev->physical_device->dev_id.chip_id;
+      const bool disable_fdm = chip_id == 0x44010000ull || /* Adreno 810 */
+                               chip_id == 0x44020100ull || /* Adreno 825 */
+                               chip_id == 0x44030A20ull || /* Adreno 829 */
+                               chip_id == 0x44050000ull;   /* Adreno 830 */
+
+      builder->fragment_density_map = disable_fdm ? false :
+         ((builder->graphics_state.pipeline_flags &
+           VK_PIPELINE_CREATE_2_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT) ||
+          TU_DEBUG(FDM));
+      builder->fdm_per_layer = disable_fdm ? false :
+         (builder->graphics_state.pipeline_flags &
+          VK_PIPELINE_CREATE_2_PER_LAYER_FRAGMENT_DENSITY_BIT_VALVE);
       if (builder->fdm_per_layer) {
          const VkPipelineFragmentDensityMapLayeredCreateInfoVALVE *fdm_layered_info =
             vk_find_struct_const(create_info->pNext,
