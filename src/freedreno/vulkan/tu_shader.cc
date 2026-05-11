@@ -59,6 +59,58 @@ static const struct spirv_to_nir_options tu_spirv_options = {
    .min_ssbo_alignment = 4,
 };
 
+static bool tu_is_a8xx_family(const struct tu_device *dev)
+{
+   return dev->physical_device->info->chip >= 8;
+}
+
+static bool tu_is_a810_or_a825(const struct tu_device *dev)
+{
+   const uint32_t gpu_id = dev->physical_device->info->gpu_id;
+   return gpu_id == 810 || gpu_id == 825;
+}
+
+static bool tu_is_a830_or_a840(const struct tu_device *dev)
+{
+   const uint32_t gpu_id = dev->physical_device->info->gpu_id;
+   return gpu_id == 830 || gpu_id == 840;
+}
+
+static void
+tu_apply_a8xx_shader_tuning(struct tu_device *dev,
+                            nir_shader *nir,
+                            const struct tu_shader_key *key)
+{
+   if (!tu_is_a8xx_family(dev))
+      return;
+
+   if (key->enable_ubwc_paths) {
+      NIR_PASS(_, nir, nir_opt_sink, nir_move_load_ubo);
+      NIR_PASS(_, nir, nir_opt_cse);
+   }
+
+   nir_opt_peephole_select_options select_options = {
+      .limit = 0,
+      .discard_ok = true,
+   };
+   NIR_PASS(_, nir, nir_opt_peephole_select, &select_options);
+   NIR_PASS(_, nir, nir_opt_copy_prop_vars);
+   NIR_PASS(_, nir, nir_opt_cse);
+   NIR_PASS(_, nir, nir_opt_gcm, true);
+
+   if (key->prefer_fp16_math && tu_is_a810_or_a825(dev)) {
+      NIR_PASS(_, nir, nir_lower_mediump_vars,
+               nir_var_function_temp | nir_var_shader_temp);
+      NIR_PASS(_, nir, nir_opt_algebraic);
+   }
+
+   if (key->prefer_slice_aware_parallelism && tu_is_a830_or_a840(dev) &&
+       nir->info.stage == MESA_SHADER_COMPUTE) {
+      NIR_PASS(_, nir, nir_opt_if, nir_opt_if_optimize_phi_true_false);
+      NIR_PASS(_, nir, nir_opt_copy_prop);
+   }
+}
+
 static nir_shader *
 tu_spirv_to_nir_library(struct tu_device *dev,
                         const uint32_t *words,
@@ -3079,6 +3131,7 @@ tu_lower_nir(struct tu_device *dev,
    }
 
    ir3_nir_lower_io(nir);
+   tu_apply_a8xx_shader_tuning(dev, nir, key);
 
    if (key->emulate_alpha_to_coverage)
       lower_alpha_to_coverage(nir);
@@ -3501,6 +3554,10 @@ tu_shader_key_subgroup_size(struct tu_shader_key *key,
 
    key->api_wavesize = api_wavesize;
    key->real_wavesize = real_wavesize;
+   key->enable_ubwc_paths = true;
+   key->prefer_fp16_math = true;
+   key->prefer_slice_aware_parallelism = true;
+   key->prefer_local_intermediates = true;
 }
 
 void
