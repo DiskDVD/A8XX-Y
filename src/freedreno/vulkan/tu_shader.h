@@ -131,11 +131,6 @@ struct tu_shader_key {
    bool lower_view_index_to_device_index;
    bool custom_resolve;
    bool emulate_alpha_to_coverage;
-   /* A8xx tuning hints used by tu_lower_nir()/tu_shader_create(). */
-   bool prefer_fp16_math;
-   bool prefer_slice_aware_parallelism;
-   bool prefer_local_intermediates;
-   bool enable_ubwc_paths;
    enum ir3_wavesize_option api_wavesize, real_wavesize;
 };
 
