@@ -28,66 +28,6 @@
 
 #include "disasm.h"
 
-
-static bool
-ir3_is_a8xx_family(const struct ir3_compiler *compiler)
-{
-   return compiler->gpu_id >= 800;
-}
-
-static bool
-ir3_is_a810_or_a825(const struct ir3_compiler *compiler)
-{
-   return compiler->gpu_id == 810 || compiler->gpu_id == 825;
-}
-
-static bool
-ir3_is_a829(const struct ir3_compiler *compiler)
-{
-   return compiler->gpu_id == 829;
-}
-
-static bool
-ir3_is_a830_or_a840(const struct ir3_compiler *compiler)
-{
-   return compiler->gpu_id == 830 || compiler->gpu_id == 840;
-}
-
-static void
-ir3_apply_a8xx_tuning(struct ir3_shader_variant *v)
-{
-   if (!ir3_is_a8xx_family(v->compiler))
-      return;
-
-   if (v->key.enable_ubwc_paths) {
-      /* A8xx supports UBWCv6. Keep this path gated in the key so UBWC-aware
-       * lowerings in later passes can safely key off the variant.
-       */
-   }
-
-   if (v->key.prefer_fp16_math &&
-       (ir3_is_a810_or_a825(v->compiler) || ir3_is_a829(v->compiler))) {
-      /* FP16 preference is limited to specific SKUs and kept key-guarded so
-       * downstream lowering can opt in only when legal.
-       */
-   }
-
-   if (v->key.prefer_slice_aware_parallelism &&
-       ir3_is_a830_or_a840(v->compiler) && ir3_shader_compute(v)) {
-      /* Slice-aware path: bias compute for dispatch layouts that reduce
-       * divergence and help scheduler/copy-prop effectiveness.
-       */
-      v->cs.force_linear_dispatch = true;
-   }
-
-   if (v->key.prefer_local_intermediates) {
-      /* Keep private memory in per-wave layout when available to reduce
-       * pressure on global memory and improve locality.
-       */
-      v->pvtmem_per_wave = v->compiler->gen >= 6;
-   }
-}
-
 bool
 ir3_const_ensure_imm_size(struct ir3_shader_variant *v, unsigned size)
 {
@@ -686,16 +626,11 @@ create_variant(struct ir3_shader *shader, const struct ir3_shader_key *key,
    struct ir3_const_state *const_state = ir3_const_state_mut(v);
    const_state->num_app_ubos = MAX2(1, shader->nir->info.num_ubos);
 
-   ir3_apply_a8xx_tuning(v);
-
    if (!compile_variant(shader, v))
       goto fail;
 
-   if (needs_binning_variant(v)) {
-      ir3_apply_a8xx_tuning(v->binning);
-      if (!compile_variant(shader, v->binning))
-         goto fail;
-   }
+   if (needs_binning_variant(v) && !compile_variant(shader, v->binning))
+      goto fail;
 
    ir3_disk_cache_store(shader, v);
 
@@ -840,11 +775,6 @@ ir3_setup_used_key(struct ir3_shader *shader)
    key->has_per_samp = true;
 
    key->safe_constlen = true;
-
-   key->enable_ubwc_paths = true;
-   key->prefer_fp16_math = true;
-   key->prefer_slice_aware_parallelism = true;
-   key->prefer_local_intermediates = true;
 
    /* When clip/cull distances are natively supported, we only use
     * ucp_enables to determine whether to lower legacy clip planes to

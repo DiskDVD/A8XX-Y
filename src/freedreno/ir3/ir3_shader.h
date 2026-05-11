@@ -437,12 +437,6 @@ struct ir3_shader_key {
    /* per-component (3-bit) swizzles of each sampler (a4xx tg4): */
    uint16_t vsampler_swizzles[16];
    uint16_t fsampler_swizzles[16];
-
-   /* A8xx tuning controls: default enabled for safe, opt-in lowering paths. */
-   bool enable_ubwc_paths;
-   bool prefer_fp16_math;
-   bool prefer_slice_aware_parallelism;
-   bool prefer_local_intermediates;
 };
 
 static inline unsigned
@@ -508,14 +502,6 @@ ir3_shader_key_changes_fs(struct ir3_shader_key *key,
    if (last_key->safe_constlen != key->safe_constlen)
       return true;
 
-   if (last_key->enable_ubwc_paths != key->enable_ubwc_paths ||
-       last_key->prefer_fp16_math != key->prefer_fp16_math ||
-       last_key->prefer_slice_aware_parallelism !=
-          key->prefer_slice_aware_parallelism ||
-       last_key->prefer_local_intermediates !=
-          key->prefer_local_intermediates)
-      return true;
-
    return false;
 }
 
@@ -536,14 +522,6 @@ ir3_shader_key_changes_vs(struct ir3_shader_key *key,
       return true;
 
    if (last_key->safe_constlen != key->safe_constlen)
-      return true;
-
-   if (last_key->enable_ubwc_paths != key->enable_ubwc_paths ||
-       last_key->prefer_fp16_math != key->prefer_fp16_math ||
-       last_key->prefer_slice_aware_parallelism !=
-          key->prefer_slice_aware_parallelism ||
-       last_key->prefer_local_intermediates !=
-          key->prefer_local_intermediates)
       return true;
 
    return false;
