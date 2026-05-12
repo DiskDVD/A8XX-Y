@@ -1318,8 +1318,7 @@ a8xx_base_raw_magic_regs = [
 
         [A6XXRegs.REG_A8XX_PC_UNKNOWN_980B, 0x00800280],
         [A6XXRegs.REG_A8XX_PC_MODE_CNTL,    0x00003f00],
-        [A6XXRegs.REG_A8XX_VPC_UNKNOWN_CNTL, 0x000000000],
-        [A6XXRegs.REG_A8XX_SP_UNKNOWN_A9A8, 0x00000000],
+
     ]
 
 a8xx_gen1 = GPUProps(
