@@ -5,9 +5,6 @@
 
 from freedreno_dev_info import *
 
-def _reg(name, fallback):
-    return getattr(A6XXRegs, name, fallback)
-    
 # a2xx is really two sub-generations, a20x and a22x, but we don't currently
 # capture that in the device-info tables
 add_gpus([
@@ -1311,19 +1308,16 @@ a8xx_base_raw_magic_regs = [
         [A6XXRegs.REG_A6XX_RB_UNKNOWN_881E,   0x00000000],
         [A6XXRegs.REG_A7XX_RB_LRZ_CNTL2,      0x00000000],
         [A6XXRegs.REG_A8XX_RB_RESOLVE_CNTL_5, 0x00000001],
-        [A6XXRegs.REG_A8XX_SP_UNKNOWN_A9A8, 0x00000000],
-        [A6XXRegs.REG_A8XX_VPC_UNKNOWN_CNTL, 0x00000000],
 
-        [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB01,   0x00000001],
+        [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB01,   0x00000000],
         [A6XXRegs.REG_A7XX_SP_HLSQ_MODE_CNTL, 0x00000000],
         [A6XXRegs.REG_A8XX_SP_UNKNOWN_AB23,   0x00000000],
-        
-        [A6XXRegs.REG_A6XX_TPL1_PS_ROTATION_CNTL, 0x00000000],
+
+        [A6XXRegs.REG_A6XX_TPL1_PS_ROTATION_CNTL, 0x00000004],
         [A6XXRegs.REG_A6XX_TPL1_PS_SWIZZLE_CNTL, 0x00000000],
 
         [A6XXRegs.REG_A8XX_PC_UNKNOWN_980B, 0x00800280],
         [A6XXRegs.REG_A8XX_PC_MODE_CNTL,    0x00003f00],
-
     ]
 
 a8xx_gen1 = GPUProps(
