@@ -5,6 +5,9 @@
 
 from freedreno_dev_info import *
 
+def _reg(name, fallback):
+    return getattr(A6XXRegs, name, fallback)
+    
 # a2xx is really two sub-generations, a20x and a22x, but we don't currently
 # capture that in the device-info tables
 add_gpus([
