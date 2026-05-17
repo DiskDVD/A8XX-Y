@@ -2220,6 +2220,10 @@ tu_trace_create_buffer(struct u_trace_context *utctx, uint64_t size_B)
       device->trace_suballoc = (struct tu_suballocator *) vk_zalloc(
          &device->vk.alloc, sizeof(struct tu_suballocator), 8,
          VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+      if (!device->trace_suballoc) {
+         mtx_unlock(&device->trace_mutex);
+         return NULL;
+      }
 
       tu_bo_suballocator_init(device->trace_suballoc, device, 512 * 1024,
                               TU_BO_ALLOC_INTERNAL_RESOURCE, "utrace");
@@ -2228,13 +2232,22 @@ tu_trace_create_buffer(struct u_trace_context *utctx, uint64_t size_B)
    struct tu_suballoc_bo *suballoc_bo = (struct tu_suballoc_bo *) vk_zalloc(
       &device->vk.alloc, sizeof(struct tu_suballoc_bo), 8,
       VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
+   if (!suballoc_bo) {
+      mtx_unlock(&device->trace_mutex);
+      return NULL;
+   }
 
    VkResult result =
       tu_suballoc_bo_alloc(suballoc_bo, device->trace_suballoc, size_B, 1);
 
    mtx_unlock(&device->trace_mutex);
 
-   return result == VK_SUCCESS ? suballoc_bo : NULL;
+   if (result != VK_SUCCESS) {
+      vk_free(&device->vk.alloc, suballoc_bo);
+      return NULL;
+   }
+
+   return suballoc_bo;
 }
 
 static void
@@ -2393,6 +2406,9 @@ tu_create_copy_timestamp_cs(struct tu_u_trace_submission_data *submission_data,
             &device->vk.alloc, sizeof(struct tu_copy_timestamp_data), 8,
             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
 
+      if (!submission_data->timestamp_copy_data)
+         return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+
       tu_cs_init(&submission_data->timestamp_copy_data->cs, device,
                  TU_CS_MODE_GROW, cs_size, "trace copy timestamp cs");
       u_trace_init(&submission_data->timestamp_copy_data->trace,
@@ -2478,8 +2494,10 @@ tu_u_trace_submission_data_create(
    }
 
    if (trace_chunks_to_copy > 0) {
-      tu_create_copy_timestamp_cs(data, cmd_buffers, cmd_buffer_count,
-                                  trace_chunks_to_copy);
+      VkResult cs_result = tu_create_copy_timestamp_cs(
+         data, cmd_buffers, cmd_buffer_count, trace_chunks_to_copy);
+      if (cs_result != VK_SUCCESS)
+         goto fail;
    }
 
    return VK_SUCCESS;
