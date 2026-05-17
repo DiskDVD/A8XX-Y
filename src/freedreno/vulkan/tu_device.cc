@@ -49,6 +49,12 @@
 
 uint64_t os_page_size = 4096;
 
+struct tu_debug_bos_entry {
+   uint32_t count;
+   uint64_t size;
+   const char *name;
+};
+
 static int
 tu_device_get_cache_uuid(struct tu_physical_device *device, void *uuid)
 {
@@ -4465,12 +4471,6 @@ uint64_t tu_GetDeviceMemoryOpaqueCaptureAddress(
    VK_FROM_HANDLE(tu_device_memory, mem, pInfo->memory);
    return mem->bo->iova;
 }
-
-struct tu_debug_bos_entry {
-   uint32_t count;
-   uint64_t size;
-   const char *name;
-};
 
 const char *
 tu_debug_bos_add(struct tu_device *dev, uint64_t size, const char *name)
