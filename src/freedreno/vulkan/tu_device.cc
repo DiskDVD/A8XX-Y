@@ -3291,6 +3291,16 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    u_trace_context_fini(&device->trace_context);
 
+   /* After u_trace_context_fini all in-flight submissions have either
+    * recycled their tu_copy_timestamp_data back into the pool or freed
+    * them. Free what's left of the pool now; otherwise every cached
+    * timestamp-copy CS leaks across vkDestroyDevice.
+    */
+   list_for_each_entry_safe(struct tu_copy_timestamp_data, cd,
+                            &device->copy_timestamp_cs_pool, node) {
+      tu_free_copy_timestamp_data(device, cd);
+   }
+
    for (unsigned i = 0; i < ARRAY_SIZE(device->scratch_bos); i++) {
       if (device->scratch_bos[i].initialized)
          tu_bo_finish(device, device->scratch_bos[i].bo);
