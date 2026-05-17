@@ -1,0 +1,45 @@
+name: Sync Mesa branch (overwrite selected branch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to sync with Mesa (will be overwritten)'
+        required: true
+        default: 'A8XX'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Add upstream Mesa remote
+        run: |
+          git remote add upstream https://gitlab.freedesktop.org/mesa/mesa.git || echo "Upstream already exists"
+          git fetch upstream --tags --prune
+          git remote -v
+
+      - name: Reset branch to Mesa main
+        run: |
+          TARGET_BRANCH="${{ github.event.inputs.branch }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          echo "⚠️ Полная перезапись ветки $TARGET_BRANCH"
+          git reset --hard upstream/main
+
+          echo "✅ Ветка $TARGET_BRANCH теперь полностью совпадает с Mesa"
+
+      - name: Force push to GitHub
+        run: |
+          TARGET_BRANCH="${{ github.event.inputs.branch }}"
+          git push origin $TARGET_BRANCH --force
+          echo "🚀 Force push завершён для ветки $TARGET_BRANCH"

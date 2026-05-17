@@ -1,0 +1,34 @@
+name: Cherry-Pick Hardcoded Commits
+
+on:
+  workflow_dispatch: 
+
+jobs:
+  cherry-pick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout my repo
+        uses: actions/checkout@v4
+        with:
+          ref: A8XX             
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch donor repo and cherry-pick
+        run: |
+          # Подключаем репозиторий whitebelyash
+          git remote add donor https://github.com/whitebelyash/mesa-unified
+          git fetch donor turnip/gen8
+
+          # Запуск cherry-pick для ваших коммитов
+          echo "Переносим коммиты..."
+          git cherry-pick d869843 9f96d9a f2a3c43 7a9a28d c1f0d8f 9137d26
+
+      - name: Push changes
+        run: git push origin HEAD:A8XX
+        
