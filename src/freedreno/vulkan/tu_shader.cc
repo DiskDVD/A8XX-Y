@@ -2601,8 +2601,10 @@ tu_setup_pvtmem(struct tu_device *dev,
    mtx_lock(&pvtmem_bo->mtx);
 
    if (pvtmem_bo->per_fiber_size < pvtmem_bytes) {
-      if (pvtmem_bo->bo)
+      if (pvtmem_bo->bo) {
          tu_bo_finish(dev, pvtmem_bo->bo);
+         pvtmem_bo->bo = NULL;
+      }
 
       pvtmem_bo->per_fiber_size =
          util_next_power_of_two(align(pvtmem_bytes, 512));

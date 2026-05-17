@@ -193,8 +193,10 @@ resolve_vis_stream_patchpoints(struct tu_queue *queue,
       dev->vis_stream_count = MAX2(dev->vis_stream_count,
                                    min_vis_stream_count);
       dev->vis_stream_size = MAX2(dev->vis_stream_size, max_size);
-      if (dev->vis_stream_bo)
+      if (dev->vis_stream_bo) {
          tu_bo_finish(dev, dev->vis_stream_bo);
+         dev->vis_stream_bo = NULL;
+      }
       result = tu_bo_init_new(dev, &dev->vk.base, &dev->vis_stream_bo,
                               dev->vis_stream_size * dev->vis_stream_count, 
                               TU_BO_ALLOC_INTERNAL_RESOURCE,
