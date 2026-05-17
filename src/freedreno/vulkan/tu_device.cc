@@ -3382,7 +3382,15 @@ tu_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
    u_vector_finish(&device->zombie_vmas);
 
    pthread_cond_destroy(&device->timeline_cond);
-   _mesa_hash_table_destroy(device->bo_sizes, NULL);
+   if (device->bo_sizes) {
+      hash_table_foreach(device->bo_sizes, entry) {
+         struct tu_debug_bos_entry *debug_bos =
+            (struct tu_debug_bos_entry *) entry->data;
+         free((void *) debug_bos->name);
+         free(debug_bos);
+      }
+      _mesa_hash_table_destroy(device->bo_sizes, NULL);
+   }
    vk_free(&device->vk.alloc, device->submit_bo_list);
    util_dynarray_fini(&device->dump_bo_list);
    vk_device_finish(&device->vk);
@@ -4537,7 +4545,7 @@ tu_debug_bos_print_stats(struct tu_device *dev)
 
    qsort(dyn.data,
          util_dynarray_num_elements(&dyn, struct tu_debug_bos_entry *),
-         sizeof(struct tu_debug_bos_entryos_entry *), debug_bos_count_compare);
+         sizeof(struct tu_debug_bos_entry *), debug_bos_count_compare);
 
    util_dynarray_foreach(&dyn, struct tu_debug_bos_entry *, entryp)
    {
