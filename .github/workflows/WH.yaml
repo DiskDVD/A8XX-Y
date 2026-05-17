@@ -1,4 +1,4 @@
-name: Cherry-Pick  Commits
+name: Cherry-Pick Commits
 
 on:
   workflow_dispatch: 
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout my repo
         uses: actions/checkout@v4
         with:
-          ref: A8XX             
+          ref: Haks
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -21,14 +21,13 @@ jobs:
 
       - name: Fetch donor repo and cherry-pick
         run: |
-          # Подключаем репозиторий whitebelyash
+          # Подключаем репозиторий donor
           git remote add donor https://github.com/DeriXrace/A8XX-Y
           git fetch donor A8XX
-
-          # Запуск cherry-pick для ваших коммитов
+          
+          # Делаем cherry-pick прямо в Haks
           echo "Переносим коммиты..."
-          git cherry-pick 50cd955 d8df734 ab64739 2fb48d9 df71295 e2f583b 251957f
+          git cherry-pick 50cd955 d8df734 ab64739 2fb48d9 df71295 e2f583b 251957f || true
 
       - name: Push changes
-        run: git push origin HEAD:Haks
-        
+        run: git push origin Haks --force-with-lease
