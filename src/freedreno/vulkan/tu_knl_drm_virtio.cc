@@ -28,6 +28,7 @@
 #include "tu_knl.h"
 #include "tu_knl_drm.h"
 #include "tu_queue.h"
+#include "tu_rmv.h"
 
 /* NOLINTBEGIN */
 /* clang-format off */
@@ -634,6 +635,8 @@ tu_bo_init(struct tu_device *dev,
 
    tu_dump_bo_init(dev, bo);
 
+   TU_RMV(bo_allocate, dev, bo);
+
    return VK_SUCCESS;
 }
 
@@ -759,6 +762,11 @@ virtio_bo_init(struct tu_device *dev,
    *out_bo = bo;
    if (lazy_vma)
       lazy_vma->msm.backs_lazy_bo = true;
+
+   if (flags & TU_BO_ALLOC_INTERNAL_RESOURCE) {
+      TU_RMV(internal_resource_create, dev, bo);
+      TU_RMV(resource_name, dev, bo, name);
+   }
 
    /* We don't use bo->name here because for the !TU_DEBUG=bo case bo->name is NULL. */
    tu_bo_set_kernel_name(dev, bo, name);
@@ -886,6 +894,8 @@ virtio_bo_map(struct tu_device *dev, struct tu_bo *bo, void *placed_addr)
    if (bo->map == MAP_FAILED)
       return vk_error(dev, VK_ERROR_MEMORY_MAP_FAILED);
 
+   TU_RMV(bo_map, dev, bo);
+
    return VK_SUCCESS;
 }
 
@@ -912,8 +922,12 @@ virtio_bo_finish(struct tu_device *dev, struct tu_bo *bo)
    tu_debug_bos_del(dev, bo);
    tu_dump_bo_del(dev, bo);
 
-   if (bo->map)
+   if (bo->map) {
+      TU_RMV(bo_unmap, dev, bo);
       munmap(bo->map, bo->size);
+   }
+
+   TU_RMV(bo_destroy, dev, bo);
 
    tu_bo_list_del(dev, bo);
 
