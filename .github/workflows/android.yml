@@ -1,0 +1,33 @@
+name: Android build
+
+on: [workflow_dispatch]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        arch: [ "arm64", "armv7", "x86", "x86_64" ]
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Build for Android ${{matrix.arch}}
+      run: |
+        echo "Building on: ${{ matrix.arch }}"
+        build-android/build_${{ matrix.arch }}.sh
+
+    - name: Compress artifacts
+      run: |
+        zip mesa-${{ matrix.arch }}.zip /opt/zink-${{ matrix.arch }}/libEGL_mesa.so
+        zip mesa-${{ matrix.arch }}.zip /opt/zink-${{ matrix.arch }}/libgallium_dri.so
+        zip mesa-${{ matrix.arch }}.zip /opt/zink-${{ matrix.arch }}/libvulkan_freedreno.so
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mesa-${{ matrix.arch }}
+        path: .
+
