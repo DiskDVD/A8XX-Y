@@ -172,8 +172,10 @@ tu_insert_dynamic_cmdbufs(struct tu_device *dev,
       case SR_IN_CHAIN_AFTER_PRE_CHAIN: {
          assert(!cmd_buffer);
          VkResult result = get_cmd_buffer(dev, &cmd_buffer);
-         if (result != VK_SUCCESS)
+         if (result != VK_SUCCESS) {
+            util_dynarray_fini(&cmds);
             return result;
+         }
 
          const VkCommandBufferBeginInfo begin = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -205,8 +207,10 @@ tu_insert_dynamic_cmdbufs(struct tu_device *dev,
    struct tu_cmd_buffer **new_cmds = (struct tu_cmd_buffer **)
       vk_alloc(&dev->vk.alloc, cmds.size, alignof(struct tu_cmd_buffer *),
                VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!new_cmds)
+   if (!new_cmds) {
+      util_dynarray_fini(&cmds);
       return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
    memcpy(new_cmds, cmds.data, cmds.size);
    *cmds_ptr = new_cmds;
    *size = util_dynarray_num_elements(&cmds, struct tu_cmd_buffer *);
