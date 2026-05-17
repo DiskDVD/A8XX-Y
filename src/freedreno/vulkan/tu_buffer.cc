@@ -219,9 +219,18 @@ tu_BindBufferMemory2(VkDevice device,
 
       TU_RMV(buffer_bind, dev, buffer);
 
-      vk_address_binding_report(&instance->vk, &buffer->vk.base,
-                                buffer->bo->iova, buffer->bo->size,
-                                VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+      /* For sparse-binding buffers (mem == VK_NULL_HANDLE) buffer->bo is
+       * NULL and the iova/size are owned by buffer->vma, not by a backing
+       * VkDeviceMemory. Reading buffer->bo->iova here would dereference NULL
+       * and crash on entirely legitimate Vulkan usage. Skip the binding
+       * report for that case (the SPARSE-BINDING report has already been
+       * emitted by tu_CreateBuffer / vkQueueBindSparse).
+       */
+      if (buffer->bo) {
+         vk_address_binding_report(&instance->vk, &buffer->vk.base,
+                                   buffer->bo->iova, buffer->bo->size,
+                                   VK_DEVICE_ADDRESS_BINDING_TYPE_BIND_EXT);
+      }
    }
    return VK_SUCCESS;
 }
