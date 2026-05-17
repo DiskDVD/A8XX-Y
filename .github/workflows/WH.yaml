@@ -1,7 +1,7 @@
 name: Cherry-Pick Hardcoded Commits
 
 on:
-  workflow_dispatch: # Кнопка ручного запуска (полей для ввода теперь не будет)
+  workflow_dispatch: 
 
 jobs:
   cherry-pick:
@@ -22,7 +22,7 @@ jobs:
       - name: Fetch donor repo and cherry-pick
         run: |
           # Подключаем репозиторий whitebelyash
-          git remote add donor https://github.com
+          git remote add donor https://github.com/whitebelyash/mesa-unified
           git fetch donor turnip/gen8
 
           # Запуск cherry-pick для ваших коммитов
