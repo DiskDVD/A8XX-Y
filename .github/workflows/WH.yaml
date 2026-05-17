@@ -27,7 +27,7 @@ jobs:
 
           # Запуск cherry-pick для ваших коммитов
           echo "Переносим коммиты..."
-          git cherry-pick d869843 9f96d9a f2a3c43 7a9a28d c1f0d8f 9137d26
+          git cherry-pick 9c91fc3 08ac4ef 
 
       - name: Push changes
         run: git push origin HEAD:A8XX
