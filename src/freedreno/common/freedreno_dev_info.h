@@ -419,6 +419,11 @@ struct fd_dev_info {
 
       bool has_primitive_shading_rate;
 
+      /* Total GMEM size in bytes. */
+      uint32_t gmem_size;
+      /* If GMEM needs to be disabled for this GPU */
+      bool disable_gmem;
+
       /* If true, the hw shading rate value matches vk/gl rather than dx.
        *
        *   dx:  (width_log2 << 2) | height_log2
@@ -472,10 +477,6 @@ struct fd_dev_info {
       bool has_image_processing;
       /* The amount of valid draw state IDs. */
       uint32_t max_draw_states;
-     /* Total GMEM size in bytes. */
-      uint32_t gmem_size;
-      /* If GMEM needs to be disabled for this GPU */
-      bool disable_gmem;
    } props;
 };
 
