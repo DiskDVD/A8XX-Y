@@ -1855,9 +1855,7 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
 
    if (builder->state &
        VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
-      /* === ИЗМЕНЕНО: Включаем custom_resolve для всей серии A8xx === */
-      keys[MESA_SHADER_FRAGMENT].custom_resolve =
-         CHIP >= A8XX ? true : builder->graphics_state.rp->custom_resolve;
+      keys[MESA_SHADER_FRAGMENT].custom_resolve = true;
 
       if (builder->device->physical_device->instance->emulate_alpha_to_coverage) {
          keys[MESA_SHADER_FRAGMENT].emulate_alpha_to_coverage = true;
