@@ -468,12 +468,15 @@ struct fd_dev_info {
        * expected:
        */
       bool has_salu_int_narrowing_quirk;
-
       /* Whether the device supports the image processing opcode */
       bool has_image_processing;
-
       /* The amount of valid draw state IDs. */
       uint32_t max_draw_states;
+      /* If GMEM needs to be disabled for this GPU */
+      bool disable_gmem;
+
+      /* GMEM size in bytes */
+      uint32_t gmem_size;
    } props;
 };
 
@@ -513,7 +516,7 @@ fd_dev_is_supported(const struct fd_dev_id *id) {
 }
 
 /* Final dev info with dbg options and everything else applied.  */
-struct fd_dev_info fd_dev_info(const struct fd_dev_id *id);
+const struct fd_dev_info fd_dev_info(const struct fd_dev_id *id);
 
 const struct fd_dev_info *fd_dev_info_raw_by_name(const char *name);
 
