@@ -872,7 +872,7 @@ a730_raw_magic_regs = [
         [A6XXRegs.REG_A7XX_UCHE_UNKNOWN_0E11, 0x00000040],
         [A6XXRegs.REG_A7XX_SP_HLSQ_DBG_ECO_CNTL, 0x00008000],
         [A6XXRegs.REG_A6XX_SP_DBG_ECO_CNTL, 0x10000000],
-        [A6XXRegs.REG_A6XX_PC_MODE_CNTL,    0x0000003f],  # 0x00001f1f in some tests
+        [A6XXRegs.REG_A6XX_PC_MODE_CNTL,    0x00001f1f], # old value - 0x0000003f
         [A6XXRegs.REG_A6XX_PC_DBG_ECO_CNTL, 0x20080000],
         [A6XXRegs.REG_A7XX_PC_UNKNOWN_9E24, 0x21fc7f00],
         [A6XXRegs.REG_A7XX_VFD_DBG_ECO_CNTL, 0x00000000],
@@ -1319,12 +1319,28 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1, GPUProps(
+            sysmem_vpc_attr_buf_size = 131072, 
+            sysmem_vpc_pos_buf_size = 65536,
+            sysmem_vpc_bv_pos_buf_size = 32768,
+            sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+            sysmem_per_ccu_color_cache_size = 64 * 1024,
+            sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.THREE_QUARTER.value,
+            sysmem_per_ccu_depth_cache_size = 64 * 1024,
+            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
+            gmem_per_ccu_color_cache_size = 32 * 1024,
+            gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
+            gmem_per_ccu_depth_cache_size = 48 * 1024,
+            
             gmem_vpc_attr_buf_size = 16384,
             gmem_vpc_pos_buf_size = 12288,
             gmem_vpc_bv_pos_buf_size = 20480,
-            # This is possibly also needed for a830 (and all of a8xx),
-            # move to a8xx_base if confirmed needed for a830.
+
+            gmem_size = 576 * 1024,
+            has_ray_intersection = False,
+            has_sw_fuse = False,
             has_fs_tex_prefetch = False,
+            has_salu_int_narrowing_quirk = True,
+            shading_rate_matches_vk = True,
         )],
         num_ccu = 1,
         num_slices = 1,
@@ -1360,14 +1376,71 @@ add_gpus([
         raw_magic_regs = a8xx_base_raw_magic_regs,
     ))
 
+
+# gen8_6_0
+add_gpus([
+        GPUId(chip_id=0x44030000, name="Adreno (TM) 825"),
+    ], A6xxGPUInfo(
+        CHIP.A8XX,
+        [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen1, GPUProps(
+            
+            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_color_cache_size = 128 * 1024,
+            gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_depth_cache_size = 128 * 1024,
+            # This is probably not an optimal config for gmem/sysmem, but it was working before and I don't have any a825 device to test (neither I have any trace info)
+            sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+            sysmem_per_ccu_color_cache_size = 128 * 1024,
+            sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.THREE_QUARTER.value,
+            sysmem_per_ccu_depth_cache_size = 96 * 1024,
+            
+            gmem_vpc_attr_buf_size = 65536, 
+            gmem_vpc_pos_buf_size = 32768,
+            gmem_vpc_bv_pos_buf_size = 32768,
+            gmem_size = 2 * 1024 * 1024,
+            
+            shading_rate_matches_vk = True,
+        )],
+        num_ccu = 4,
+        num_slices = 2,
+        tile_align_w = 64,
+        tile_align_h = 32,
+        tile_max_w = 16416,
+        tile_max_h = 16384,
+        num_vsc_pipes = 32,
+        cs_shared_mem_size = 32 * 1024,
+        wave_granularity = 2,
+        fibers_per_sp = 128 * 2 * 16,
+        magic_regs = dict(),
+        raw_magic_regs = a8xx_base_raw_magic_regs,
+    ))
+
 add_gpus([
         GPUId(chip_id=0x44030a20, name="Adreno (TM) 829"), # KGSL
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
          GPUProps(
-            shading_rate_matches_vk = True,  # TODO confirm this
-            sysmem_vpc_bv_pos_buf_size = 24576,
+            sysmem_vpc_bv_pos_buf_size =  24576, 
+            sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+            sysmem_per_ccu_color_cache_size = 128 * 1024,
+            sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
+            sysmem_per_ccu_depth_cache_size = 128 * 1024,
+
+            gmem_vpc_attr_buf_size = 49152,
+            gmem_vpc_pos_buf_size = 24576,     
+            gmem_vpc_bv_pos_buf_size = 16384,  
+    
+            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_color_cache_size = 128 * 1024, 
+            gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_depth_cache_size = 128 * 1024,
+
+            has_fs_tex_prefetch = False,
+            has_salu_int_narrowing_quirk = True,
+            shading_rate_matches_vk = True, 
+            gmem_size = 2 * 1024 * 1024,
+            enable_tp_ubwc_flag_hint = True,
          )],
         num_ccu = 4,
         num_slices = 2,
@@ -1388,7 +1461,8 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
-         GPUProps(shading_rate_matches_vk = True)],
+         GPUProps(shading_rate_matches_vk = True,
+                  gmem_size = 18 * 1024 * 1024)],
         num_ccu = 6,
         num_slices = 3,
         tile_align_w = 96,
