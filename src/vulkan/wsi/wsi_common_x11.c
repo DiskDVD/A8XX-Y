@@ -1502,7 +1502,7 @@ x11_present_to_x11_dri3(struct x11_swapchain *chain, uint32_t image_index,
    xcb_discard_reply(chain->conn, cookie.sequence);
    xcb_flush(chain->conn);
 
-   if (x11_connection_lost(chain->conn))
+   if (unlikely(xcb_connection_has_error(chain->conn)))
       return x11_swapchain_result(chain, VK_ERROR_SURFACE_LOST_KHR);
 
    return x11_swapchain_result(chain, VK_SUCCESS);
@@ -1577,7 +1577,7 @@ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
 
    xcb_flush(chain->conn);
 
-   if (x11_connection_lost(chain->conn)) {
+   if (unlikely(xcb_connection_has_error(chain->conn))) {
       wsi_queue_push(&chain->acquire_queue, image_index);
       return VK_ERROR_SURFACE_LOST_KHR;
    }
