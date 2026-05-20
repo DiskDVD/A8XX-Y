@@ -1260,6 +1260,13 @@ _x11_swapchain_result(struct x11_swapchain *chain, VkResult result,
 #define x11_swapchain_result(chain, result) \
    _x11_swapchain_result(chain, result, __FILE__, __LINE__)
 
+static bool
+x11_connection_lost(xcb_connection_t *conn)
+{
+   /* Happens on compositor/X server teardown (for example emulator shutdown). */
+   return unlikely(xcb_connection_has_error(conn));
+}
+
 static struct wsi_image *
 x11_get_wsi_image(struct wsi_swapchain *wsi_chain, uint32_t image_index)
 {
@@ -1494,6 +1501,10 @@ x11_present_to_x11_dri3(struct x11_swapchain *chain, uint32_t image_index,
    }
    xcb_discard_reply(chain->conn, cookie.sequence);
    xcb_flush(chain->conn);
+
+   if (x11_connection_lost(chain->conn))
+      return x11_swapchain_result(chain, VK_ERROR_SURFACE_LOST_KHR);
+
    return x11_swapchain_result(chain, VK_SUCCESS);
 }
 #endif
@@ -1565,6 +1576,11 @@ x11_present_to_x11_sw(struct x11_swapchain *chain, uint32_t image_index)
    }
 
    xcb_flush(chain->conn);
+
+   if (x11_connection_lost(chain->conn)) {
+      wsi_queue_push(&chain->acquire_queue, image_index);
+      return VK_ERROR_SURFACE_LOST_KHR;
+   }
 
    /* We don't have queued present here.
     * Immediately let application acquire again, but query geometry first so
@@ -1648,14 +1664,12 @@ x11_needs_wait_for_fences(const struct wsi_device *wsi_device,
                           struct wsi_x11_connection *wsi_conn,
                           VkPresentModeKHR present_mode)
 {
-   if (wsi_conn->is_xwayland && !wsi_device->x11.xwaylandWaitReady) {
-      return false;
-   }
-
    switch (present_mode) {
       case VK_PRESENT_MODE_MAILBOX_KHR:
-         return true;
+         return wsi_conn->is_xwayland ? wsi_device->x11.xwaylandWaitReady : true;
       case VK_PRESENT_MODE_IMMEDIATE_KHR:
+         /* Keep IMMEDIATE on Xwayland fence-safe by default to avoid rendering artifacts
+          * on platforms where compositor hand-off can sample incomplete rendering. */
          return wsi_conn->is_xwayland;
       default:
          return false;
