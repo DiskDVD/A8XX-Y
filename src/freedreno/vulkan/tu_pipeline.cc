@@ -1748,7 +1748,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
    const bool is_a810 = chip_id == 0x44010000ull;
    const bool is_a825 = chip_id == 0x44030000ull;
    const bool is_a829 = chip_id == 0x44030A20ull;
-   const bool is_target_gpu = is_a810 || is_a825 || is_a829;
+   const bool is_a830 = chip_id == 0x44050001ull || chip_id == 0x43050A31ull;
+   const bool disable_fdm_msaa = is_a810 || is_a825 || is_a829 || is_a830;
    /* === КОНЕЦ ДОБАВЛЕНИЯ === */
 
    const bool executable_info =
@@ -1854,9 +1855,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
 
    if (builder->state &
        VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
-      /* === ИЗМЕНЕНО: Отключаем custom_resolve на A810 === */
       keys[MESA_SHADER_FRAGMENT].custom_resolve =
-         is_a810 ? false : builder->graphics_state.rp->custom_resolve;
+         builder->graphics_state.rp->custom_resolve;
 
       if (builder->device->physical_device->instance->emulate_alpha_to_coverage) {
          keys[MESA_SHADER_FRAGMENT].emulate_alpha_to_coverage = true;
@@ -1909,9 +1909,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
          }
       }
 
-      /* === ИЗМЕНЕНО: Отключаем FDM per layer на A810 === */
       keys[last_pre_rast_stage].fdm_per_layer =
-         is_a810 ? false : builder->fdm_per_layer;
+         disable_fdm_msaa ? false : builder->fdm_per_layer;
    }
 
    if (builder->state & VK_GRAPHICS_PIPELINE_LIBRARY_FRAGMENT_SHADER_BIT_EXT) {
@@ -1920,7 +1919,7 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
       keys[MESA_SHADER_FRAGMENT].fragment_density_map =
          builder->fragment_density_map;
       keys[MESA_SHADER_FRAGMENT].fdm_per_layer =
-         builder->fdm_per_layer;
+         disable_fdm_msaa ? false : builder->fdm_per_layer;
       keys[MESA_SHADER_FRAGMENT].max_fdm_layers = builder->max_fdm_layers;
       keys[MESA_SHADER_FRAGMENT].unscaled_input_fragcoord =
          builder->unscaled_input_fragcoord;
@@ -1952,9 +1951,8 @@ tu_pipeline_builder_compile_shaders(struct tu_pipeline_builder *builder,
        * just checked in tu6_emit_fs_inputs.  We will also copy the value to
        * tu_shader_key::force_sample_interp in a bit.
        */
-      /* === ИЗМЕНЕНО: Отключаем force_sample_interp на A810 === */
       keys[MESA_SHADER_FRAGMENT].force_sample_interp =
-         is_a810 ? false : (!builder->rasterizer_discard && msaa_info && msaa_info->sampleShadingEnable);
+         disable_fdm_msaa ? false : (!builder->rasterizer_discard && msaa_info && msaa_info->sampleShadingEnable);
    }
 
    unsigned char pipeline_blake3[BLAKE3_KEY_LEN];
