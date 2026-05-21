@@ -500,6 +500,17 @@ instr_is_load_ubo(nir_instr *instr)
        ACCESS_CAN_SPECULATE);
 }
 
+static bool
+instr_is_load_const(nir_instr *instr)
+{
+   if (instr->type != nir_instr_type_intrinsic)
+      return false;
+
+   return instr->block->cf_node.parent->type == nir_cf_node_function ||
+      (nir_intrinsic_access(nir_instr_as_intrinsic(instr)) &
+       ACCESS_CAN_SPECULATE);
+}
+
 bool
 ir3_nir_can_lower_to_ldg_k(nir_intrinsic_instr *intrin)
 {
