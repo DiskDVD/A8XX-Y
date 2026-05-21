@@ -1666,7 +1666,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so,
          };
          struct nir_opt_16bit_tex_image_options opt_16bit_options = {
             .rounding_mode = nir_rounding_mode_rtz,
-            .opt_tex_dest_types = nir_type_float,
+            .opt_tex_dest_types = nir_type_float | nir_type_uint | nir_type_int,
             /* blob dumps have no half regs on pixel 2's ldib or stib, so only enable for a6xx+. */
             .opt_image_dest_types = so->compiler->gen >= 6 ?
                                         nir_type_float | nir_type_uint | nir_type_int : 0,
@@ -1681,6 +1681,12 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so,
       OPT(s, nir_opt_dce);
       OPT(s, nir_opt_cse);
    }
+
+   /* Re-run load/store vectorization late to pick up opportunities exposed by
+    * mediump and 16-bit tex/image lowering in the loop above.
+    */
+   if (OPT(s, nir_opt_load_store_vectorize, &vectorize_opts))
+      ir3_optimize_loop(so->compiler, &optimize_options, s);
 
    OPT(s, nir_opt_sink, nir_move_const_undef);
 

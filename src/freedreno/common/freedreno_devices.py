@@ -1373,7 +1373,7 @@ add_gpus([
             sysmem_per_ccu_color_cache_size = 64 * 1024,
             sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.THREE_QUARTER.value,
             sysmem_per_ccu_depth_cache_size = 64 * 1024,
-            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
+            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
             gmem_per_ccu_color_cache_size = 32 * 1024,
             gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
             gmem_per_ccu_depth_cache_size = 48 * 1024,
