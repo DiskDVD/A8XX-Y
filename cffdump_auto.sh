@@ -31,6 +31,16 @@ echo "--- Build Finished ---"
 
 mkdir -p results
 
+# Находим cffdump динамически
+CFFDUMP_PATH=$(find build -name "cffdump" -type f 2>/dev/null | head -1)
+
+if [ -z "$CFFDUMP_PATH" ]; then
+    echo "ERROR: cffdump binary not found!"
+    exit 1
+fi
+
+echo "Using cffdump at: $CFFDUMP_PATH"
+
 echo "--- Searching and Decoding .rd files ---"
 
 # Ищем все файлы .rd, где бы они ни лежали (кроме папки build)
@@ -39,7 +49,7 @@ find . -type f -name "*.rd" -not -path "*/build/*" | while read -r f; do
     echo "Processing $f..."
     
     # Декодируем. Даже если файл битый, ошибки запишутся в текстовик для анализа
-    ./build/src/freedreno/decode/cffdump --no-color "$f" > "results/${filename}.txt" 2>&1
+    $CFFDUMP_PATH --no-color "$f" > "results/${filename}.txt" 2>&1
     
     if [ $? -ne 0 ]; then
         echo "Warning: Error decoding $filename"
