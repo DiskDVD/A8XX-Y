@@ -14,7 +14,15 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip flex bison glslang-tools
+        sudo apt-get install -y \
+          meson \
+          ninja-build \
+          python3-pip \
+          flex \
+          bison \
+          glslang-tools \
+          libdrm-dev \
+          pkg-config
         pip3 install mako
 
     - name: Run build script
