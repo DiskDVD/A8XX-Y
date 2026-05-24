@@ -15,7 +15,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          meson \
           ninja-build \
           python3-pip \
           flex \
@@ -23,9 +22,15 @@ jobs:
           glslang-tools \
           libdrm-dev \
           pkg-config
+        
+        # Обновляем meson до версии 1.4.0+
+        pip3 install --upgrade meson
         pip3 install mako
+        
+        # Добавляем в PATH
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-    - name: Run build script
+    - name: Build and decode
       run: |
         chmod +x cffdump_auto.sh
         ./cffdump_auto.sh
