@@ -55,7 +55,8 @@ static const struct debug_control tu_debug_options[] = {
    { "comm", TU_DEBUG_COMM },
    { "nofdm", TU_DEBUG_NOFDM },
    { "nocb", TU_DEBUG_NO_CONCURRENT_BINNING },
-   { "forcecb", TU_DEBUG_FORCE_CONCURRENT_BINNING },
+   { "forcecb", TU_DEBUG_FORCE_CONCURRENT_BINNING },  
+   {"deck_emu", TU_DEBUG_DECK_EMU },
    { NULL, 0 }
 };
 
