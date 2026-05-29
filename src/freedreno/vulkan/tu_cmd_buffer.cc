@@ -1395,6 +1395,11 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
       cmd->state.rp.gmem_disable_reason = "Can't fit attachments into gmem";
       return true;
    }
+   bool no_gmem = cmd->device->physical_device->dev_info.props.disable_gmem;
+   if (no_gmem) {
+       cmd->state.rp.gmem_disable_reason = "Unsupported GPU";
+       return true;
+   }
 
    /* Use sysmem for empty render areas */
    if (cmd->state.per_layer_render_area) {
