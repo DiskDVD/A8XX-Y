@@ -476,7 +476,7 @@ struct fd_dev_info {
       uint32_t max_draw_states;
       bool disable_gmem;
       uint32_t gmem_size;
-      } props;
+   
       /* Whether GRAS_CL_INTERP_CNTL has FACENESS/CENTERRHW and thus
        * being able to avoid setting ij_linear_sample for FragFace/FragCoord.
        */
