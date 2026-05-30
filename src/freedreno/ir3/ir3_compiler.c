@@ -421,12 +421,12 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    compiler->cat3_rel_offset_0_quirk = compiler->gen <= 5;
 
    /*
-    * Some A8xx parts are sensitive to memory-backed UBO fetches: A810 has a
-    * very small cache/bandwidth budget, while A829 has enough const-file space
-    * to profitably merge short gaps in promoted ranges.
+    * Adreno 810 has a much smaller cache/GMEM budget and substantially lower
+    * external memory bandwidth than the larger A8xx parts. Let the UBO
+    * promotion pass spend a few extra const-file slots merging nearby ranges
+    * so hot shader code issues fewer memory-backed UBO reads.
     */
-   compiler->ubo_push_coalesce_gap =
-      ir3_get_gpu_profile(dev_id->chip_id).ubo_coalesce_gap;
+   compiler->coalesce_ubo_push_ranges = dev_id->chip_id == 0xffff44010000ull;
 
    /* The driver can't request this unless preambles are supported. */
    if (options->push_ubo_with_preamble)

@@ -251,7 +251,7 @@ struct ir3_compiler {
     * file space to merge nearby promoted UBO ranges. This reduces the number
     * of memory-backed UBO fetch windows left in hot shader code.
     */
-   uint32_t ubo_push_coalesce_gap;
+   bool coalesce_ubo_push_ranges;
 
    struct {
       /* The number of cycles needed for the result of one ALU operation to be
