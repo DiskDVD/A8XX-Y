@@ -1333,8 +1333,7 @@ a8xx_gen1 = GPUProps(
         gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.FULL.value,
         gmem_per_ccu_depth_cache_size = 256 * 1024,
 
-        has_salu_int_narrowing_quirk = True,
-        has_implicit_fragface_fragcoord_ij_linear  =  True 
+        has_salu_int_narrowing_quirk = True
 )
 
 a8xx_gen2 = GPUProps(
@@ -1355,8 +1354,7 @@ a8xx_gen2 = GPUProps(
         gmem_per_ccu_depth_cache_size = 256 * 1024,
         has_fs_tex_prefetch = False,
 
-        has_salu_int_narrowing_quirk = True,
-        has_implicit_fragface_fragcoord_ij_linear  =  True 
+        has_salu_int_narrowing_quirk = True
 )
 
 add_gpus([
@@ -1473,7 +1471,7 @@ add_gpus([
 
             gmem_vpc_attr_buf_size = 49152,
             gmem_vpc_pos_buf_size = 24576,     
-            gmem_vpc_bv_pos_buf_size = 16384,  
+            gmem_vpc_bv_pos_buf_size = 32768,  
     
             gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
             gmem_per_ccu_color_cache_size = 128 * 1024, 
