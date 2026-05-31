@@ -275,6 +275,30 @@ is_a6xx(struct fd_screen *screen)
    return screen->gen >= 6;
 }
 
+static inline bool
+fd_is_a810(struct fd_screen *screen)
+{
+   return screen->chip_id == UINT64_C(0xffff44010000);
+}
+
+static inline bool
+fd_is_a825(struct fd_screen *screen)
+{
+   return screen->chip_id == UINT64_C(0x44030000);
+}
+
+static inline bool
+fd_is_a829(struct fd_screen *screen)
+{
+   return screen->chip_id == UINT64_C(0x44030a20);
+}
+
+static inline bool
+fd_is_a825_or_a829(struct fd_screen *screen)
+{
+   return fd_is_a825(screen) || fd_is_a829(screen);
+}
+
 /* is it using the ir3 compiler (shader isa introduced with a3xx)? */
 static inline bool
 is_ir3(struct fd_screen *screen)
