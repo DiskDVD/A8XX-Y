@@ -137,11 +137,30 @@ process_results(struct fd_autotune *at)
 static bool
 fallback_use_bypass(struct fd_batch *batch)
 {
+   struct fd_screen *screen = batch->ctx->screen;
    struct pipe_framebuffer_state *pfb = &batch->framebuffer;
+
+   /* A810 is bandwidth-limited, but its small GMEM can also make tiling
+    * overhead visible.  Do not force every draw batch through GMEM: keep
+    * simple/UI/post-effect passes in bypass, and let the autotuner/history
+    * move heavier render targets to GMEM when it actually pays off.
+    *
+    * A825/A829 have much more external bandwidth and shader throughput than
+    * A810.  Be more willing to bypass GMEM for simple single-sample passes so
+    * we avoid per-tile command emission and draw replay overhead.  A829 gets
+    * the most aggressive threshold thanks to its higher shader clock.
+    */
+   unsigned max_bypass_draws = 5;
+   if (fd_is_a810(screen))
+      max_bypass_draws = 8;
+   else if (fd_is_a829(screen))
+      max_bypass_draws = 32;
+   else if (fd_is_a825(screen))
+      max_bypass_draws = 24;
 
    /* Fallback logic if we have no historical data about the rendertarget: */
    if (batch->cleared || batch->gmem_reason ||
-       (batch->num_draws > 5) || (pfb->samples > 1)) {
+       (batch->num_draws > max_bypass_draws) || (pfb->samples > 1)) {
       return false;
    }
 

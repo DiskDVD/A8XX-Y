@@ -91,6 +91,12 @@ render_mode_str(tu_autotune::render_mode mode)
    }
 }
 
+static bool
+tu_is_a829(uint64_t chip_id)
+{
+   return chip_id == 0x44030a20ull;
+}
+
 /** Configuration **/
 
 enum class tu_autotune::algorithm : uint8_t {
@@ -1795,9 +1801,13 @@ tu_autotune::get_optimal_mode(struct tu_cmd_buffer *cmd_buffer, rp_ctx_t *rp_ctx
    if (pass->has_fdm)
       return render_mode::GMEM;
 
-   /* SYSMEM is always a safe default mode when we can't fully engage the autotuner. From testing, we know that for an
-    * incorrect decision towards SYSMEM tends to be far less impactful than an incorrect decision towards GMEM, which
-    * can cause significant performance issues.
+   const uint64_t chip_id = cmd_buffer->device->physical_device->dev_id.chip_id;
+   const bool is_a829 = tu_is_a829(chip_id);
+
+   /* SYSMEM remains the safe default when we can't fully engage the autotuner.
+    * This is especially important for tiny/simple passes, and avoids forcing
+    * A810 through GMEM when its small tile memory would only add tiling
+    * overhead.
     */
    constexpr render_mode default_mode = render_mode::SYSMEM;
 
@@ -1821,7 +1831,15 @@ tu_autotune::get_optimal_mode(struct tu_cmd_buffer *cmd_buffer, rp_ctx_t *rp_ctx
     *
     * Note: If we detect a small RP to be latency sensitive, we enable the autotuner for it anyway.
     */
-   bool ignore_small_rp = !config.test(mod_flag::TUNE_SMALL) && rp_state->drawcall_count < 5 &&
+   /* A829 has enough external bandwidth for tiny single-use passes, and the
+    * CPU-side RP hashing plus GPU counter collection can be visible overhead
+    * in games with many micro renderpasses. Keep latency-sensitive passes in
+    * the autotuner, but otherwise use the SYSMEM default for more of these
+    * small passes.
+    */
+   const uint32_t small_rp_drawcall_cutoff = is_a829 ? 8 : 5;
+   bool ignore_small_rp = !config.test(mod_flag::TUNE_SMALL) &&
+                          rp_state->drawcall_count < small_rp_drawcall_cutoff &&
                           (!latency_info || !latency_info->seen_latency_spike);
 
    if (!enabled || simultaneous_use || ignore_small_rp)
