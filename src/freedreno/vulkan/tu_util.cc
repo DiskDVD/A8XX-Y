@@ -10,6 +10,7 @@
 
 #include "util/os_file.h"
 #include "util/os_file_notify.h"
+#include "util/strtod.h"
 #include "util/timespec.h"
 #include "util/u_math.h"
 #include "vk_enum_to_str.h"
@@ -17,6 +18,104 @@
 #include "common/freedreno_rd_output.h"
 #include "tu_device.h"
 #include "tu_pass.h"
+
+static const char *
+tu_sgsr_mode_name(enum tu_sgsr_mode mode)
+{
+   switch (mode) {
+   case TU_SGSR_MODE_OFF:
+      return "off";
+   case TU_SGSR_MODE_PRESENT:
+      return "present";
+   case TU_SGSR_MODE_AUTO:
+      return "auto";
+   case TU_SGSR_MODE_FORCE:
+      return "force";
+   }
+   unreachable("invalid SGSR mode");
+}
+
+static const char *
+tu_sgsr_quality_name(enum tu_sgsr_quality quality)
+{
+   switch (quality) {
+   case TU_SGSR_QUALITY_PERFORMANCE:
+      return "performance";
+   case TU_SGSR_QUALITY_BALANCED:
+      return "balanced";
+   case TU_SGSR_QUALITY_QUALITY:
+      return "quality";
+   case TU_SGSR_QUALITY_ULTRA:
+      return "ultra";
+   }
+   unreachable("invalid SGSR quality");
+}
+
+static enum tu_sgsr_mode
+tu_sgsr_parse_mode(const char *mode)
+{
+   if (strcmp(mode, "present") == 0)
+      return TU_SGSR_MODE_PRESENT;
+   if (strcmp(mode, "auto") == 0)
+      return TU_SGSR_MODE_AUTO;
+   if (strcmp(mode, "force") == 0)
+      return TU_SGSR_MODE_FORCE;
+   return TU_SGSR_MODE_OFF;
+}
+
+static enum tu_sgsr_quality
+tu_sgsr_parse_quality(const char *quality)
+{
+   if (strcmp(quality, "performance") == 0)
+      return TU_SGSR_QUALITY_PERFORMANCE;
+   if (strcmp(quality, "quality") == 0)
+      return TU_SGSR_QUALITY_QUALITY;
+   if (strcmp(quality, "ultra") == 0)
+      return TU_SGSR_QUALITY_ULTRA;
+   return TU_SGSR_QUALITY_BALANCED;
+}
+
+static float
+tu_sgsr_parse_render_scale(const char *render_scale)
+{
+   char *end = NULL;
+   float value = _mesa_strtof(render_scale, &end);
+
+   if (end == render_scale || *end != '\0' || value <= 0.0f)
+      return 0.75f;
+
+   return value;
+}
+
+void
+tu_sgsr_config_init(struct tu_physical_device *pdevice)
+{
+   const char *mode = debug_get_option("TU_SGSR", "off");
+   const char *render_scale = debug_get_option("TU_SGSR_RENDER_SCALE", "0.75");
+   const char *quality = debug_get_option("TU_SGSR_QUALITY", "balanced");
+
+   pdevice->sgsr = (struct tu_sgsr_config) {
+      .mode = tu_sgsr_parse_mode(mode),
+      .render_scale = tu_sgsr_parse_render_scale(render_scale),
+      .quality = tu_sgsr_parse_quality(quality),
+      .debug = debug_get_bool_option("TU_SGSR_DEBUG", false),
+   };
+
+   bool supported_gen = fd_dev_gen(&pdevice->dev_id) >= 7;
+   pdevice->sgsr.enabled = supported_gen &&
+      pdevice->sgsr.mode != TU_SGSR_MODE_OFF;
+
+   if (pdevice->sgsr.debug) {
+      mesa_logi("SGSR: enabled=%s mode=%s render_scale=%.3f quality=%s gpu_gen=%u",
+                pdevice->sgsr.enabled ? "true" : "false",
+                tu_sgsr_mode_name(pdevice->sgsr.mode),
+                pdevice->sgsr.render_scale,
+                tu_sgsr_quality_name(pdevice->sgsr.quality),
+                fd_dev_gen(&pdevice->dev_id));
+      if (!supported_gen && pdevice->sgsr.mode != TU_SGSR_MODE_OFF)
+         mesa_logi("SGSR: disabled because GPU generation is below A7XX");
+   }
+}
 
 static const struct debug_control tu_debug_options[] = {
    { "startup", TU_DEBUG_STARTUP },

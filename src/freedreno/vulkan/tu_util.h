@@ -35,6 +35,36 @@
  */
 #define TU_DEBUG_START(name) unlikely(tu_env.start_debug & TU_DEBUG_##name)
 
+enum tu_sgsr_mode
+{
+   TU_SGSR_MODE_OFF,
+   TU_SGSR_MODE_PRESENT,
+   TU_SGSR_MODE_AUTO,
+   TU_SGSR_MODE_FORCE,
+};
+
+enum tu_sgsr_quality
+{
+   TU_SGSR_QUALITY_PERFORMANCE,
+   TU_SGSR_QUALITY_BALANCED,
+   TU_SGSR_QUALITY_QUALITY,
+   TU_SGSR_QUALITY_ULTRA,
+};
+
+struct tu_sgsr_config
+{
+   bool enabled;
+   enum tu_sgsr_mode mode;
+   float render_scale;
+   enum tu_sgsr_quality quality;
+   bool debug;
+};
+
+struct tu_physical_device;
+
+void
+tu_sgsr_config_init(struct tu_physical_device *pdevice);
+
 enum tu_debug_flags : uint64_t
 {
    TU_DEBUG_STARTUP                  = BITFIELD64_BIT(0),

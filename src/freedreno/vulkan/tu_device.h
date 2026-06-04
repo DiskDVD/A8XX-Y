@@ -144,6 +144,8 @@ struct tu_physical_device
 
    struct fdl_ubwc_config ubwc_config;
 
+   struct tu_sgsr_config sgsr;
+
    bool has_preemption;
 
    bool expose_double_threadsize;
