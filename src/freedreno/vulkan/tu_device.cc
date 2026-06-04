@@ -1705,7 +1705,8 @@ tu_physical_device_init(struct tu_physical_device *device,
       device->info = &device->dev_info;
 
       device->usable_gmem_size_gmem =
-         fd6_calc_gmem_cache_offsets(&info, device->gmem_size,
+         fd6_calc_gmem_cache_offsets(&device->dev_id, &info,
+                                     device->gmem_size,
                                      &device->config_gmem,
                                      &device->config_sysmem);
 

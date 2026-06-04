@@ -60,9 +60,50 @@ __calc_gmem_cache_offsets(const struct fd_dev_info *info, unsigned offset,
    return offset;
 }
 
+static inline bool
+fd6_dev_id_is_a810(const struct fd_dev_id *id)
+{
+   if (!id)
+      return false;
+
+   if (id->gpu_id == 810)
+      return true;
+
+   if (!id->chip_id)
+      return false;
+
+   /* The A810 table entry uses a wildcard fuse-id.  Match the full GPU
+    * identity while ignoring only fuse bits, mirroring freedreno device-id
+    * matching for 0xffff44010000.
+    */
+   return (id->chip_id | UINT64_C(0x0000ffff00000000)) ==
+          UINT64_C(0xffff44010000);
+}
+
+static inline void
+fd6_apply_a810_cache_pressure_quirk(const struct fd_dev_id *id,
+                                    unsigned gmemsize_bytes,
+                                    struct fd6_gmem_config *sysmem)
+{
+   /*
+    * A810 is a one-CCU part with a much narrower memory interface than the
+    * high-end A8xx parts.  Bind the quirk to the A810 GPU id/chip-id instead
+    * of generic geometry like CCU count so future small A8xx parts are not
+    * affected accidentally.
+    */
+   if (fd6_dev_id_is_a810(id) && gmemsize_bytes <= 576 * 1024) {
+      sysmem->vpc_attr_buf_size = MIN2(sysmem->vpc_attr_buf_size, 64 * 1024);
+      sysmem->vpc_pos_buf_size = MIN2(sysmem->vpc_pos_buf_size, 32 * 1024);
+      sysmem->vpc_bv_pos_buf_size = MIN2(sysmem->vpc_bv_pos_buf_size, 16 * 1024);
+   }
+}
+
 static inline unsigned
-fd6_calc_gmem_cache_offsets(const struct fd_dev_info *info, unsigned gmemsize_bytes,
-                            struct fd6_gmem_config *gmem, struct fd6_gmem_config *sysmem)
+fd6_calc_gmem_cache_offsets(const struct fd_dev_id *id,
+                            const struct fd_dev_info *info,
+                            unsigned gmemsize_bytes,
+                            struct fd6_gmem_config *gmem,
+                            struct fd6_gmem_config *sysmem)
 {
    uint32_t depth_cache_size =
       info->num_ccu * info->props.sysmem_per_ccu_depth_cache_size;
@@ -92,6 +133,8 @@ fd6_calc_gmem_cache_offsets(const struct fd_dev_info *info, unsigned gmemsize_by
       sysmem->vpc_attr_buf_size    = info->props.sysmem_vpc_attr_buf_size;
       sysmem->vpc_pos_buf_size     = info->props.sysmem_vpc_pos_buf_size;
       sysmem->vpc_bv_pos_buf_size  = info->props.sysmem_vpc_bv_pos_buf_size;
+
+      fd6_apply_a810_cache_pressure_quirk(id, gmemsize_bytes, sysmem);
 
       __calc_gmem_cache_offsets(info, gmemsize_bytes, sysmem);
       return __calc_gmem_cache_offsets(info, gmemsize_bytes, gmem);

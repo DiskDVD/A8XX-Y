@@ -186,7 +186,8 @@ fd6_screen_init(struct pipe_screen *pscreen)
    screen->max_rts = A6XX_MAX_RENDER_TARGETS;
 
    screen->gmemsize_bytes =
-      fd6_calc_gmem_cache_offsets(screen->info, screen->gmemsize_bytes,
+      fd6_calc_gmem_cache_offsets(screen->dev_id, screen->info,
+                                  screen->gmemsize_bytes,
                                   &screen->config_gmem,
                                   &screen->config_sysmem);
 
