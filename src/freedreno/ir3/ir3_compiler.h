@@ -63,6 +63,7 @@ struct ir3_gpu_profile {
     uint32_t max_sy_inflight;
     uint32_t max_ss_inflight;
     bool force_double_threadsize;
+    uint32_t ubo_coalesce_gap;
 };
 
 struct ir3_compiler {
@@ -251,7 +252,7 @@ struct ir3_compiler {
     * file space to merge nearby promoted UBO ranges. This reduces the number
     * of memory-backed UBO fetch windows left in hot shader code.
     */
-   bool coalesce_ubo_push_ranges;
+   uint32_t ubo_push_coalesce_gap;
 
    struct {
       /* The number of cycles needed for the result of one ALU operation to be
