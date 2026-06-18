@@ -62,19 +62,19 @@ ir3_get_gpu_profile(uint32_t chip_id)
 {
     switch (chip_id) {
     case 0x44010000: /* Adreno 810 */
-        return (struct ir3_gpu_profile){90, 4, 4, false};
+        return (struct ir3_gpu_profile){90, 4, 4, false, 128};
     case 0x44030000: /* Adreno 825 */
-        return (struct ir3_gpu_profile){85, 8, 8, true};
+        return (struct ir3_gpu_profile){85, 8, 8, false, 0};
     case 0x44030A20: /* Adreno 829 */
-        return (struct ir3_gpu_profile){80, 10, 8, true};
+        return (struct ir3_gpu_profile){80, 10, 8, true, 64};
     case 0x44050001: /* Adreno 830 */
-        return (struct ir3_gpu_profile){75, 16, 12, true};
+        return (struct ir3_gpu_profile){75, 16, 12, false, 0};
     case 0x43050A31: /* Adreno 830 variant */
-        return (struct ir3_gpu_profile){75, 16, 12, true};
+        return (struct ir3_gpu_profile){75, 16, 12, false, 0};
     case 0x43050A32: /* Adreno 840 */
-        return (struct ir3_gpu_profile){70, 20, 16, true};
+        return (struct ir3_gpu_profile){70, 20, 16, false, 0};
     default:
-        return (struct ir3_gpu_profile){85, 8, 8, false};
+        return (struct ir3_gpu_profile){85, 8, 8, false, 0};
     }
 }
 
@@ -421,12 +421,12 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    compiler->cat3_rel_offset_0_quirk = compiler->gen <= 5;
 
    /*
-    * Adreno 810 has a much smaller cache/GMEM budget and substantially lower
-    * external memory bandwidth than the larger A8xx parts. Let the UBO
-    * promotion pass spend a few extra const-file slots merging nearby ranges
-    * so hot shader code issues fewer memory-backed UBO reads.
+    * Some A8xx parts are sensitive to memory-backed UBO fetches: A810 has a
+    * very small cache/bandwidth budget, while A829 has enough const-file space
+    * to profitably merge short gaps in promoted ranges.
     */
-   compiler->coalesce_ubo_push_ranges = dev_id->chip_id == 0xffff44010000ull;
+   compiler->ubo_push_coalesce_gap =
+      ir3_get_gpu_profile(dev_id->chip_id).ubo_coalesce_gap;
 
    /* The driver can't request this unless preambles are supported. */
    if (options->push_ubo_with_preamble)
