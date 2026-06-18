@@ -671,11 +671,10 @@ ir3_nir_analyze_ubo_ranges(nir_shader *nir, struct ir3_shader_variant *v)
       return;
 
    uint32_t upload_remaining = max_upload;
-   /* A810 is especially external-bandwidth constrained. When promoting UBO
-    * loads on that GPU, coalesce ranges separated by up to 128 bytes (8 vec4s)
-    * so repeated per-invocation loads are more likely to hit the const file.
+   /* Some A8xx GPUs benefit from coalescing nearby promoted UBO ranges so
+    * repeated per-invocation loads are more likely to hit the const file.
     */
-   uint32_t max_coalesce_gap = compiler->coalesce_ubo_push_ranges ? 128 : 0;
+   uint32_t max_coalesce_gap = compiler->ubo_push_coalesce_gap;
    bool push_ubos = compiler->options.push_ubo_with_preamble;
 
    nir_foreach_function (function, nir) {
