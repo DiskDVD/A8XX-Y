@@ -803,43 +803,76 @@ tu_render_pass_gmem_config(struct tu_render_pass *pass,
          return;
       }
 
-      /* TODO: this algorithm isn't optimal
-       * for example, two attachments with cpp = {1, 4}
-       * result:  nblocks = {12, 52}, pixels = 196608
-       * optimal: nblocks = {13, 51}, pixels = 208896
-       */
       uint32_t gmem_size = layout == TU_GMEM_LAYOUT_FULL
                               ? phys_dev->usable_gmem_size_gmem
                               : phys_dev->config_gmem.color_ccu_offset;
       uint32_t gmem_blocks = gmem_size / gmem_align;
-      uint32_t offset = 0, pixels = ~0u, i;
-      bool layout_impossible = false;
+      uint32_t alloc_align[num_gmem_alloc];
+      uint32_t min_blocks_total = 0;
+      uint32_t i;
+
       for (i = 0; i < num_gmem_alloc; i++) {
          struct tu_gmem_alloc *alloc = &gmem_alloc[i];
 
-         uint32_t align = MAX2(1, alloc->cpp >> block_align_shift);
-         uint32_t nblocks = MAX2((gmem_blocks * alloc->cpp / cpp_total) & ~(align - 1), align);
-
-         if (nblocks > gmem_blocks) {
-            /* gmem layout impossible */
-            layout_impossible = true;
-            break;
-         }
-
-         gmem_blocks -= nblocks;
-         cpp_total -= alloc->cpp;
-         alloc->gmem_offset = offset;
-         offset += nblocks * gmem_align;
-         pixels = MIN2(pixels, nblocks * gmem_align / alloc->cpp);
+         alloc_align[i] = MAX2(1, alloc->cpp >> block_align_shift);
+         min_blocks_total += alloc_align[i];
       }
 
-      /* Impossible layouts have no valid GMEM offsets. */
-      if (layout_impossible) {
+      if (min_blocks_total > gmem_blocks) {
+         /* gmem layout impossible */
          pass->gmem_pixels[layout] = 0;
          continue;
       }
 
-      pass->gmem_pixels[layout] = pixels;
+      /* Maximize the minimum pixel capacity for every GMEM allocation.
+       *
+       * The previous proportional split by cpp could leave useful GMEM unused
+       * because every allocation's block count has its own alignment.  For
+       * example, with two allocations of cpp = {1, 4}, a 64-block GMEM split
+       * was {12, 52}, limiting the tile to 196608 pixels, while {13, 51}
+       * fits the same GMEM and raises the common limit to 208896 pixels.
+       */
+      uint32_t low = 0;
+      uint32_t high = gmem_blocks * gmem_align / min_cpp + 1;
+
+      while (low + 1 < high) {
+         uint32_t candidate_pixels = low + (high - low) / 2;
+         uint32_t required_blocks = 0;
+         bool fits = true;
+
+         for (i = 0; i < num_gmem_alloc; i++) {
+            struct tu_gmem_alloc *alloc = &gmem_alloc[i];
+            uint64_t bytes = (uint64_t) candidate_pixels * alloc->cpp;
+            uint32_t blocks = (uint32_t) DIV_ROUND_UP(bytes, gmem_align);
+
+            blocks = MAX2(align(blocks, alloc_align[i]), alloc_align[i]);
+
+            if (blocks > gmem_blocks - required_blocks) {
+               fits = false;
+               break;
+            }
+
+            required_blocks += blocks;
+         }
+
+         if (fits)
+            low = candidate_pixels;
+         else
+            high = candidate_pixels;
+      }
+
+      uint32_t offset = 0;
+      for (i = 0; i < num_gmem_alloc; i++) {
+         struct tu_gmem_alloc *alloc = &gmem_alloc[i];
+         uint64_t bytes = (uint64_t) low * alloc->cpp;
+         uint32_t blocks = (uint32_t) DIV_ROUND_UP(bytes, gmem_align);
+
+         blocks = MAX2(align(blocks, alloc_align[i]), alloc_align[i]);
+         alloc->gmem_offset = offset;
+         offset += blocks * gmem_align;
+      }
+
+      pass->gmem_pixels[layout] = low;
 
       for (i = 0; i < pass->attachment_count; i++) {
          struct tu_render_pass_attachment *att = &pass->attachments[i];
