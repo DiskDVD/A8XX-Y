@@ -137,10 +137,11 @@ fdl6_layout_image(struct fdl_layout *layout, const struct fd_dev_info *info,
                                 &sparse_blockwidth, &sparse_blockheight);
       assert(sparse_blocksize == sparse_blockwidth * sparse_blockheight * layout->cpp);
 
-      /* For simplicity support UBWC only for 3D images without mipmaps,
-       * most d3d11 games don't use mipmaps for 3D images.
+      /* A8xx/UBWC v6 can address per-miplevel 3D metadata.  Older
+       * generations keep the historical fallback because their descriptors use
+       * a single flag-buffer slice pitch for the whole view.
        */
-      if (params->depth0 > 1 && params->mip_levels > 1)
+      if (params->depth0 > 1 && params->mip_levels > 1 && info->chip < 8)
          layout->ubwc = false;
 
       if (ubwc_blockwidth == 0)
@@ -339,6 +340,16 @@ fdl6_layout_image(struct fdl_layout *layout, const struct fd_dev_info *info,
       }
    }
 
+   if (layout->ubwc && !layout->layer_first) {
+      uint64_t ubwc_offset = offset;
+
+      for (uint32_t level = 0; level < params->mip_levels; level++) {
+         layout->ubwc_slices[level].offset = ubwc_offset;
+         ubwc_offset += layout->ubwc_slices[level].size0 *
+                        u_minify(params->depth0, level);
+      }
+   }
+
    if (layout->layer_first)
       layout->layer_size = align64(layout->size, 4096);
 
@@ -383,12 +394,22 @@ fdl6_layout_image(struct fdl_layout *layout, const struct fd_dev_info *info,
     * independently.
     */
    if (layout->ubwc) {
-      assert(!(params->depth0 > 1 && params->mip_levels > 1));
-      for (uint32_t level = 0; level < params->mip_levels; level++) {
-         layout->slices[level].offset +=
-            layout->ubwc_layer_size * params->array_size * params->depth0;
+      uint64_t ubwc_size;
+
+      if (layout->layer_first) {
+         ubwc_size = layout->ubwc_layer_size * params->array_size;
+      } else {
+         ubwc_size = 0;
+         for (uint32_t level = 0; level < params->mip_levels; level++) {
+            ubwc_size +=
+               layout->ubwc_slices[level].size0 * u_minify(params->depth0, level);
+         }
       }
-      layout->size += layout->ubwc_layer_size * params->array_size * params->depth0;
+
+      for (uint32_t level = 0; level < params->mip_levels; level++)
+         layout->slices[level].offset += ubwc_size;
+
+      layout->size += ubwc_size;
    }
 
    /* include explicit offset in size */
