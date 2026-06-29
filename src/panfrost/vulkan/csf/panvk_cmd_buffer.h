@@ -837,6 +837,13 @@ panvk_per_arch(calculate_task_axis_and_increment)(
    assert(*task_increment > 0);
 }
 
+void panvk_per_arch(cmd_dispatch_shader)(
+   struct panvk_cmd_buffer *cmdbuf,
+   const struct panvk_shader_variant *cs,
+   const struct panvk_shader_desc_state *cs_desc_state,
+   uint64_t push_uniforms, uint64_t tsd,
+   const struct panvk_dispatch_info *info);
+
 static VkPipelineStageFlags2
 panvk_get_subqueue_stages(enum panvk_subqueue_id subqueue)
 {

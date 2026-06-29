@@ -373,6 +373,7 @@ impl Tiling {
 
     pub fn choose(
         dev: &nil_rs_bindings::nv_device_info,
+        dim: ImageDim,
         extent_px: Extent4D<units::Pixels>,
         format: Format,
         sample_layout: SampleLayout,
@@ -384,11 +385,39 @@ impl Tiling {
         let mut tiling = Tiling {
             gob_type: GOBType::choose(dev, format),
             x_log2: 0,
-            y_log2: 5,
-            z_log2: 5,
+            y_log2: 0,
+            z_log2: 0,
         };
 
+        /*
+         * This heuristic aims to match what the proprietary driver picks.
+         * The corresponding reverse engineering work is here:
+         * https://gitlab.freedesktop.org/mhenning/re/-/tree/main/image_descriptor
+         */
+        match dim {
+            ImageDim::_1D => (),
+            ImageDim::_2D => {
+                tiling.y_log2 = match extent_px.height {
+                    86.. => 4,
+                    43.. => 3,
+                    22.. => 2,
+                    11.. => 1,
+                    0.. => 0,
+                };
+            }
+            ImageDim::_3D => {
+                tiling.z_log2 = match extent_px.depth {
+                    11.. => 4,
+                    6.. => 3,
+                    3.. => 2,
+                    2.. => 1,
+                    0.. => 0,
+                };
+            }
+        }
+
         if (usage & IMAGE_USAGE_2D_VIEW_BIT) != 0 {
+            /* TODO: The proprietary driver doesn't have this restriction */
             tiling.z_log2 = 0;
         }
 

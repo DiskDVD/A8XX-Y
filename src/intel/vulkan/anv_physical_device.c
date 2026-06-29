@@ -297,7 +297,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .EXT_depth_clip_enable                 = true,
       .EXT_depth_range_unrestricted          = device->info.ver >= 20,
       .EXT_descriptor_buffer                 = true,
-      .EXT_descriptor_heap                   = ANV_DEBUG(EXPERIMENTAL),
+      .EXT_descriptor_heap                   = true,
       .EXT_descriptor_indexing               = true,
       .EXT_device_address_binding_report     = true,
       /* Emitting a single compute dispatch potentially lot of memory (> 4KiB)

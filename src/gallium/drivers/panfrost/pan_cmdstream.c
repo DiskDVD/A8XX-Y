@@ -1804,13 +1804,14 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
 
    unsigned first_level = so->base.u.tex.first_level;
    unsigned last_level = so->base.u.tex.last_level;
-   unsigned first_layer = so->base.u.tex.first_layer;
-   unsigned last_layer = so->base.u.tex.last_layer;
+   unsigned first_layer_or_z_slice = so->base.u.tex.first_layer;
+   unsigned last_layer_or_z_slice = so->base.u.tex.last_layer;
 
    if (so->base.target == PIPE_TEXTURE_3D) {
-      first_layer /= prsrc->image.props.extent_px.depth;
-      last_layer /= prsrc->image.props.extent_px.depth;
-      assert(!first_layer && !last_layer);
+      unsigned depth = prsrc->image.props.extent_px.depth;
+      assert(first_layer_or_z_slice < depth && last_layer_or_z_slice < depth);
+      first_layer_or_z_slice = 0;
+      last_layer_or_z_slice = depth - 1;
    }
 
    struct pan_image_view iview = {
@@ -1818,8 +1819,8 @@ panfrost_create_sampler_view_bo(struct panfrost_sampler_view *so,
       .dim = type,
       .first_level = first_level,
       .last_level = last_level,
-      .first_layer = first_layer,
-      .last_layer = last_layer,
+      .first_layer_or_z_slice = first_layer_or_z_slice,
+      .last_layer_or_z_slice = last_layer_or_z_slice,
       .swizzle =
          {
             so->base.swizzle_r,

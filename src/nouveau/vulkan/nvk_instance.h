@@ -15,6 +15,7 @@ struct nvk_instance {
    struct vk_instance vk;
 
    enum nvk_debug debug_flags;
+   enum nvk_experimental experimental_flags;
 
    struct nvk_drirc drirc;
 

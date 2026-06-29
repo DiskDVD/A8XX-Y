@@ -465,6 +465,14 @@ vtn_pointer_dereference(struct vtn_builder *b,
       }
    }
 
+   /* Negative array indices into UBOs/SSBOs are UB (GLSL/SPIR-V spec), so
+    * we can treat all accesses as in-bounds regardless of whether the shader
+    * used OpInBoundsAccessChain.
+    */
+   const bool in_bounds = deref_chain->in_bounds ||
+                          base->mode == vtn_variable_mode_ubo ||
+                          base->mode == vtn_variable_mode_ssbo;
+
    if (idx == 0 && deref_chain->ptr_as_array) {
       /* We start with a deref cast to get the stride.  Hopefully, we'll be
        * able to delete that cast eventually.
@@ -475,7 +483,7 @@ vtn_pointer_dereference(struct vtn_builder *b,
       nir_def *index = vtn_access_link_as_ssa(b, deref_chain->link[0], 1,
                                                   tail->def.bit_size);
       tail = nir_build_deref_ptr_as_array(&b->nb, tail, index);
-      tail->arr.in_bounds = deref_chain->in_bounds;
+      tail->arr.in_bounds = in_bounds;
       idx++;
    }
 
@@ -498,7 +506,7 @@ vtn_pointer_dereference(struct vtn_builder *b,
             type = type->array_element;
          }
          tail = nir_build_deref_array(&b->nb, tail, arr_index);
-         tail->arr.in_bounds = deref_chain->in_bounds;
+         tail->arr.in_bounds = in_bounds;
       }
 
       access |= type->access;
@@ -1858,6 +1866,7 @@ vtn_storage_class_to_mode(struct vtn_builder *b,
       nir_mode = nir_var_mem_global;
       break;
    case SpvStorageClassImage:
+   case SpvStorageClassTileImageEXT:
       mode = vtn_variable_mode_image;
       nir_mode = nir_var_image;
       break;
@@ -2121,6 +2130,21 @@ vtn_type_is_ray_query(struct vtn_type *type)
    return vtn_type_without_array(type)->base_type == vtn_base_type_ray_query;
 }
 
+static bool
+vtn_type_all_members_have_access(const struct vtn_type *type,
+                                 enum gl_access_qualifier access)
+{
+   if (type->base_type != vtn_base_type_struct || type->length == 0)
+      return false;
+
+   for (unsigned i = 0; i < type->length; i++) {
+      if (!(type->members[i]->access & access))
+         return false;
+   }
+
+   return true;
+}
+
 static void
 vtn_create_variable(struct vtn_builder *b, struct vtn_value *val,
                     struct vtn_type *ptr_type, struct vtn_type *data_type,
@@ -2165,7 +2189,8 @@ vtn_create_variable(struct vtn_builder *b, struct vtn_value *val,
       if (storage_class == SpvStorageClassImage)
          vtn_fail("Cannot create a variable with the Image storage class");
       else
-         vtn_assert(storage_class == SpvStorageClassUniformConstant);
+         vtn_assert(storage_class == SpvStorageClassUniformConstant ||
+                    storage_class == SpvStorageClassTileImageEXT);
       break;
 
    case vtn_variable_mode_phys_ssbo:
@@ -2471,7 +2496,8 @@ vtn_create_variable(struct vtn_builder *b, struct vtn_value *val,
          var->var->data.resource_type = nir_resource_type_uniform_buffer;
          break;
       case vtn_variable_mode_ssbo:
-         if (var->access & ACCESS_NON_WRITEABLE)
+          if (var->access & ACCESS_NON_WRITEABLE ||
+              vtn_type_all_members_have_access(without_array, ACCESS_NON_WRITEABLE))
             var->var->data.resource_type = nir_resource_type_read_only_storage_buffer;
          else
             var->var->data.resource_type = nir_resource_type_read_write_storage_buffer;

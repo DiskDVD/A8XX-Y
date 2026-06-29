@@ -111,7 +111,7 @@ pixmap_destroy(Display * dpy, struct apple_glx_drawable *d)
          perror("shm_unlink");
    }
 
-   apple_glx_diagnostic("destroyed pixmap buffer for: 0x%lx\n", d->drawable);
+   apple_glx_log_debug("destroyed pixmap buffer for: 0x%lx", d->drawable);
 }
 
 /* Return true if an error occurred. */
@@ -179,7 +179,7 @@ apple_glx_pixmap_create(Display * dpy, int screen, Pixmap pixmap,
 
    d->unlock(d);
 
-   apple_glx_diagnostic("created: pixmap buffer for 0x%lx\n", d->drawable);
+   apple_glx_log_debug("created: pixmap buffer for 0x%lx", d->drawable);
 
    return false;
 }

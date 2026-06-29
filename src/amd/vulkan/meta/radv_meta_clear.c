@@ -8,6 +8,7 @@
 #include "radv_entrypoints.h"
 #include "radv_formats.h"
 #include "radv_meta.h"
+#include "radv_tracepoints.h"
 
 #include "util/format_rgb9e5.h"
 #include "vk_format.h"
@@ -1595,6 +1596,8 @@ radv_cmd_buffer_clear_rendering(struct radv_cmd_buffer *cmd_buffer, const VkRend
 
    radv_suspend_conditional_rendering(cmd_buffer);
 
+   radv_utrace_begin_clear_rendering(cmd_buffer);
+
    radv_meta_begin(cmd_buffer);
 
    assert(render->color_att_count == pRenderingInfo->colorAttachmentCount);
@@ -1636,6 +1639,8 @@ radv_cmd_buffer_clear_rendering(struct radv_cmd_buffer *cmd_buffer, const VkRend
 
    radv_meta_end(cmd_buffer);
    cmd_buffer->state.flush_bits |= post_flush;
+
+   radv_utrace_end_clear_rendering(cmd_buffer);
 
    radv_resume_conditional_rendering(cmd_buffer);
 }

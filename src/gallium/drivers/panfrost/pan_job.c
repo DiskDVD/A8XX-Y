@@ -525,13 +525,13 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
       rts[i].format = surf->format;
       rts[i].dim = MALI_TEXTURE_DIMENSION_2D;
       rts[i].last_level = rts[i].first_level = surf->level;
-      rts[i].first_layer = surf->first_layer;
-      rts[i].last_layer = surf->last_layer;
+      rts[i].first_layer_or_z_slice = surf->first_layer;
+      rts[i].last_layer_or_z_slice = surf->last_layer;
       panfrost_set_image_view_planes(&rts[i], surf->texture);
       rts[i].nr_samples =
          surf->nr_samples ?: MAX2(surf->texture->nr_samples, 1);
       memcpy(rts[i].swizzle, id_swz, sizeof(rts[i].swizzle));
-      fb->rts[i].crc_valid = &prsrc->valid.crc;
+      fb->rts[i].crc_state = &prsrc->crc_state;
       fb->rts[i].view = &rts[i];
 
       /* Preload if the RT is read or updated */
@@ -556,8 +556,8 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
          zs->format = z_rsrc->image.props.format;
          zs->dim = MALI_TEXTURE_DIMENSION_2D;
          zs->last_level = zs->first_level = surf->level;
-         zs->first_layer = surf->first_layer;
-         zs->last_layer = surf->last_layer;
+         zs->first_layer_or_z_slice = surf->first_layer;
+         zs->last_layer_or_z_slice = surf->last_layer;
          zs->planes[0] = (struct pan_image_plane_ref){
             .image = &z_rsrc->image,
             .plane_idx = 0,
@@ -577,8 +577,8 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
             s->format = PIPE_FORMAT_S8_UINT;
             s->dim = MALI_TEXTURE_DIMENSION_2D;
             s->last_level = s->first_level = surf->level;
-            s->first_layer = surf->first_layer;
-            s->last_layer = surf->last_layer;
+            s->first_layer_or_z_slice = surf->first_layer;
+            s->last_layer_or_z_slice = surf->last_layer;
             s->planes[0] = (struct pan_image_plane_ref){
                .image = &s_rsrc->image,
                .plane_idx = 0,
@@ -594,8 +594,8 @@ panfrost_batch_to_fb_info(const struct panfrost_batch *batch,
          s->format = surf->format;
          s->dim = MALI_TEXTURE_DIMENSION_2D;
          s->last_level = s->first_level = surf->level;
-         s->first_layer = surf->first_layer;
-         s->last_layer = surf->last_layer;
+         s->first_layer_or_z_slice = surf->first_layer;
+         s->last_layer_or_z_slice = surf->last_layer;
          s->planes[0] = (struct pan_image_plane_ref){
             .image = &s_rsrc->image,
             .plane_idx = 0,

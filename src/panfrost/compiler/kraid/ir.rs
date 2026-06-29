@@ -131,6 +131,73 @@ impl From<&SmallConstant> for FAURef {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PreloadReg {
+    /* Compute */
+    ///  0..16 -> local_id_0
+    /// 16..32 -> local_id_1
+    LocalId01,
+    ///  0..16 -> local_id_2
+    LocalId2,
+    WorkgroupId0,
+    WorkgroupId1,
+    WorkgroupId2,
+    GlobalId0,
+    GlobalId1,
+    GlobalId2,
+
+    /* Vertex */
+    InternalId,
+    VertexId,
+    InstanceId,
+    DrawId,
+    ViewId,
+
+    /* Fragment */
+    PrimitiveId,
+    PrimitiveFlags,
+    ///  0..16 -> position_x
+    /// 16..32 -> position_y
+    PositionXY,
+    ///  0..16 -> cumulative_coverage
+    CumulativeCoverage,
+    ///  0..16 -> rasterizer_coverage
+    /// 16..24 -> sample_id
+    /// 24..32 -> centroid_id
+    RasterizerSampleCentroid,
+    FrameArgLow,
+    FrameArgHigh,
+}
+
+impl fmt::Display for PreloadReg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use PreloadReg::*;
+        let name = match &self {
+            LocalId01 => "LOCAL_ID_01",
+            LocalId2 => "LOCAL_ID_2",
+            WorkgroupId0 => "WORKGROUP_ID_0",
+            WorkgroupId1 => "WORKGROUP_ID_1",
+            WorkgroupId2 => "WORKGROUP_ID_2",
+            GlobalId0 => "GLOBAL_ID_0",
+            GlobalId1 => "GLOBAL_ID_1",
+            GlobalId2 => "GLOBAL_ID_2",
+            InternalId => "INTERNAL_ID",
+            VertexId => "VERTEX_ID",
+            InstanceId => "INSTANCE_ID",
+            DrawId => "DRAW_ID",
+            ViewId => "VIEW_ID",
+            PrimitiveId => "PRIMITIVE_ID",
+            PrimitiveFlags => "PRIMITIVE_FLAGS",
+            PositionXY => "POSIZTION_XY",
+            CumulativeCoverage => "CUMULATIVE_COVERAGE",
+            RasterizerSampleCentroid => "RASTERIZER_COV_SAMPLE_ID_CENTROID_ID",
+            FrameArgLow => "FRAME_ARG_LO",
+            FrameArgHigh => "FRAME_ARG_HI",
+        };
+        write!(f, "{name}")
+    }
+}
+
 /// This struct describes the range of registers read or written by a RegRef.
 /// The range provided here acts as a mask on the destination but is purely
 /// informational for sources.  In all cases, the instruction operates relative
@@ -149,23 +216,88 @@ pub enum RegRange {
     Regs(u8),
 }
 
+impl RegRange {
+    #[inline]
+    fn byte_offset_count(&self) -> (u8, u8) {
+        match self {
+            RegRange::Byte0 => (0, 1),
+            RegRange::Byte1 => (1, 1),
+            RegRange::Byte2 => (2, 1),
+            RegRange::Byte3 => (3, 1),
+            RegRange::Half0 => (0, 2),
+            RegRange::Half1 => (2, 2),
+            RegRange::Regs(n) => (0, n * 4),
+        }
+    }
+
+    fn from_byte_offset_count(
+        offset: u8,
+        count: u8,
+    ) -> Result<RegRange, &'static str> {
+        match (offset, count) {
+            (0, 1) => Ok(RegRange::Byte0),
+            (1, 1) => Ok(RegRange::Byte1),
+            (2, 1) => Ok(RegRange::Byte2),
+            (3, 1) => Ok(RegRange::Byte3),
+            (0, 2) => Ok(RegRange::Half0),
+            (2, 2) => Ok(RegRange::Half1),
+            (0, _) => {
+                if count % 4 == 0 {
+                    Ok(RegRange::Regs(count / 4))
+                } else {
+                    Err("Misaligned register range")
+                }
+            }
+            _ => Err("Misaligned register range"),
+        }
+    }
+
+    pub fn byte_offset(&self) -> u8 {
+        self.byte_offset_count().0
+    }
+
+    pub fn bytes(&self) -> u8 {
+        self.byte_offset_count().1
+    }
+}
+
+impl From<RegRange> for Swizzle {
+    fn from(range: RegRange) -> Swizzle {
+        match range {
+            RegRange::Byte0 => Swizzle::B0000,
+            RegRange::Byte1 => Swizzle::B1111,
+            RegRange::Byte2 => Swizzle::B2222,
+            RegRange::Byte3 => Swizzle::B3333,
+            RegRange::Half0 => Swizzle::H00,
+            RegRange::Half1 => Swizzle::H11,
+            RegRange::Regs(_) => Swizzle::NONE,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub struct RegRef {
     pub idx: u8,
     pub range: RegRange,
+    /// Optional preload origin for pretty printing
+    pub preload: Option<PreloadReg>,
 }
 
 impl fmt::Display for RegRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.preload {
+            Some(d) => write!(f, "{d}")?,
+            None => write!(f, "r{}", self.idx)?,
+        };
+
         match &self.range {
-            RegRange::Byte0 => write!(f, "r{}.b0", self.idx),
-            RegRange::Byte1 => write!(f, "r{}.b1", self.idx),
-            RegRange::Byte2 => write!(f, "r{}.b2", self.idx),
-            RegRange::Byte3 => write!(f, "r{}.b3", self.idx),
-            RegRange::Half0 => write!(f, "r{}.h0", self.idx),
-            RegRange::Half1 => write!(f, "r{}.h1", self.idx),
+            RegRange::Byte0 => write!(f, ".b0"),
+            RegRange::Byte1 => write!(f, ".b1"),
+            RegRange::Byte2 => write!(f, ".b2"),
+            RegRange::Byte3 => write!(f, ".b3"),
+            RegRange::Half0 => write!(f, ".h0"),
+            RegRange::Half1 => write!(f, ".h1"),
             RegRange::Regs(n) => {
-                write!(f, "r{}", self.idx)?;
                 if *n > 1 {
                     write!(f, "..{}", self.idx + n)?;
                 }
@@ -177,23 +309,30 @@ impl fmt::Display for RegRef {
 
 impl RegRef {
     pub fn bytes(&self) -> u8 {
-        match self.range {
-            RegRange::Byte0
-            | RegRange::Byte1
-            | RegRange::Byte2
-            | RegRange::Byte3 => 1,
-            RegRange::Half0 | RegRange::Half1 => 2,
-            RegRange::Regs(n) => n * 4,
-        }
+        self.range.bytes()
     }
 
-    pub fn byte_offset(&self) -> u8 {
-        match self.range {
-            RegRange::Byte0 | RegRange::Half0 | RegRange::Regs(_) => 0,
-            RegRange::Byte1 => 1,
-            RegRange::Byte2 | RegRange::Half1 => 2,
-            RegRange::Byte3 => 3,
-        }
+    pub fn byte_range(&self) -> Range<u16> {
+        let (offset, bytes) = self.range.byte_offset_count();
+        let b_start = u16::from(self.idx) * 4 + u16::from(offset);
+        b_start..(b_start + u16::from(bytes))
+    }
+
+    pub fn from_byte_range(range: Range<u16>) -> Result<RegRef, &'static str> {
+        let idx = (range.start / 4)
+            .try_into()
+            .map_err(|_| "Register range too large")?;
+        let range = RegRange::from_byte_offset_count(
+            (range.start % 4).try_into().unwrap(),
+            (range.end - range.start)
+                .try_into()
+                .map_err(|_| "Register range too large")?,
+        )?;
+        Ok(RegRef {
+            idx,
+            range,
+            preload: None,
+        })
     }
 
     pub fn word(mut self, word: u8) -> RegRef {
@@ -204,6 +343,14 @@ impl RegRef {
         self.idx += word;
         self.range = RegRange::Regs(1);
         self
+    }
+
+    pub fn from_preload_reg(m: &dyn Model, reg: PreloadReg) -> RegRef {
+        RegRef {
+            idx: m.preload_reg(reg),
+            range: RegRange::Regs(1),
+            preload: Some(reg),
+        }
     }
 }
 
@@ -543,9 +690,19 @@ impl Src {
 
 impl<T: Into<SrcRef>> From<T> for Src {
     fn from(src_ref: T) -> Src {
+        let src_ref = src_ref.into();
+        let swizzle = match &src_ref {
+            SrcRef::Zero | SrcRef::Imm32(_) | SrcRef::FAU(_) => Swizzle::NONE,
+            SrcRef::SSA(vec) => match vec.bytes() {
+                1 => Swizzle::B0000,
+                2 => Swizzle::H00,
+                _ => Swizzle::NONE,
+            },
+            SrcRef::Reg(reg) => reg.range.into(),
+        };
         Src {
-            src_ref: src_ref.into(),
-            swizzle: Default::default(),
+            src_ref,
+            swizzle,
             src_mod: Default::default(),
             last_use: false,
         }
@@ -816,12 +973,10 @@ pub trait HasVariants {
 
     fn variant(&self) -> DataType;
 
+    fn set_variant(&mut self, data_type: DataType);
+
     fn is_valid_variant(&self) -> bool {
-        let v = self.variant();
-        Self::VARIANTS
-            .iter()
-            .find(|&&allowed| v == allowed)
-            .is_some()
+        Self::VARIANTS.contains(&self.variant())
     }
 }
 
@@ -848,6 +1003,7 @@ pub trait Opcode:
     AsSlice<Src, Attr = PartialDataType> + AsSlice<Dst, Attr = PartialDataType>
 {
     fn variant(&self) -> Option<DataType>;
+    fn set_variant(&mut self, data_type: DataType);
     fn is_valid_variant(&self) -> bool;
 
     fn srcs(&self) -> &[Src] {
@@ -1072,10 +1228,19 @@ impl fmt::Display for BasicBlock {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ShaderInfo {
+    /// Number of registers used
+    pub registers_used: u8,
+    /// Bitset of preloaded registers
+    pub register_preload: u64,
+}
+
 pub struct Shader<'a> {
     pub model: &'a dyn Model,
     pub ssa_alloc: SSAValueAllocator,
     pub blocks: Vec<BasicBlock>,
+    pub info: ShaderInfo,
 }
 
 impl Shader<'_> {

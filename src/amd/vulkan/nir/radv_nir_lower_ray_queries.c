@@ -9,7 +9,7 @@
 
 #include "util/hash_table.h"
 
-#include "bvh/bvh.h"
+#include "bvh/bvh_defines.h"
 #include "nir/radv_nir_rt_common.h"
 #include "radv_device.h"
 #include "radv_nir.h"

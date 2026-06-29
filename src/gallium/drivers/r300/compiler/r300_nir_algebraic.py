@@ -88,9 +88,12 @@ r300_nir_lower_flrp = [
         (('flrp', a, b, c), ('fmad', b, c, ('fmad', ('fneg', a), c, a)))
 ]
 
-# Lower fcsel_ge from ftrunc on r300
-r300_nir_lower_fcsel_r300 = [
-        (('fcsel_ge', a, b, c), ('flrp', c, b, ('sge', a, 0.0)))
+r300_nir_lower_vs_alu_r300 = [
+        # fcsel_ge from ftrunc.
+        (('fcsel_ge', a, b, c), ('flrp', c, b, ('sge', a, 0.0))),
+        # seq/sne may be produced by bool/int lowering.
+        (('seq', 'a@32', 'b@32'), ('fmul', ('sge', a, b), ('sge', b, a))),
+        (('sne', 'a@32', 'b@32'), ('fmax', ('slt', a, b), ('slt', b, a))),
 ]
 
 # Fragment shaders have no comparison opcodes. However, we can encode the comparison
@@ -200,8 +203,8 @@ def main():
         f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_flrp",
                                             r300_nir_lower_flrp).render())
 
-        f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_fcsel_r300",
-                                            r300_nir_lower_fcsel_r300).render())
+        f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_vs_alu_r300",
+                                            r300_nir_lower_vs_alu_r300).render())
 
         f.write(nir_algebraic.AlgebraicPass("r300_nir_lower_comparison_fs",
                                             r300_nir_lower_comparison_fs).render())

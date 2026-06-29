@@ -84,8 +84,8 @@ lower_sample_mask_writes(nir_builder *b, nir_intrinsic_instr *intrin,
    b->cursor = nir_before_instr(&intrin->instr);
 
    nir_def *orig = nir_load_sample_mask(b);
-   nir_def *new = nir_b32csel(b, nir_load_multisampled_pan(b),
-                               intrin->src[0].ssa, orig);
+   nir_def *new =
+      nir_bcsel_pan(b, nir_load_multisampled_pan(b), intrin->src[0].ssa, orig);
    nir_src_rewrite(&intrin->src[0], new);
 
    return true;

@@ -255,8 +255,7 @@ brw_shader::fail(const char *format, ...)
 }
 
 enum intel_barycentric_mode
-brw_barycentric_mode(const struct brw_fs_prog_key *key,
-                     nir_intrinsic_instr *intr)
+brw_barycentric_mode(nir_intrinsic_instr *intr)
 {
    const glsl_interp_mode mode =
       (enum glsl_interp_mode) nir_intrinsic_interp_mode(intr);
@@ -268,13 +267,7 @@ brw_barycentric_mode(const struct brw_fs_prog_key *key,
    switch (intr->intrinsic) {
    case nir_intrinsic_load_barycentric_pixel:
    case nir_intrinsic_load_barycentric_at_offset:
-      /* When per sample interpolation is dynamic, assume sample
-       * interpolation. We'll dynamically remap things so that the FS thread
-       * payload is not affected.
-       */
-      bary = key->persample_interp == INTEL_SOMETIMES ?
-             INTEL_BARYCENTRIC_PERSPECTIVE_SAMPLE :
-             INTEL_BARYCENTRIC_PERSPECTIVE_PIXEL;
+      bary = INTEL_BARYCENTRIC_PERSPECTIVE_PIXEL;
       break;
    case nir_intrinsic_load_barycentric_centroid:
       bary = INTEL_BARYCENTRIC_PERSPECTIVE_CENTROID;

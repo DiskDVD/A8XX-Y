@@ -16,6 +16,7 @@ OpenCL 3.1 support for rusticl on asahi, iris, radeonsi, llvmpipe and zink
 VK_KHR_workgroup_memory_explicit_layout on pvr
 VK_KHR_maintenance5 on pvr
 VK_KHR_shader_fma on RADV
+VK_EXT_shader_split_barrier on RADV/GFX12
 VK_KHR_shader_fma on nvk
 Support for G1-Ultra, G1-Premium and G1-Pro GPUs on Panfrost and PanVK
 VK_EXT_shader_atomic_float on nvk
@@ -33,3 +34,14 @@ VK_EXT_shader_subgroup_vote on pvr
 VK_KHR_shader_subgroup_rotate on pvr
 VK_KHR_shader_subgroup_uniform_control_flow on pvr
 VK_EXT_subgroup_size_control on pvr
+VK_EXT_rasterization_order_attachment_access on panvk
+VK_ARM_rasterization_order_attachment_access on panvk
+GL_OES_texture_float on etnaviv/HALF_FLOAT
+GL_ARB_texture_float on etnaviv/HALF_FLOAT
+VK_NVX_binary_import on NVK
+VK_EXT_image_sliced_view_of_3d on panvk
+VK_EXT_shader_tile_image on panvk
+VK_KHR_internally_synchronized_queues on panvk
+VK_KHR_workgroup_memory_explicit_layout on panvk
+VK_EXT_device_memory_report on pvr
+VK_EXT_descriptor_heap enabled by default on anv, RADV

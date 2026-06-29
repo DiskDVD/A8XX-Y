@@ -1071,7 +1071,6 @@ void ac_fill_feature_info(struct radeon_info *info, const struct drm_amdgpu_info
 
    info->has_gpuvm_fault_query = info->drm_minor >= 55;
    info->has_tmz_support = device_info->ids_flags & AMDGPU_IDS_FLAGS_TMZ;
-   info->uses_kernel_cu_mask = false; /* Not implemented in the kernel. */
 
    /* On GFX8, the TBA/TMA registers can be configured from the userspace.
     * On GFX9+, they are privileged registers and they need to be configured
@@ -2059,7 +2058,6 @@ void ac_print_gpu_info(FILE *f, const struct radeon_info *info, int fd)
       }
    }
    fprintf(f, "    kernel_has_modifiers = %u\n", info->kernel_has_modifiers);
-   fprintf(f, "    uses_kernel_cu_mask = %u\n", info->uses_kernel_cu_mask);
 
    fprintf(f, "Shader core info:\n");
    for (unsigned i = 0; i < info->max_se; i++) {

@@ -1253,6 +1253,13 @@ struct anv_shader_group_rt_replay {
    uint64_t intersection;
 };
 
+struct anv_shader_workaround {
+   bool force_typed_barrier_after_dispatch_to_compute:1;
+   bool force_typed_barrier_after_dispatch_to_top:1;
+   bool force_untyped_barrier_after_dispatch_to_compute:1;
+   bool force_untyped_barrier_after_dispatch_to_top:1;
+};
+
 struct anv_shader {
    struct vk_shader vk;
 
@@ -1286,6 +1293,8 @@ struct anv_shader {
     * Array of pointers of length bind_map.embedded_sampler_count
     */
    struct anv_embedded_sampler **embedded_samplers;
+
+   struct anv_shader_workaround workaround;
 
    /* Mutex to protect the lazy replay allocation */
    simple_mtx_t replay_mutex;
@@ -1835,6 +1844,10 @@ struct anv_instance {
     struct vk_instance                          vk;
 
     struct anv_drirc                            drirc;
+
+    struct hash_table_u64                      *shader_workarounds;
+
+    VkResult                                    drirc_status;
 };
 
 VkResult anv_init_wsi(struct anv_physical_device *physical_device);
@@ -4682,6 +4695,12 @@ struct anv_cmd_graphics_state {
    enum anv_depth_reg_mode                      depth_reg_mode;
 
    struct anv_gfx_dynamic_state dyn_state;
+
+   /**
+    * Temporary state of DGC graphics preprocess emission (to avoid having it
+    * on the stack when calling vkCmdPreprocessGeneratedCommandsEXT)
+    */
+   struct anv_dgc_gfx_state dgc_state;
 };
 
 /** State tracking for compute pipeline
@@ -6708,6 +6727,7 @@ void anv_write_gfx_indirect_descriptor(struct anv_device *device,
                                        struct anv_dgc_gfx_descriptor *descriptor,
                                        struct anv_cmd_graphics_state *gfx);
 
+enum anv_dgc_stage anv_mesa_stage_to_dgc_stage(mesa_shader_stage stage);
 enum anv_dgc_stage anv_vk_stage_to_dgc_stage(VkShaderStageFlags vk_stage);
 
 uint32_t anv_vk_stages_to_generated_stages(VkShaderStageFlags vk_stages);

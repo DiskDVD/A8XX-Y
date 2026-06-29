@@ -167,7 +167,7 @@ void drm_shim_fd_unregister(int fd)
 struct shim_fd *
 drm_shim_fd_lookup(int fd)
 {
-   if (fd == -1)
+   if (!drm_shim_inited() || fd == -1)
       return NULL;
 
    struct hash_entry *entry =

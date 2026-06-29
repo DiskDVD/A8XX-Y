@@ -1272,7 +1272,7 @@ for s in [16, 32, 64]:
        (('i2f{}'.format(s), ('f2i', ('fsign', 'a@{}'.format(s)))), ('fsign', a)),
     ])
 
-    if s < 64:
+    if s == 32:
         optimizations.extend([(('bcsel', a, ('b2f(is_used_once)', 'b@{}'.format(s)), ('b2f', 'c@{}'.format(s))), ('b2f', ('bcsel', a, b, c)))])
 
     for B in [32, 64]:
@@ -1417,7 +1417,7 @@ for s in [8, 16, 32, 64]:
     ])
 
     # There are no 64bit booleans in NIR
-    if s < 64:
+    if s == 32:
         # True/False are ~0 and 0 in NIR.  b2i of True is 1, and -1 is ~0 (True).
         optimizations.extend([(('ineg', ('b2i{}'.format(s), 'a@{}'.format(s))), a)])
 
@@ -3884,14 +3884,16 @@ late_optimizations.extend([
 
    (('~flrp', ('fadd(is_used_once)', a, b), ('fadd(is_used_once)', a, c), d), ('fadd', ('flrp', b, c, d), a)),
 
-   # Approximate handling of fround_even for DX9 addressing from gallium nine on
-   # DX9-class hardware with no proper fround support.  This is in
-   # late_optimizations so that the is_integral() opts in the main pass get a
-   # chance to eliminate the fround_even first.
-   (('fround_even', a), ('bcsel',
-                         ('feq', ('ffract', a), 0.5),
-                         ('fadd', ('ffloor', ('fadd', a, 0.5)), 1.0),
-                         ('ffloor', ('fadd', a, 0.5))), 'options->lower_fround_even'),
+   # Lower roundEven for hardware without a native round instruction.
+   # Round to the nearest integer using ffloor and ffract, and on a half break
+   # the tie towards the even neighbour. Kept in late_optimizations so that
+   # is_integral() can remove the roundEven first.
+   (('fround_even', a), ('fadd', ('ffloor', a),
+                         ('bcsel', ('flt', 0.5, ('ffract', a)),
+                          1.0,
+                          ('bcsel', ('feq', ('ffract', a), 0.5),
+                           ('fmul', ('ffract', ('fmul', ('ffloor', a), 0.5)), 2.0),
+                           0.0))), 'options->lower_fround_even'),
 
    # A similar operation could apply to any ffma(#a, b, #(-a/2)), but this
    # particular operation is common for expanding values stored in a texture

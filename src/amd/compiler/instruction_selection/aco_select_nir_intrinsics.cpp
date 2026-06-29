@@ -2950,9 +2950,15 @@ visit_barrier(isel_context* ctx, nir_intrinsic_instr* instr)
    assert(!(nir_semantics & (NIR_MEMORY_MAKE_AVAILABLE | NIR_MEMORY_MAKE_VISIBLE)));
    assert(exec_scope != scope_workgroup || workgroup_scope_allowed);
 
+   aco_opcode op = aco_opcode::p_barrier;
+   if ((nir_semantics & NIR_MEMORY_CONTROL_ARRIVE_WAIT) == NIR_MEMORY_CONTROL_ARRIVE)
+      op = aco_opcode::p_barrier_signal;
+   if ((nir_semantics & NIR_MEMORY_CONTROL_ARRIVE_WAIT) == NIR_MEMORY_CONTROL_WAIT)
+      op = aco_opcode::p_barrier_wait;
+
    emit_barrier(bld,
                 memory_sync_info((storage_class)storage, (memory_semantics)semantics, mem_scope),
-                exec_scope);
+                exec_scope, op);
 }
 
 /* The two 32 wide halves of a gfx10+ wave64 LDS instruction might be executed interleaved

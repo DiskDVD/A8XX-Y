@@ -144,13 +144,13 @@ linkcheck_ignore = [
     r'https://www.freedesktop.org/.*',  # protected by anubis
     r'https://docs.redhat.com/.*',  # blocking the linkcheck user-agent
     r'https://registry.khronos.org/.*',  # blocking the linkcheck user-agent
+    r'https://alt.3dcenter.org/.*',  # blocking the linkcheck user-agent
 ]
 linkcheck_exclude_documents = [r'relnotes/.*']
 
 linkcheck_allowed_redirects = {
     # Pages that forward the front-page to a wiki or some explore-page
     'https://www.freedesktop.org': 'https://www.freedesktop.org/wiki/',
-    'https://x.org': 'https://x.org/wiki/',
     'https://dri.freedesktop.org/': 'https://dri.freedesktop.org/wiki/',
     'https://gitlab.freedesktop.org/': 'https://gitlab.freedesktop.org/explore/groups',
     'https://www.sphinx-doc.org/': 'https://www.sphinx-doc.org/en/master/',

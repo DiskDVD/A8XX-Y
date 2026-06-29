@@ -17,6 +17,7 @@
 #include "radv_cs.h"
 #include "radv_device_memory.h"
 #include "radv_image.h"
+#include "vk_common_entrypoints.h"
 #include "vk_semaphore.h"
 #include "vk_sync.h"
 
@@ -480,7 +481,6 @@ radv_emit_compute_scratch(struct radv_device *device, struct radv_cmd_stream *cs
    const struct radeon_info *gpu_info = &pdev->info;
    uint32_t tmpring_size;
    uint64_t scratch_va;
-   uint32_t rsrc1;
 
    /* Ensure there is always a mapped BO in s[0:1] for the SMEM OOB mitigation */
    if (!compute_scratch_bo && device->compiler_info.key.mitigate_smem_oob)
@@ -490,12 +490,6 @@ radv_emit_compute_scratch(struct radv_device *device, struct radv_cmd_stream *cs
       return;
 
    scratch_va = radv_buffer_get_va(compute_scratch_bo);
-   rsrc1 = S_008F04_BASE_ADDRESS_HI(scratch_va >> 32);
-
-   if (gpu_info->gfx_level >= GFX11)
-      rsrc1 |= S_008F04_SWIZZLE_ENABLE_GFX11(1);
-   else
-      rsrc1 |= S_008F04_SWIZZLE_ENABLE_GFX6(1);
 
    ac_get_scratch_tmpring_size(gpu_info, waves, size_per_wave, &tmpring_size);
 
@@ -504,16 +498,18 @@ radv_emit_compute_scratch(struct radv_device *device, struct radv_cmd_stream *cs
    radeon_begin(cs);
 
    if (gpu_info->gfx_level >= GFX11) {
+      assert(!device->compiler_info.key.mitigate_smem_oob);
+
       radeon_set_sh_reg_seq(R_00B840_COMPUTE_DISPATCH_SCRATCH_BASE_LO, 2);
       radeon_emit(scratch_va >> 8);
       radeon_emit(scratch_va >> 40);
+   } else {
+      uint32_t rsrc1 = S_008F04_BASE_ADDRESS_HI(scratch_va >> 32) | S_008F04_SWIZZLE_ENABLE_GFX6(1);
 
-      waves /= gpu_info->max_se;
+      radeon_set_sh_reg_seq(R_00B900_COMPUTE_USER_DATA_0, 2);
+      radeon_emit(scratch_va);
+      radeon_emit(rsrc1);
    }
-
-   radeon_set_sh_reg_seq(R_00B900_COMPUTE_USER_DATA_0, 2);
-   radeon_emit(scratch_va);
-   radeon_emit(rsrc1);
 
    radeon_set_sh_reg(R_00B860_COMPUTE_TMPRING_SIZE, tmpring_size);
 
@@ -524,6 +520,8 @@ static void
 radv_emit_compute_shader_pointers(struct radv_device *device, struct radv_cmd_stream *cs,
                                   struct radeon_winsys_bo *descriptor_bo)
 {
+   const struct radv_physical_device *pdev = radv_device_physical(device);
+
    if (!descriptor_bo)
       return;
 
@@ -534,7 +532,10 @@ radv_emit_compute_shader_pointers(struct radv_device *device, struct radv_cmd_st
     * so emit the descriptor pointer to user data 2-3 instead (task_ring_offsets arg).
     */
    radeon_begin(cs);
-   radeon_emit_64bit_pointer(R_00B908_COMPUTE_USER_DATA_2, va);
+   if (pdev->info.gfx_level >= GFX11)
+      radeon_emit_64bit_pointer(R_00B900_COMPUTE_USER_DATA_0, va);
+   else
+      radeon_emit_64bit_pointer(R_00B908_COMPUTE_USER_DATA_2, va);
    radeon_end();
 }
 
@@ -659,9 +660,16 @@ radv_emit_compute(struct radv_device *device, struct radv_cmd_stream *cs, bool i
       ac_pm4_set_reg(pm4, R_00B844_COMPUTE_TMA_HI, tma_va >> 40);
    }
 
-   if (pdev->info.gfx_level >= GFX12)
-      ac_pm4_set_reg(pm4, R_00B8BC_COMPUTE_DISPATCH_INTERLEAVE,
-                     S_00B8BC_INTERLEAVE_1D(preamble_state.gfx11.compute_dispatch_interleave));
+   if (pdev->info.gfx_level >= GFX12) {
+      if (is_compute_queue) {
+         ac_pm4_set_reg(pm4, R_00B8BC_COMPUTE_DISPATCH_INTERLEAVE,
+                        S_00B8BC_INTERLEAVE_1D(preamble_state.gfx11.compute_dispatch_interleave));
+      } else {
+         ac_pm4_set_reg_custom(pm4, R_00B8BC_COMPUTE_DISPATCH_INTERLEAVE - SI_SH_REG_OFFSET,
+                               S_00B8BC_INTERLEAVE_1D(preamble_state.gfx11.compute_dispatch_interleave),
+                               PKT3_SET_SH_REG_INDEX, 2);
+      }
+   }
 
    ac_pm4_finalize(pm4);
    ac_pm4_emit_commands(cs->b, pm4);
@@ -1942,6 +1950,19 @@ radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
    } else {
       queue->vk.driver_submit = radv_queue_submit;
    }
+
+   if (device->utrace.context) {
+      VkCommandPoolCreateInfo pool_info = {
+         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+         .queueFamilyIndex = queue->vk.queue_family_index,
+      };
+
+      result =
+         vk_common_CreateCommandPool(radv_device_to_handle(device), &pool_info, NULL, &queue->utrace_command_pool);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
    return VK_SUCCESS;
 fail:
    vk_queue_finish(&queue->vk);
@@ -2012,6 +2033,8 @@ void
 radv_queue_finish(struct radv_queue *queue)
 {
    struct radv_device *device = radv_queue_device(queue);
+
+   vk_common_DestroyCommandPool(radv_device_to_handle(device), queue->utrace_command_pool, NULL);
 
    if (queue->follower_state) {
       /* Prevent double free */

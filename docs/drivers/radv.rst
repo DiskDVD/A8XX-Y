@@ -224,7 +224,7 @@ Hardware Documentation
 
 You can find a list of documentation for the various generations of
 AMD hardware on the `X.Org wiki
-<https://www.x.org/wiki/RadeonFeature/#documentation>`__.
+<https://www.x.org/RadeonFeature/#documentation>`__.
 
 Additional community-written documentation is also available in Mesa:
 

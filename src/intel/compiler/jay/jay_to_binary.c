@@ -141,6 +141,11 @@ to_gen_operand(
             assert(jay_num_values(d) == 1 && "must not vectorize mixed float");
             R = gen_restride(R, 4, 2, 2);
          }
+
+         /* bf16 destination has stride restrictions */
+         if (I->type == JAY_TYPE_BF16 && jay_num_values(d) == 1) {
+            R = gen_restride(R, 4, 2, 2);
+         }
       }
    } else if (d.file == GPR || d.file == ACCUM) {
       enum jay_stride def_stride =
@@ -286,7 +291,8 @@ static const struct {
    OP(MUL, MUL, 2),
    OP(NOT, NOT, 1),
    OP(NOP, NOP, 0),
-   OP(OFFSET_PACKED_PIXEL_COORDS, ADD, 1),
+   OP(OFFSET_PACKED_PIXEL_COORDS, ADD, 2),
+   OP(COARSE_PIXEL_CORNERS, AND, 1),
    OP(OR, OR, 2),
    OP(QUAD_SWIZZLE, MOV, 1),
    OP(RELOC, MOV, 0),
@@ -305,6 +311,7 @@ static const struct {
    OP(WHILE, WHILE, 0),
    OP(XOR, XOR, 2),
    OP(ZIP_UGPR16, MOV, 0),
+   OP(SLICE_REPACK, MOV, 1),
    /* clang-format on */
 };
 
@@ -526,7 +533,18 @@ emit(struct jay_codegen *jc,
       gen->chan_offset = 0;
       gen->dst = gen_retype(gen->dst, GEN_TYPE_UW);
       gen->src[0] = gen_retype(gen->src[0], GEN_TYPE_UW);
-      gen->src[1] = gen_imm_uv(0x11100100);
+      gen->src[1] =
+         jay_is_imm(I->src[1]) ?
+            gen_imm_uv(0x11100100) :
+            gen_restride(gen_retype(gen->src[1], GEN_TYPE_UW), 0, 8, 1);
+      break;
+
+   case JAY_OPCODE_COARSE_PIXEL_CORNERS:
+      gen->exec_size = 16;
+      gen->chan_offset = 0;
+      gen->dst = gen_retype(gen->dst, GEN_TYPE_UW);
+      gen->src[0] = gen_retype(gen->src[0], GEN_TYPE_UW);
+      gen->src[1] = gen_imm_uv(0xfff00f00);
       break;
 
    case JAY_OPCODE_LANE_ID_8:
@@ -558,7 +576,12 @@ emit(struct jay_codegen *jc,
       }
       break;
 
-   case JAY_OPCODE_SHUFFLE:
+   case JAY_OPCODE_SHUFFLE: {
+      /* Use a dedicated address register for broadcasts to avoid interfering
+       * with a0.0 users. This affects UGPR spilling.
+       */
+      unsigned addr = gen->exec_size == 1 ? (4 * 2) : 0;
+
       if (idx_in_macro == 0) {
          assert(I->src[0].file == GPR && jay_num_values(I->src[0]) == 1);
          struct jay_register_block block =
@@ -569,17 +592,18 @@ emit(struct jay_codegen *jc,
             ((I->src[0].reg - block.start_gpr) * 4 * f->shader->dispatch_width);
 
          gen->opcode = GEN_OP_ADD;
-         gen->dst = gen_address(0);
+         gen->dst = gen_address(addr);
          gen->src[0] = gen_subscript(jc->devinfo, gen->src[1], GEN_TYPE_UW, 0);
          gen->src[1] = gen_imm_uw(offset_B);
       } else {
-         gen->src[0] = gen_grf(0, 0);
+         gen->src[0] = gen_grf(0, addr);
          gen->src[0].type = GEN_TYPE_UD;
          gen->src[0].indirect = true;
          gen->src[0].region.vstride = GEN_VSTRIDE_ONE_DIMENSIONAL;
          gen->src[0].addr_imm = 0;
       }
       break;
+   }
 
    case JAY_OPCODE_HALT:
       if (jay_halt_predicate_all(I)) {
@@ -614,6 +638,30 @@ emit(struct jay_codegen *jc,
       gen->dpas.sdepth = jay_dpas_sdepth(I);
       gen->dpas.rcount = jay_dpas_rcount(I);
       gen->exec_size = jc->devinfo->ver >= 20 ? 16 : 8;
+      break;
+   }
+
+   case JAY_OPCODE_SLICE_REPACK: {
+      const unsigned elem_bits = 32 >> jay_slice_repack_factor_log2(I);
+      const unsigned unpacked_B = idx_in_macro * gen->exec_size * 4;
+      const unsigned packed_B = idx_in_macro * gen->exec_size * (elem_bits / 8);
+      gen_reg_type t = to_gen_reg_type(jay_type(JAY_TYPE_U, elem_bits));
+
+      gen_operand *unpacked = &gen->src[0];
+      gen_operand *packed = &gen->dst;
+
+      if (jay_slice_repack_unpack(I))
+         SWAP(unpacked, packed);
+
+      *packed = gen_retype(gen_byte_offset(jc->devinfo, *packed, packed_B), t);
+      *unpacked =
+         gen_retype(gen_byte_offset(jc->devinfo, *unpacked, unpacked_B), t);
+
+      if (elem_bits == 16)
+         *unpacked = gen_restride(*unpacked, 4, 2, 2);
+      else if (elem_bits == 8)
+         *unpacked = gen_restride(*unpacked, 8, 2, 4);
+
       break;
    }
 
@@ -685,7 +733,7 @@ jay_to_binary(jay_shader *s,
    /* TODO: Multifunction properly */
    jay_foreach_function(s, f) {
       jay_foreach_block(f, block) {
-         if (block->loop_header) {
+         if (block->physical_loop_header) {
             util_dynarray_append(&jc.loop_stack, jc.num_insts);
          }
 

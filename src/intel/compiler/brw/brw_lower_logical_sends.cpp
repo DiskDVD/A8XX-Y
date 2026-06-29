@@ -258,7 +258,7 @@ setup_color_payload(const brw_builder &bld, brw_reg *dst, brw_reg color,
 
 static void
 lower_fb_write_logical_send(const brw_builder &bld, brw_fb_write_inst *write,
-                            const struct brw_fs_prog_data *prog_data,
+                            struct brw_fs_prog_data *prog_data,
                             const brw_fs_prog_key *key,
                             const brw_fs_thread_payload &fs_payload)
 {
@@ -430,23 +430,8 @@ lower_fb_write_logical_send(const brw_builder &bld, brw_fb_write_inst *write,
       brw_fb_write_desc(devinfo, target, msg_ctl, last_rt,
                         0 /* coarse_rt_write */);
 
-   const bool double_rt_writes = devinfo->verx10 == 110 &&
-      prog_data->coarse_pixel_dispatch == INTEL_SOMETIMES;
-
    brw_reg desc_reg = brw_imm_ud(0);
-   if (prog_data->coarse_pixel_dispatch == INTEL_SOMETIMES) {
-      assert(devinfo->ver >= 11);
-      if (!double_rt_writes) {
-         const brw_builder &ubld =
-            bld.scalar_group().annotate("Coarse bit");
-         brw_reg coarse_bit =
-            ubld.AND(brw_dynamic_fs_config(prog_data),
-                     brw_imm_ud(INTEL_FS_CONFIG_COARSE_RT_WRITES));
-         desc_reg = component(coarse_bit, 0);
-      }
-   } else {
-      desc |= prog_data->coarse_pixel_dispatch == INTEL_ALWAYS ? (1 << 18) : 0;
-   }
+   desc |= prog_data->coarse_pixel_dispatch ? (1 << 18) : 0;
 
    uint32_t ex_desc = 0;
    if (devinfo->ver >= 20) {
@@ -482,24 +467,6 @@ lower_fb_write_logical_send(const brw_builder &bld, brw_fb_write_inst *write,
    send->header_size = header_size;
    send->check_tdr = true;
    send->has_side_effects = true;
-
-   if (double_rt_writes) {
-      brw_check_dynamic_fs_config(bld, prog_data,
-                                  INTEL_FS_CONFIG_COARSE_RT_WRITES);
-      bld.IF(BRW_PREDICATE_NORMAL);
-      {
-         brw_send_inst *coarse_inst = brw_clone_inst(*bld.shader, send)->as_send();
-         coarse_inst->desc |= brw_fb_write_desc(devinfo, target, msg_ctl, last_rt,
-                                                true);
-         bld.emit(coarse_inst);
-      }
-      bld.ELSE();
-      {
-         bld.emit(brw_clone_inst(*bld.shader, send));
-      }
-      bld.ENDIF();
-      send->remove();
-   }
 }
 
 static void
@@ -1872,24 +1839,6 @@ lower_interpolator_logical_send(const brw_builder &bld, brw_inst *inst,
                             inst->src[INTERP_SRC_NOPERSPECTIVE].ud,
                             false /* coarse_pixel_rate */,
                             inst->exec_size, inst->group);
-
-   if (fs_prog_data->coarse_pixel_dispatch == INTEL_ALWAYS) {
-      desc_imm |= (1 << 15);
-   } else if (fs_prog_data->coarse_pixel_dispatch == INTEL_SOMETIMES) {
-      STATIC_ASSERT(INTEL_FS_CONFIG_COARSE_PI_MSG == (1 << 15));
-      brw_reg orig_desc = desc;
-      const brw_builder &ubld = bld.exec_all().group(8, 0);
-      desc = ubld.vgrf(BRW_TYPE_UD);
-      ubld.AND(desc, brw_dynamic_fs_config(fs_prog_data),
-               brw_imm_ud(INTEL_FS_CONFIG_COARSE_PI_MSG));
-
-      /* And, if it's AT_OFFSET, we might have a non-trivial descriptor */
-      if (orig_desc.file == IMM) {
-         desc_imm |= orig_desc.ud;
-      } else {
-         ubld.OR(desc, desc, orig_desc);
-      }
-   }
 
    /* If persample_dispatch is dynamic, select the interpolation mode
     * dynamically and OR into the descriptor to complete the static part

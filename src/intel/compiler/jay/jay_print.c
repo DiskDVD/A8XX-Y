@@ -217,7 +217,9 @@ jay_print_block(FILE *fp, jay_block *block)
 {
    indent(fp, block, false);
    fprintf(fp, "B%d%s%s", block->index, block->uniform ? " [uniform]" : "",
-           block->loop_header ? " [loop header]" : "");
+           block->loop_header          ? " [loop header]" :
+           block->physical_loop_header ? " [physical loop header]" :
+                                         "");
    bool first = true;
    jay_foreach_predecessor(block, p, GPR) {
       fprintf(fp, "%s B%d", first ? " <-" : "", (*p)->index);

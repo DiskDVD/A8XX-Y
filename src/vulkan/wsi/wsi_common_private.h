@@ -112,6 +112,7 @@ struct wsi_image_info {
     */
    uint32_t modifier_prop_count;
    struct VkDrmFormatModifierPropertiesEXT *modifier_props;
+   VkImageCompressionFixedRateFlagsEXT *img_compr_fixed_rate_flags;
 
    /* For buffer blit images, the linear stride in bytes */
    uint32_t linear_stride;
@@ -192,6 +193,7 @@ struct wsi_image {
 
    VkQueryPool query_pool;
    VkCommandBuffer *timestamp_cmd_buffers;
+   uint32_t query_pool_busy;
 };
 
 struct wsi_presentation_timing {
@@ -214,6 +216,7 @@ struct wsi_image_timing_request {
    uint64_t                    serial;
    uint64_t                    time;
    VkPresentTimingInfoFlagsEXT flags;
+   VkPresentStageFlagsEXT      feedback;
 };
 
 struct wsi_swapchain {
@@ -292,8 +295,6 @@ struct wsi_swapchain {
       uint64_t minimum_queue_done_time;
       uint64_t minimum_complete_time;
    } present_timing;
-
-   bool capture_key_pressed;
 
    /* Command pools, one per queue family */
    VkCommandPool *cmd_pools;

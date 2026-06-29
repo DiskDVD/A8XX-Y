@@ -57,6 +57,7 @@
 #include "util/u_debug.h"
 #include "util/format/u_format.h"
 #include "perfcntrs/v3d_perfcntrs.h"
+#include "vk_buffer.h"
 #include "vk_shader_module.h"
 #include "vk_format.h"
 #include "vk_ycbcr_conversion.h"
@@ -107,6 +108,17 @@ v3dv_EnumerateInstanceVersion(uint32_t *pApiVersion)
 #define V3DV_USE_WSI_PLATFORM
 #include "wsi_common.h"
 #endif
+
+static bool v3d_has_feature(const struct v3dv_physical_device *device,
+                            enum drm_v3d_param feature)
+{
+   struct drm_v3d_get_param p = {
+      .param = feature,
+   };
+   if (v3d_ioctl(device->render_fd, DRM_IOCTL_V3D_GET_PARAM, &p) != 0)
+      return false;
+   return p.value;
+}
 
 static const struct vk_instance_extension_table instance_extensions = {
    .KHR_device_group_creation           = true,
@@ -177,7 +189,7 @@ get_device_extensions(const struct v3dv_physical_device *device,
       .KHR_index_type_uint8                 = true,
       .KHR_line_rasterization               = true,
       .KHR_load_store_op_none               = true,
-      .KHR_performance_query                = device->caps.perfmon,
+      .KHR_performance_query                = v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_PERFMON),
       .KHR_relaxed_block_layout             = true,
       .KHR_robustness2                      = true,
       .KHR_maintenance1                     = true,
@@ -502,7 +514,7 @@ get_features(const struct v3dv_physical_device *physical_device,
       .vertexAttributeInstanceRateZeroDivisor = false,
 
       /* VK_KHR_performance_query */
-      .performanceCounterQueryPools = physical_device->caps.perfmon,
+      .performanceCounterQueryPools = v3d_has_feature(physical_device, DRM_V3D_PARAM_SUPPORTS_PERFMON),
       .performanceCounterMultipleQueryPools = false,
 
       /* VK_EXT_texel_buffer_alignment */
@@ -819,24 +831,13 @@ compute_memory_budget(struct v3dv_physical_device *device)
 }
 
 static bool
-v3d_has_feature(struct v3dv_physical_device *device, enum drm_v3d_param feature)
-{
-   struct drm_v3d_get_param p = {
-      .param = feature,
-   };
-   if (v3d_ioctl(device->render_fd, DRM_IOCTL_V3D_GET_PARAM, &p) != 0)
-      return false;
-   return p.value;
-}
-
-static bool
 device_has_expected_features(struct v3dv_physical_device *device)
 {
    return v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_TFU) &&
           v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_CSD) &&
           v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_CACHE_FLUSH) &&
-          v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_CPU_QUEUE) &&
-          device->caps.multisync;
+          v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_MULTISYNC_EXT) &&
+          v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_CPU_QUEUE);
 }
 
 
@@ -1444,12 +1445,6 @@ create_physical_device(struct v3dv_instance *instance,
       goto fail;
    }
 
-   device->caps.multisync =
-      v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_MULTISYNC_EXT);
-
-   device->caps.perfmon =
-      v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_PERFMON);
-
    /* Always mention only the newest kernel version we require */
    if (!device_has_expected_features(device)) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
@@ -1458,7 +1453,7 @@ create_physical_device(struct v3dv_instance *instance,
       goto fail;
    }
 
-   if (device->caps.perfmon) {
+   if (v3d_has_feature(device, DRM_V3D_PARAM_SUPPORTS_PERFMON)) {
       device->perfcntr = v3d_perfcntrs_init(&device->devinfo, device->render_fd);
 
       if (!device->perfcntr) {
@@ -1503,7 +1498,7 @@ create_physical_device(struct v3dv_instance *instance,
    /* Initialize sparse array for refcounting imported BOs */
    util_sparse_array_init(&device->bo_map, sizeof(struct v3dv_bo), 512);
 
-   device->options.merge_jobs = !V3D_DBG(NO_MERGE_JOBS);
+   device->merge_jobs = !V3D_DBG(NO_MERGE_JOBS);
 
    device->drm_syncobj_type = vk_drm_syncobj_get_type(device->render_fd);
 
@@ -1923,27 +1918,6 @@ queue_finish(struct v3dv_queue *queue)
    vk_queue_finish(&queue->vk);
 }
 
-VkResult
-v3dv_device_create_noop_job(struct v3dv_device *device)
-{
-   device->noop_job = vk_zalloc(&device->vk.alloc, sizeof(struct v3dv_job), 8,
-                                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!device->noop_job)
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-   v3dv_job_init(device->noop_job, V3DV_JOB_TYPE_GPU_CL, device, NULL, -1);
-
-   v3d_X((&device->devinfo), job_emit_noop)(device->noop_job);
-
-   /* We use no-op jobs to signal semaphores/fences. These jobs needs to be
-    * serialized across all hw queues to comply with Vulkan's signal operation
-    * order requirements, which basically require that signal operations occur
-    * in submission order.
-    */
-   device->noop_job->serialize = V3DV_BARRIER_ALL;
-
-   return VK_SUCCESS;
-}
-
 static void
 init_device_meta(struct v3dv_device *device)
 {
@@ -2066,10 +2040,6 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
    device->default_attribute_float =
       v3d_X((&device->devinfo), create_default_attribute_values)(device, NULL);
 
-   result = v3dv_device_create_noop_job(device);
-   if (result != VK_SUCCESS)
-      goto fail;
-
    if (device->vk.enabled_features.nullDescriptor) {
       device->null_bo =
          v3dv_bo_alloc(device, 4096, "null texture data", true);
@@ -2112,8 +2082,6 @@ fail_queues_alloc:
    cnd_destroy(&device->query_ended);
    mtx_destroy(&device->query_mutex);
    mtx_destroy(&device->queue_mutex);
-   if (device->noop_job)
-      v3dv_job_destroy(device->noop_job);
    destroy_device_meta(device);
    v3dv_pipeline_cache_finish(&device->default_pipeline_cache);
    v3dv_event_free_resources(device);
@@ -2135,9 +2103,6 @@ v3dv_DestroyDevice(VkDevice _device,
    for (uint32_t i = 0; i < device->queue_count; i++)
       queue_finish(&device->queues[i]);
    vk_free2(&device->vk.alloc, pAllocator, device->queues);
-
-   if (device->noop_job)
-      v3dv_job_destroy(device->noop_job);
 
    v3dv_event_free_resources(device);
    mtx_destroy(&device->events.lock);
@@ -2827,17 +2792,8 @@ v3dv_buffer_init(struct v3dv_device *device,
                  struct v3dv_buffer *buffer,
                  uint32_t alignment)
 {
-   const VkBufferUsageFlags2CreateInfoKHR *flags2 =
-      vk_find_struct_const(pCreateInfo->pNext,
-                           BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR);
-   VkBufferUsageFlags2KHR usage;
-   if (flags2)
-      usage = flags2->usage;
-   else
-      usage = pCreateInfo->usage;
-
    buffer->size = pCreateInfo->size;
-   buffer->usage = usage;
+   buffer->usage = vk_buffer_usage_flags(pCreateInfo);
    buffer->alignment = alignment;
 }
 

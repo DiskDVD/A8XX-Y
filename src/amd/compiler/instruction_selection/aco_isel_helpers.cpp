@@ -668,7 +668,7 @@ lanecount_to_mask(isel_context* ctx, Temp count, unsigned bit_offset)
 }
 
 void
-emit_barrier(Builder& bld, memory_sync_info sync, sync_scope exec_scope)
+emit_barrier(Builder& bld, memory_sync_info sync, sync_scope exec_scope, aco_opcode op)
 {
    if (bld.program->workgroup_size <= bld.program->wave_size) {
       exec_scope = MIN2(exec_scope, scope_subgroup);
@@ -676,13 +676,14 @@ emit_barrier(Builder& bld, memory_sync_info sync, sync_scope exec_scope)
          sync.scope = scope_subgroup;
    }
 
-   if (bld.program->gfx_level >= GFX12 && exec_scope == scope_workgroup) {
+   if (op == aco_opcode::p_barrier && bld.program->gfx_level >= GFX12 &&
+       exec_scope == scope_workgroup) {
       memory_sync_info sync_release(sync.storage, sync.semantics & semantic_release, sync.scope);
       memory_sync_info sync_acquire(sync.storage, sync.semantics & semantic_acquire, sync.scope);
       bld.barrier(aco_opcode::p_barrier_signal, sync_release, exec_scope);
       bld.barrier(aco_opcode::p_barrier_wait, sync_acquire, exec_scope);
    } else {
-      bld.barrier(aco_opcode::p_barrier, sync, exec_scope);
+      bld.barrier(op, sync, exec_scope);
    }
 }
 

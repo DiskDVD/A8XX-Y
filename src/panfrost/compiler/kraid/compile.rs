@@ -63,7 +63,12 @@ fn dynarray_append_vec<T: Copy>(buf: &mut util_dynarray, vec: Vec<T>) {
     }
 }
 
-#[no_mangle]
+fn write_back_info(src: &ShaderInfo, dst: &mut pan_shader_info) {
+    dst.work_reg_count = src.registers_used.into();
+    dst.preload = src.register_preload;
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn kraid_compile_nir(
     nir: &mut nir_shader,
     inputs: &pan_compile_inputs,
@@ -115,5 +120,5 @@ pub extern "C" fn kraid_compile_nir(
     let bin = model.encode_shader(&s);
     dynarray_append_vec(binary, bin);
 
-    info.work_reg_count = 64;
+    write_back_info(&s.info, info);
 }

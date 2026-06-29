@@ -1,3 +1,4 @@
+KHR-GL46.copy_image.smoke_test,Fail
 KHR-GL46.shader_image_size.basic-nonMS-tes-int,Fail
 KHR-GL46.tessellation_shader.tessellation_control_to_tessellation_evaluation.gl_tessLevel,Fail
 KHR-GL46.tessellation_shader.tessellation_shader_tessellation.TES,Fail
@@ -52,6 +53,13 @@ program@execute@global-offset@3d- input dependent,Fail
 
 # Regressed between https://gitlab.freedesktop.org/mesa/mesa/-/jobs/70146138 and https://gitlab.freedesktop.org/mesa/mesa/-/jobs/70217173
 program@execute@vector-conversion,Fail
+
+# Piglit doesn't check subbuffer alignment requirements
+api@clgetmemobjectinfo,Fail
+
+# Piglit checks the pre 3.1 behavior
+api@clsetkernelarg,Fail
+api@clsetkernelarg@Input checks,Fail
 
 #
 ## freedreno issues:

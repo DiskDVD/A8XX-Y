@@ -33,6 +33,7 @@ fn parse_type_name(name: &str) -> (u8, char, u8) {
 
 fn abrev_to_numeric_type(t: char) -> TokenStream2 {
     match t {
+        'A' => quote! { Some(NumericType::Auto) },
         'F' => quote! { Some(NumericType::Float) },
         'I' => quote! { Some(NumericType::Integer) },
         'U' => quote! { Some(NumericType::UnsignedInteger) },

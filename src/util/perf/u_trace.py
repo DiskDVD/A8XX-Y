@@ -85,6 +85,12 @@ class Tracepoint(object):
                 break
         self.tp_print_custom = tp_print
 
+        self.has_fuzzy_hash_arg = False
+        for arg in args:
+            if arg.fuzzy_hash is not None:
+                self.has_fuzzy_hash_arg = True
+                break
+
         # Compute the offset of each indirect argument
         self.indirect_args = [x for x in args if x.is_indirect]
         indirect_sizes = []
@@ -98,6 +104,10 @@ class Tracepoint(object):
         self.toggle_name = toggle_name
         self.need_cs_param = need_cs_param
         self.tp_type = tp_type
+        if len(self.tp_struct) > 0:
+            self.payload_size = "sizeof(struct trace_%s)" % (name)
+        else:
+            self.payload_size = "0"
 
         TRACEPOINTS[name] = self
         if toggle_name is not None and toggle_name not in TRACEPOINTS_TOGGLES:
@@ -117,7 +127,7 @@ class Tracepoint(object):
 class TracepointArgStruct():
     """Represents struct that is being passed as an argument
     """
-    def __init__(self, type, var, c_format=None, fields=[], is_indirect=False):
+    def __init__(self, type, var, c_format=None, fields=[], is_indirect=False, fuzzy_hash=None):
         """Parameters:
 
         - type: argument's C type.
@@ -136,6 +146,7 @@ class TracepointArgStruct():
         self.fields = fields
         self.to_prim_type = None
         self.perfetto_field = None
+        self.fuzzy_hash = fuzzy_hash
 
         if self.is_indirect:
             self.func_param = f"struct u_trace_address {self.var}"
@@ -157,7 +168,8 @@ class TracepointArg(object):
     """Class that represents either an argument being passed or a field in a struct
     """
     def __init__(self, type, var, c_format=None, name=None, to_prim_type=None,
-                 length_arg=None, copy_func=None, is_indirect=False, perfetto_field=None):
+                 length_arg=None, copy_func=None, is_indirect=False, perfetto_field=None,
+                 fuzzy_hash=None):
         """Parameters:
 
         - type: argument's C type.
@@ -184,6 +196,7 @@ class TracepointArg(object):
         self.length_arg = length_arg
         self.copy_func = copy_func
         self.perfetto_field = perfetto_field
+        self.fuzzy_hash = fuzzy_hash
 
         self.is_struct = False
         self.is_indirect = is_indirect
@@ -313,15 +326,7 @@ struct trace_${trace_name} {
    ${arg.struct_member};
 %    endfor
 %    if len(trace.tp_struct) == 0:
-#ifdef __cplusplus
-   /* avoid warnings about empty struct size mis-match in C vs C++..
-    * the size mis-match is harmless because (a) nothing will deref
-    * the empty struct, and (b) the code that cares about allocating
-    * sizeof(struct trace_${trace_name}) (and wants this to be zero
-    * if there is no payload) is C
-    */
    uint8_t dummy;
-#endif
 %    endif
 };
 %    if trace.tp_perfetto is not None:
@@ -506,9 +511,68 @@ static void __print_json_${trace_name}(FILE *out, const void *arg, const void *i
    );
 }
 
+% if trace.tp_print_custom is None and trace.has_fuzzy_hash_arg:
+static void __print_fuzzy_hash_args_${trace_name}(FILE *out, const void *arg) {
+  % if len(trace.tp_struct) > 0:
+   const struct trace_${trace_name} *__entry =
+      (const struct trace_${trace_name} *)arg;
+   (void)__entry;
+  % endif
+   fprintf(out, ""
+   % for arg in trace.tp_print:
+    % if arg.fuzzy_hash is not None:
+      "${arg.name}=${arg.c_format}, "
+    % endif
+   % endfor
+   % for arg in trace.tp_print:
+    % if arg.fuzzy_hash is not None:
+      , ${arg.value_expr("__entry")}
+    % endif
+   % endfor
+   );
+}
+% else:
+#define __print_fuzzy_hash_args_${trace_name} NULL
+% endif
+
+static uint32_t __fuzzy_hash_${trace_name}(const void *_event) {
+   uint32_t hash = 1;
+  % if len(trace.tp_struct) > 0:
+   const struct trace_${trace_name} *__entry =
+      (const struct trace_${trace_name} *)_event;
+   (void)__entry;
+  % endif
+  % for arg in trace.tp_print:
+   % if arg.fuzzy_hash is not None:
+   hash *= ${arg.fuzzy_hash}(${arg.value_expr("__entry")});
+   % endif
+  % endfor
+   return hash;
+}
+
+static bool __fuzzy_equals_${trace_name}(const void *_a, const void *_b) {
+  % if len(trace.tp_struct) > 0:
+   const struct trace_${trace_name} *__entry_a =
+      (const struct trace_${trace_name} *)_a;
+   (void)__entry_a;
+   const struct trace_${trace_name} *__entry_b =
+      (const struct trace_${trace_name} *)_b;
+   (void)__entry_b;
+  % endif
+  % for arg in trace.tp_print:
+   % if arg.fuzzy_hash is not None:
+   if (${arg.value_expr("__entry_a")} != ${arg.value_expr("__entry_b")}) return false;
+   % endif
+  % endfor
+   return true;
+}
+
  % else:
 #define __print_${trace_name} NULL
 #define __print_json_${trace_name} NULL
+#define __fuzzy_hash_${trace_name} NULL
+#define __fuzzy_equals_${trace_name} NULL
+#define __print_fuzzy_hash_args_${trace_name} NULL
  % endif
  % if trace.tp_markers is not None:
 
@@ -533,7 +597,7 @@ static void __emit_label_${trace_name}(struct u_trace_context *utctx, void *cs, 
  % endif
 static const struct u_tracepoint __tp_${trace_name} = {
     "${trace_name}",
-    ALIGN_POT(sizeof(struct trace_${trace_name}), 8),   /* keep size 64b aligned */
+    ALIGN_POT(${trace.payload_size}, 8),   /* keep size 64b aligned */
     0
  % for arg in trace.indirect_args:
     + sizeof(${arg.type})
@@ -548,6 +612,9 @@ static const struct u_tracepoint __tp_${trace_name} = {
 #ifdef HAVE_PERFETTO
     (void (*)(void *pctx, uint64_t, uint16_t, const void *, const void *, const void *))${trace.tp_perfetto},
 #endif
+    __fuzzy_hash_${trace_name},
+    __fuzzy_equals_${trace_name},
+    __print_fuzzy_hash_args_${trace_name},
  % endif
 };
 void __trace_${trace_name}(
@@ -683,10 +750,8 @@ perfetto_utils_hdr_template = """\
 #ifndef ${guard_name}
 #define ${guard_name}
 
-#ifndef ANDROID_LIBPERFETTO
-#include <perfetto.h>
-#else
-#include <perfetto/tracing.h>
+#include "util/perf/u_perfetto.h"
+#ifdef ANDROID_LIBPERFETTO
 #include <perfetto/trace/clock_snapshot.pbzero.h>
 #include <perfetto/trace/gpu/gpu_render_stage_event.pbzero.h>
 #include <perfetto/trace/gpu/vulkan_api_event.pbzero.h>

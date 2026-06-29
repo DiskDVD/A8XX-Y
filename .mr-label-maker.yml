@@ -72,6 +72,7 @@ issues:
         'radeonsi': 'radeonsi'
         'radv': 'RADV'
         'radv/aco': ['RADV', 'ACO']
+        'rust': 'Rust'
         'rusticl': 'Rusticl'
         'softpipe': 'softpipe'
         'spirv': 'SPIR-V'
@@ -132,6 +133,7 @@ merge_requests:
         '^.*/ci/.*-validation-settings\.txt': ['CI-Expectations']
         '^.*/ci/.*-vkd3d\.txt': ['CI-Expectations']
         '^.gitlab-ci/windows/': ['Windows']
+        '\.rs$': ['Rust']
         '^bin/__init__.py$': ['maintainer-scripts']
         '^bin/gen_release_notes': ['maintainer-scripts']
         '^bin/git_sha1_gen.py$': ['meson', 'android']
@@ -305,9 +307,7 @@ merge_requests:
         '^src/virtio/vulkan/': ['venus']
         '^src/virtio/venus-protocol/': ['venus']
         '^src/virtio/ci/': ['venus']
-        '^src/virtio/virtgpu_kumquat/': ['gfxstream']
-        '^src/virtio/virtgpu_kumquat_ffi/': ['gfxstream']
-        '^src/virtio/protocols/.*kumquat.*': ['gfxstream']
+        '^src/virtio/magma-gpu-rs/': ['gfxstream']
         '^src/util/': ['util']
         '^src/util/00-mesa-defaults.conf': ['drirc']
         '^src/vulkan/': ['vulkan']

@@ -3,7 +3,7 @@
 
 use crate::ir::*;
 use crate::ops::*;
-use crate::ssa_value::SSAValueAllocator;
+use crate::ssa_value::{AllocSSA, SSAValueAllocator};
 
 pub trait Builder {
     fn arch(&self) -> u8;
@@ -33,11 +33,7 @@ pub trait Builder {
     }
 }
 
-pub trait SSABuilder: Builder {
-    fn alloc_ssa(&mut self, bits: u8) -> SSAValue;
-
-    fn alloc_vec(&mut self, comps: u8) -> SSARef;
-
+pub trait SSABuilder: Builder + AllocSSA {
     fn copy_i8(&mut self, src: Src) -> SSAValue {
         let def = self.alloc_ssa(8);
         self.copy_i8_to(def.into(), src);
@@ -83,6 +79,8 @@ pub trait SSABuilder: Builder {
         def
     }
 }
+
+impl<T: Builder + AllocSSA> SSABuilder for T {}
 
 pub struct InstrBuilder<'a> {
     arch: u8,
@@ -162,12 +160,8 @@ impl<'a> Builder for SSAInstrBuilder<'a> {
     }
 }
 
-impl SSABuilder for SSAInstrBuilder<'_> {
+impl AllocSSA for SSAInstrBuilder<'_> {
     fn alloc_ssa(&mut self, bits: u8) -> SSAValue {
-        self.alloc.alloc(bits)
-    }
-
-    fn alloc_vec(&mut self, comps: u8) -> SSARef {
-        self.alloc.alloc_vec(comps)
+        self.alloc.alloc_ssa(bits)
     }
 }

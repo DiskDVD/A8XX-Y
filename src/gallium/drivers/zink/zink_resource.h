@@ -175,12 +175,6 @@ zink_resource_usage_set(struct zink_resource *res, struct zink_batch_state *bs, 
    res->obj->unsync_access = false;
 }
 
-static ALWAYS_INLINE bool
-zink_resource_object_usage_unset(struct zink_resource_object *obj, struct zink_batch_state *bs)
-{
-   return zink_bo_usage_unset(obj->bo, bs);
-}
-
 static ALWAYS_INLINE void
 zink_batch_resource_usage_set(struct zink_batch_state *bs, struct zink_resource *res, bool write, bool is_buffer)
 {

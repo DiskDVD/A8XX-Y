@@ -13,7 +13,13 @@ make-git-archive:
     # Compactify the .git directory
     - git gc --aggressive
     # Download & cache the perfetto subproject as well.
-    - rm -rf subprojects/perfetto ; mkdir -p subprojects/perfetto && curl --fail --location https://github.com/google/perfetto/archive/$(grep 'revision =' subprojects/perfetto.wrap | cut -d ' ' -f3).tar.gz | tar zxf - --strip-components=1 -C subprojects/perfetto
+    - |
+      perfetto_sdk_dir=$(grep -E '^directory = ' subprojects/perfetto-sdk.wrap | cut -d ' ' -f3)
+      rm -rf subprojects/"$perfetto_sdk_dir"
+      mkdir -p subprojects/"$perfetto_sdk_dir"
+      curl --fail --location $(grep -E '^source_url = ' subprojects/perfetto-sdk.wrap | cut -d ' ' -f3) --output perfetto-sdk.zip
+      unzip perfetto-sdk.zip -d subprojects/"$perfetto_sdk_dir"
+      rm perfetto-sdk.zip
     # compress the current folder
     - tar -cvzf ../$CI_PROJECT_NAME.tar.gz .
 
@@ -292,7 +298,7 @@ fedora-release:
       -D glvnd=enabled
       -D platforms=x11,wayland
     EXTRA_OPTION: >
-      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,nir,nouveau,lima,panfrost,imagination
+      -D tools=drm-shim,etnaviv,freedreno,glsl,intel,nir,nouveau,lima,panfrost,imagination,rti
       -D vulkan-layers=device-select,overlay
       -D intel-rt=enabled
       -D imagination-srv=true

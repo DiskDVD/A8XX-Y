@@ -45,14 +45,31 @@ extern "C" {
 struct gen_encoding_${info.name.lower()} {
    static constexpr gen_encoding_type TYPE = GEN_ENCODING_${info.name.upper()};
 
-% for (i, r) in info.fields.items():
-   FIELD(${i}, ${comma_join(r)});
+   /* Instruction fields */
+% for (i, rs) in info.fields.items():
+   static constexpr auto ${i} = gen_ranges<${len(rs)}>({
+% for r in rs:
+      gen_range { ${comma_join(r)} },
 % endfor
-% for (i, r) in info.compact_fields.items():
-   FIELD(C_${i}, ${comma_join(r)});
+   });
 % endfor
-% for (i, r) in info.sub_fields.items():
-   SUB_FIELD(${i}, ${comma_join(r)});
+
+   /* Compact instruction fields */
+% for (i, rs) in info.compact_fields.items():
+   static constexpr auto C_${i} = gen_ranges<${len(rs)}>({
+% for r in rs:
+      gen_range { ${comma_join(r)} },
+% endfor
+   });
+% endfor
+
+   /* Instruction sub fields */
+% for (i, rs) in info.sub_fields.items():
+   static constexpr auto ${i} = gen_sub_ranges<${len(rs)}>({
+% for r in rs:
+      gen_sub_range { ${comma_join(r)} },
+% endfor
+   });
 % endfor
 
    static constexpr std::array<gen_inst_description, 128> gen_to_description =
@@ -88,6 +105,7 @@ class InstructionInfo:
         self.name = name
         self.imported = set()
         self.target = self.__init_with_inheritance(raw_info, name)
+        self.__process_ranges()
         assert name in self.imported
 
     def __init_with_inheritance(self, raw_info, name):
@@ -136,6 +154,44 @@ class InstructionInfo:
 
         self.imported.add(name)
         return new_target
+
+    def __process_ranges(self):
+        """Process ranges in self.target
+
+        On input, the fields are lists of integers. On output, they
+        are list of tuples of length 2 where the first item is the
+        high bit number of the range and the second item is the low
+        bit number of the range.
+
+        Additionally, any adjacent ranges that happen to have bit
+        ranges that can be combined are collapsed into a single range.
+
+        """
+
+        def collapse_ranges(ranges):
+            """Generator that merges compatible ranges."""
+
+            it = iter(ranges)
+            r = next(it)
+            for n in it:
+                if (r[1] - 1) == n[0]:
+                    r = (r[0], n[1])
+                else:
+                    yield r
+                    r = n
+            yield r
+
+        def pair_up(v):
+            if v is None:
+                return None
+            assert (len(v) % 2) == 0
+            ranges = [(v[i], v[i + 1]) for i in range(0, len(v), 2)]
+            return list(collapse_ranges(ranges));
+
+        for field_type in ('fields', 'sub-fields', 'compact-fields'):
+            d = self.target.get(field_type, dict())
+            d = { k: pair_up(v) for k, v in d.items() }
+            self.target[field_type] = d
 
     def __getattr__(self, name):
         dashed_name = name.replace('_', '-')

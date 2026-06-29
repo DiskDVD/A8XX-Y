@@ -50,6 +50,7 @@
 #include "pvr_image.h"
 #include "pvr_job_common.h"
 #include "pvr_job_render.h"
+#include "pvr_iface.h"
 #include "pvr_limits.h"
 #include "pvr_macros.h"
 #include "pvr_pass.h"
@@ -5774,17 +5775,17 @@ static VkResult pvr_setup_descriptor_mappings(
             uint32_t fs_meta = 0;
 
             if (cmd_buffer->vk.dynamic_graphics_state.ms.alpha_to_one_enable)
-               fs_meta |= (1 << 0);
+               fs_meta |= BITFIELD_BIT(PVR_FS_META_ALPHA_TO_ONE_OFFSET);
 
             fs_meta |= cmd_buffer->vk.dynamic_graphics_state.ms.sample_mask
-                       << 9;
+                       << PVR_FS_META_SAMPLE_MASK_OFFSET;
             fs_meta |=
                cmd_buffer->vk.dynamic_graphics_state.cb.color_write_enables
-               << 1;
+               << PVR_FS_META_COLOR_WRITE_ENABLE_OFFSET;
 
             if (cmd_buffer->vk.dynamic_graphics_state.ms
                    .alpha_to_coverage_enable)
-               fs_meta |= (1 << 25);
+               fs_meta |= BITFIELD_BIT(PVR_FS_META_ALPHA_TO_COVERAGE_OFFSET);
 
             struct pvr_suballoc_bo *fs_meta_bo;
             result = pvr_arch_cmd_buffer_upload_general(cmd_buffer,

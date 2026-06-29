@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "util/bitset.h"
 #include "jay_ir.h"
 #include "jay_opcodes.h"
 #include "jay_private.h"
@@ -96,6 +97,10 @@ get_src_words(struct validate_state *validate, jay_inst *I, unsigned s)
       return 4;
    }
 
+   if (I->op == JAY_OPCODE_OFFSET_PACKED_PIXEL_COORDS && s == 1) {
+      return 8;
+   }
+
    if (I->op == JAY_OPCODE_ZIP_UGPR16) {
       return jay_ugpr_per_grf(shader);
    }
@@ -122,6 +127,9 @@ get_src_words(struct validate_state *validate, jay_inst *I, unsigned s)
 
       return bytes / (shader->dispatch_width * 4);
    }
+
+   if (I->op == JAY_OPCODE_SLICE_REPACK && !jay_slice_repack_unpack(I))
+      return 1 << jay_slice_repack_factor_log2(I);
 
    unsigned simd_width = jay_simd_width_logical(validate->func->shader, I);
    unsigned elsize = jay_type_vector_length(jay_src_type(I, s));
@@ -311,6 +319,11 @@ validate_inst(struct validate_state *validate, jay_inst *I)
       CHECK(jay_num_values(I->src[0]) == 16);
       CHECK(jay_num_values(I->src[1]) == 16);
       CHECK(jay_grf_per_gpr(validate->func->shader) == 2);
+   } else if (I->op == JAY_OPCODE_SLICE_REPACK) {
+      const bool unpack = jay_slice_repack_unpack(I);
+      const unsigned pf = 1 << jay_slice_repack_factor_log2(I);
+      CHECK(pf == 1 || pf == 2 || pf == 4);
+      CHECK(jay_num_values(I->dst) == (unpack ? pf : 1));
    }
 }
 
@@ -321,15 +334,43 @@ jay_validate_function(struct validate_state *validate)
    validate->files =
       calloc(validate->func->ssa_alloc, sizeof(validate->files[0]));
 
+   BITSET_WORD *blocks = BITSET_CALLOC(validate->func->num_blocks);
+   unsigned min_block = 0;
+
    jay_foreach_block(validate->func, block) {
       validate->block = block;
       validate->I = NULL;
 
       CHECK(block->logical_succs[0] || !block->logical_succs[1]);
+      CHECK(block->index < validate->func->num_blocks);
 
       /* Post-RA we can remove physical jumps though they exist logically */
       if (block->logical_succs[1] && !validate->post_ra) {
          CHECK(jay_block_ending_jump(block) != NULL);
+      }
+
+      /* Loop headers have a single forward edge and a single back edge. There
+       * are no other back edges.
+       */
+      if (block->loop_header) {
+         CHECK(jay_num_predecessors(block, GPR) == 2);
+         CHECK(jay_num_predecessors(block, UGPR) == 2);
+         jay_block **preds = jay_predecessors(block, GPR)->data;
+         CHECK(BITSET_TEST(blocks, preds[0]->index));
+         CHECK(!BITSET_TEST(blocks, preds[1]->index));
+         CHECK(block->physical_loop_header);
+      } else {
+         jay_foreach_predecessor(block, pred, UGPR) {
+            CHECK(BITSET_TEST(blocks, (*pred)->index));
+         }
+      }
+
+      BITSET_SET(blocks, block->index);
+
+      /* Check blocks are monotonic pre-RA (not always true post-RA) */
+      if (!validate->post_ra) {
+         CHECK(block->index >= min_block);
+         min_block = block->index + 1;
       }
 
       bool uniform_phi = false;
@@ -370,6 +411,7 @@ jay_validate_function(struct validate_state *validate)
 
    free(validate->defs);
    free(validate->files);
+   free(blocks);
 }
 
 void

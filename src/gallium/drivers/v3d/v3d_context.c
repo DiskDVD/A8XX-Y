@@ -317,6 +317,15 @@ v3d_context_destroy(struct pipe_context *pctx)
                 pipe_resource_reference(res, NULL);
         }
 
+        for (int i = 0; i < PIPE_MAX_ATTRIBS; i++)
+                pipe_vertex_buffer_unreference(&v3d->vertexbuf.vb[i]);
+
+        for (int s = 0; s < MESA_SHADER_STAGES; s++) {
+                for (int i = 0; i < PIPE_MAX_CONSTANT_BUFFERS; i++) {
+                        pipe_resource_reference(&v3d->constbuf[s].cb[i].buffer, NULL);
+                }
+        }
+
         if (v3d->blitter)
                 util_blitter_destroy(v3d->blitter);
 

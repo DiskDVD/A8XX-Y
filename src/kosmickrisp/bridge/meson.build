@@ -10,6 +10,7 @@ mtl_bridge_files = files(
 
 if host_machine.system() == 'darwin'
   mtl_bridge_files += files(
+    'mtl_argument_table.m',
     'mtl_bridge.m',
     'mtl_buffer.m',
     'mtl_command_buffer.m',
@@ -23,9 +24,11 @@ if host_machine.system() == 'darwin'
     'mtl_sampler.m',
     'mtl_sync.m',
     'mtl_texture.m',
+    'ns_process_info.m',
   )
 else
   mtl_bridge_files += files(
+    'stubs/mtl_argument_table.c',
     'stubs/mtl_bridge.c',
     'stubs/mtl_buffer.c',
     'stubs/mtl_command_buffer.c',
@@ -39,6 +42,7 @@ else
     'stubs/mtl_sampler.c',
     'stubs/mtl_sync.c',
     'stubs/mtl_texture.c',
+    'stubs/ns_process_info.c',
   )
 endif
 
@@ -54,6 +58,7 @@ libmtl_bridge = static_library(
   dependencies : mtl_bridge_dependencies,
   gnu_symbol_visibility: 'hidden',
   build_by_default: false,
+  objc_args: ['-Wno-unguarded-availability-new'],
 )
 
 idep_mtl_bridge = declare_dependency(

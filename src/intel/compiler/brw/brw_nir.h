@@ -367,6 +367,7 @@ brw_uniform_block_size(const struct intel_device_info *devinfo,
       : num_components;
 }
 
+void brw_nir_cleanup_pre_fs_prog_data(struct brw_pass_tracker *pt);
 void brw_nir_optimize(struct brw_pass_tracker *pt);
 
 bool brw_nir_move_interpolation_to_top(nir_shader *nir);

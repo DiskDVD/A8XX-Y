@@ -70,6 +70,9 @@ def declare_options(android_version):
         B("anv_fs_sampler_undef_derivatives_workaround", False,
           "Fixes samplers in fragment shaders computing undefined values for derivatives with lanes disabled by control flow",
           c_name="fs_sampler_undef_derivatives_workaround"),
+        B("anv_slm_robust_vectorization", False,
+          "Use robust vectorization for SLM accesses",
+          c_name="slm_robust_vectorization"),
 
         # Workaround various driver
         B("always_flush_cache", False,
@@ -113,6 +116,12 @@ def declare_options(android_version):
         B("intel_vf_distribution", True,
           "Enable geometry distribution",
           c_name="vf_distribution"),
+        B("anv_write_lookup_maps_unconditionally", False,
+          "Unconditionally write lookup maps for BLAS update operation",
+          c_name="write_lookup_maps_unconditionally"),
+        B("anv_disable_hiz", False,
+          "Disable HiZ (equivalent to INTEL_DEBUG=nohiz). Should only be used as a temporary solution",
+          c_name="disable_hiz"),
 
         # Workaround command emission
         B("anv_barrier_post_untyped_clear_shader", False,
@@ -127,6 +136,16 @@ def declare_options(android_version):
         B("intel_enable_wa_14024015672_msaa", False,
           "Workaround for RHWO MSAA",
           c_name="wa_14024015672_msaa"),
+
+        # Workaround command emission, shader specific
+        B("force_vk_typed_barrier_after_dispatch_to_compute", False,
+          "Insert a barrier for typed resources after dispatch of a shader for other compute shaders"),
+        B("force_vk_untyped_barrier_after_dispatch_to_compute", False,
+          "Insert a barrier for untyped resources after dispatch of a shader for other compute shaders"),
+        B("force_vk_typed_barrier_after_dispatch_to_top", False,
+          "Insert a barrier for typed resources after dispatch of a shader for any other shader"),
+        B("force_vk_untyped_barrier_after_dispatch_to_top", False,
+          "Insert a barrier for untyped resources after dispatch of a shader for any other shader"),
     ]
 
     perf_options = [

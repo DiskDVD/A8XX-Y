@@ -91,6 +91,7 @@ struct shim_bo {
 
 /* Core support. */
 extern int render_node_minor;
+bool drm_shim_inited(void);
 void drm_shim_device_init(void);
 void drm_shim_override_file(const char *contents,
                             const char *path_format, ...) PRINTFLIKE(2, 3);

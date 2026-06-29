@@ -201,7 +201,7 @@ radv_optimize_nir(struct nir_shader *shader, bool optimize_conservatively)
       }
       NIR_LOOP_PASS_NOT_IDEMPOTENT(progress, skip, shader, nir_opt_if, nir_opt_if_optimize_phi_true_false);
       NIR_LOOP_PASS(progress, skip, shader, nir_opt_cse);
-      NIR_LOOP_PASS(progress, skip, shader, nir_opt_uub, &(nir_opt_uub_options){});
+      NIR_LOOP_PASS(progress, skip, shader, nir_opt_uub, &(nir_opt_uub_options){0});
 
       nir_opt_peephole_select_options peephole_select_options = {
          .limit = 8,
@@ -439,18 +439,23 @@ radv_shader_choose_subgroup_size(const struct radv_compiler_info *compiler_info,
       nir->info.min_subgroup_size = wave_size;
 }
 
+struct radv_lower_ycbcr_state {
+   const struct radv_shader_layout *layout;
+   const struct vk_sampler_state_array *embedded_samplers;
+};
+
 static const struct vk_ycbcr_conversion_state *
 ycbcr_conversion_lookup(const void *data, uint32_t set, uint32_t binding, uint32_t array_index)
 {
-   const struct radv_shader_layout *layout = data;
+   const struct radv_lower_ycbcr_state *state = data;
 
    if (set == VK_NIR_YCBCR_SET_IMMUTABLE_SAMPLERS) {
-      const struct vk_sampler_state_array *embedded_samplers = &layout->embedded_samplers;
+      const struct vk_sampler_state_array *embedded_samplers = state->embedded_samplers;
       assert(binding < embedded_samplers->sampler_count);
       return &embedded_samplers->samplers[binding].ycbcr_conversion;
    } else {
 
-      const struct radv_descriptor_set_layout *set_layout = layout->set[set].layout;
+      const struct radv_descriptor_set_layout *set_layout = state->layout->set[set].layout;
       const struct vk_ycbcr_conversion_state *ycbcr_samplers = radv_immutable_ycbcr_samplers(set_layout, binding);
 
       if (!ycbcr_samplers)
@@ -593,6 +598,8 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
          NIR_PASS(_, nir, nir_opt_deref);
          NIR_PASS(_, nir, nir_opt_dce);
       }
+
+      NIR_PASS(_, nir, nir_lower_disordered_control_barriers);
 
       /* Split member structs.  We do this before lower_io_to_temporaries so that
        * it doesn't lower system values to temporaries by accident.
@@ -800,20 +807,6 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
       if (progress) {
          NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_uniform | nir_var_image, NULL);
          NIR_PASS(_, nir, nir_opt_dce);
-
-         if (embedded_samplers.sampler_count > 0) {
-            /* Copy embedded samplers to the shader layout for easier uses. */
-            stage->layout.embedded_samplers.samplers =
-               malloc(embedded_samplers.sampler_count * sizeof(struct vk_sampler_state));
-            if (!stage->layout.embedded_samplers.samplers)
-               return NULL;
-
-            memcpy(stage->layout.embedded_samplers.samplers, embedded_samplers.samplers,
-                   embedded_samplers.sampler_count * sizeof(*embedded_samplers.samplers));
-            stage->layout.embedded_samplers.sampler_count = embedded_samplers.sampler_count;
-
-            vk_sampler_state_array_finish(&embedded_samplers);
-         }
       }
    }
 
@@ -859,10 +852,16 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
    }
 
    /* Lower immutable/embedded sampler derefs to vec4. */
-   NIR_PASS(_, nir, radv_nir_lower_immediate_samplers, compiler_info, stage);
+   NIR_PASS(_, nir, radv_nir_lower_immediate_samplers, compiler_info, stage, &embedded_samplers);
 
    progress = false;
-   NIR_PASS(progress, nir, nir_vk_lower_ycbcr_tex, ycbcr_conversion_lookup, &stage->layout);
+
+   struct radv_lower_ycbcr_state lower_ycbcr_state = {
+      .layout = &stage->layout,
+      .embedded_samplers = &embedded_samplers,
+   };
+
+   NIR_PASS(progress, nir, nir_vk_lower_ycbcr_tex, ycbcr_conversion_lookup, &lower_ycbcr_state);
    /* Gather info in the case that nir_vk_lower_ycbcr_tex might have emitted resinfo instructions. */
    if (progress)
       nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
@@ -881,6 +880,9 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
          nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
       }
    }
+
+   if (stage->key.descriptor_heap)
+      vk_sampler_state_array_finish(&embedded_samplers);
 
    return nir;
 }
@@ -3473,19 +3475,20 @@ radv_shader_nir_to_asm(const struct radv_compiler_info *compiler_info, struct ra
 }
 
 void
-radv_shader_dump_asm(const struct radv_compiler_info *compiler_info, const struct radv_shader_debug_info *debug,
-                     const struct radv_shader_info *info)
+radv_shader_dump_asm(const struct radv_compiler_info *compiler_info, struct radv_shader_debug_info *debug,
+                     const struct radv_shader_binary *binary, const struct radv_shader_info *info)
 {
-   if (debug->dump_shader) {
-      if (compiler_info->debug.dump_asm) {
-         const char *sep = "";
-         u_foreach_bit (stage, debug->stages) {
-            fprintf(stderr, "%s%s", sep, radv_get_shader_name(info, stage));
-            sep = " + ";
-         }
+   if (debug->dump_shader && compiler_info->debug.dump_asm) {
+      assert(!debug->disasm_string);
+      radv_parse_binary_debug_info(compiler_info, binary, debug);
 
-         fprintf(stderr, "\ndisasm:\n%s\n", debug->disasm_string);
+      const char *sep = "";
+      u_foreach_bit (stage, debug->stages) {
+         fprintf(stderr, "%s%s", sep, radv_get_shader_name(info, stage));
+         sep = " + ";
       }
+
+      fprintf(stderr, "\ndisasm:\n%s\n", debug->disasm_string);
    }
 }
 

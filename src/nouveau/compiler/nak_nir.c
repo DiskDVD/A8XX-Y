@@ -1731,7 +1731,8 @@ nak_postprocess_nir(nir_shader *nir,
       UNREACHABLE("Unsupported shader stage");
    }
 
-   OPT(nir, nak_nir_lower_load_store, nak);
+   if (OPT(nir, nak_nir_lower_load_store, nak))
+      OPT(nir, nir_opt_constant_folding);
 
    struct nir_opt_offsets_options nak_offset_options = {
       .max_offset_cb = nak_nir_max_imm_offset,

@@ -144,12 +144,11 @@ radv_compute_copy_memory_indirect(struct radv_cmd_buffer *cmd_buffer,
    const uint32_t copy_count = pCopyMemoryIndirectInfo->copyCount;
    VkPipelineLayout layout;
    uint32_t alloc_offset;
-   uint32_t *alloc_ptr;
    VkPipeline pipeline;
    VkResult result;
 
    if (!radv_cmd_buffer_upload_alloc_aligned(cmd_buffer, copy_count * sizeof(VkDispatchIndirectCommand), 4,
-                                             &alloc_offset, (void *)&alloc_ptr)) {
+                                             &alloc_offset, NULL)) {
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       return;
    }
@@ -382,12 +381,11 @@ radv_compute_copy_memory_to_image_indirect(struct radv_cmd_buffer *cmd_buffer,
    uint32_t texel_scale = 1;
    VkPipelineLayout layout;
    uint32_t alloc_offset;
-   uint32_t *alloc_ptr;
    VkPipeline pipeline;
    VkResult result;
 
    if (!radv_cmd_buffer_upload_alloc_aligned(cmd_buffer, copy_count * sizeof(VkDispatchIndirectCommand), 4,
-                                             &alloc_offset, (void *)&alloc_ptr)) {
+                                             &alloc_offset, NULL)) {
       vk_command_buffer_set_error(&cmd_buffer->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       return;
    }

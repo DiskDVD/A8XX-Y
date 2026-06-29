@@ -857,11 +857,18 @@ radv_check_modifier_support(struct radv_physical_device *pdev, const VkPhysicalD
    if (!found)
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
 
-   bool need_dcc_sign_reinterpret = false;
-   if (ac_modifier_has_dcc(modifier) &&
-       !radv_are_formats_dcc_compatible(pdev, info->pNext, format, info->flags, &need_dcc_sign_reinterpret) &&
-       !need_dcc_sign_reinterpret)
-      return VK_ERROR_FORMAT_NOT_SUPPORTED;
+   if (ac_modifier_has_dcc(modifier)) {
+      const VkImageCompressionControlEXT *compression =
+         vk_find_struct_const(info->pNext, IMAGE_COMPRESSION_CONTROL_EXT);
+      if (compression && compression->flags == VK_IMAGE_COMPRESSION_DISABLED_EXT)
+         return VK_ERROR_FORMAT_NOT_SUPPORTED;
+
+      bool need_dcc_sign_reinterpret = false;
+      bool ret = radv_are_formats_dcc_compatible(pdev, info->pNext, format,
+                                                 info->flags, &need_dcc_sign_reinterpret);
+      if (!ret && !need_dcc_sign_reinterpret)
+         return VK_ERROR_FORMAT_NOT_SUPPORTED;
+   }
 
    const bool video = info->usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR | VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR);
    if (video) {

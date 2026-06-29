@@ -85,6 +85,27 @@ struct gen_sub_range {
    unsigned lo;
 };
 
+template <int N>
+struct gen_sub_ranges {
+   gen_sub_range ranges[N];
+
+   constexpr
+   const gen_sub_range&
+   operator[](std::size_t i) const
+   {
+      assert(i < N);
+      return ranges[i];
+   }
+
+   constexpr
+   operator const gen_sub_range&() const
+   {
+      static_assert(N == 1, "split sub ranges cannot be cast to "
+                    "gen_sub_range");
+      return ranges[0];
+   }
+};
+
 struct gen_range {
    unsigned hi;
    unsigned lo;
@@ -108,6 +129,7 @@ struct gen_range {
       return { lo + rel_hi, lo + rel_lo };
    }
 
+   constexpr
    gen_range
    operator()(gen_sub_range rel) const
    {
@@ -118,10 +140,51 @@ struct gen_range {
       return { lo + rel.hi, lo + rel.lo };
    }
 
+   constexpr
+   gen_range
+   operator()(gen_sub_ranges<1> rel) const
+   {
+      return operator()(rel.ranges[0]);
+   }
+
    constexpr bool
    operator==(const gen_range &other) const
    {
       return hi == other.hi && lo == other.lo;
+   }
+};
+
+template <int N>
+struct gen_ranges {
+   const gen_range ranges[N];
+
+   constexpr
+   const gen_range&
+   operator[](std::size_t i) const
+   {
+      assert(i < N);
+      return ranges[i];
+   }
+
+   constexpr
+   gen_range
+   operator()(unsigned rel_hi, unsigned rel_lo) const
+   {
+      return ((const gen_range&)*this)(rel_hi, rel_lo);
+   }
+
+   constexpr
+   gen_range
+   operator()(gen_sub_ranges<1> rel) const
+   {
+      return ((const gen_range&)*this)(rel);
+   }
+
+   constexpr
+   operator const gen_range&() const
+   {
+      static_assert(N == 1, "split ranges cannot be cast to gen_range");
+      return ranges[0];
    }
 };
 
@@ -289,6 +352,12 @@ gen_raw_is_compact(const void *raw_bytes)
    /* Bit 29 always contains whether instruction is compacted or not. */
    const uint32_t *raw = (const uint32_t *)raw_bytes;
    return raw[0] & BITFIELD_BIT(29);
+}
+
+inline bool
+gen_region_is_scalar_or_linear(const gen_region rgn)
+{
+   return gen_region_is_scalar(rgn) || gen_region_is_linear(rgn);
 }
 
 static inline unsigned

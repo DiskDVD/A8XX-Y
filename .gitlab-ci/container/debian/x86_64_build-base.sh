@@ -53,6 +53,7 @@ DEPS=(
     libglfw3-dev
     "libllvm${LLVM_VERSION}"
     libpciaccess-dev
+    libsdl3-dev
     libunwind-dev
     libva-dev
     libvulkan-dev

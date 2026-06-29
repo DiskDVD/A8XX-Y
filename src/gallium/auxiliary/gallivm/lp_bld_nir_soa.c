@@ -3219,8 +3219,6 @@ do_alu_action(struct lp_build_nir_soa_context *bld,
    case nir_op_b2b1:
       result = LLVMBuildICmp(builder, LLVMIntNE, src[0], int_bld->zero, "");
       break;
-   case nir_op_b2b8:
-   case nir_op_b2b16:
    case nir_op_b2b32:
       if (src_bit_size[0] > instr->def.bit_size) {
          result = LLVMBuildTrunc(builder, src[0], dst_uint_bld->vec_type, "");
@@ -3694,7 +3692,7 @@ visit_alu(struct lp_build_nir_soa_context *bld,
        instr->op == nir_op_vec16) {
       for (unsigned i = 0; i < nir_op_infos[instr->op].num_inputs; i++) {
          result[i] = cast_type(bld, src[i],
-                               nir_op_infos[instr->op].input_types[i],
+                               nir_alu_type_get_base_type(nir_op_infos[instr->op].input_types[i]),
                                src_bit_size[i]);
       }
    } else {
@@ -3711,12 +3709,12 @@ visit_alu(struct lp_build_nir_soa_context *bld,
                src_chan[i] = src[i];
             }
             src_chan[i] = cast_type(bld, src_chan[i],
-                                    nir_op_infos[instr->op].input_types[i],
+                                    nir_alu_type_get_base_type(nir_op_infos[instr->op].input_types[i]),
                                     src_bit_size[i]);
          }
          result[c] = do_alu_action(bld, instr, src_bit_size, src_chan);
          result[c] = cast_type(bld, result[c],
-                               nir_op_infos[instr->op].output_type,
+                               nir_alu_type_get_base_type(nir_op_infos[instr->op].output_type),
                                instr->def.bit_size);
       }
    }
@@ -6158,6 +6156,21 @@ lp_build_nir_soa_prepasses(struct nir_shader *nir)
       NIR_PASS(progress, nir, nir_opt_copy_prop);
       NIR_PASS(progress, nir, nir_opt_dce);
    } while (progress);
+
+   /* Lower load_ubo_vec4 while offsets are still integer values.  Keep this
+    * outside the no_integers path because draw select/feedback paths
+    * can emit load_ubo_vec4 without setting no_integers.
+    */
+   NIR_PASS(_, nir, lp_nir_lower_ubo_vec4);
+
+   if (nir->options->no_integers) {
+      NIR_PASS(_, nir, nir_lower_int_to_float);
+      NIR_PASS(_, nir, lp_nir_no_integer_intrinsic_fixup);
+      NIR_PASS(_, nir, nir_opt_copy_prop);
+      NIR_PASS(_, nir, nir_lower_bool_to_float, false);
+      NIR_PASS(_, nir, lp_nir_lower_if_float_cond);
+      NIR_PASS(_, nir, lp_nir_no_integer_lowering);
+   }
 
    nir_divergence_analysis(nir);
 

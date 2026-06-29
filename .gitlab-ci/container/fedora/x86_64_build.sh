@@ -79,6 +79,7 @@ DEPS=(
     python3-ply
     python3-pycparser
     python3-yaml
+    SDL3-devel
     spirv-tools-devel
     spirv-llvm-translator-devel
     vulkan-headers

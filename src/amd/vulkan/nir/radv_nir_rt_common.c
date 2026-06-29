@@ -5,7 +5,9 @@
  */
 
 #include "nir/radv_nir_rt_common.h"
-#include "bvh/bvh.h"
+#include "bvh/bvh_defines.h"
+#include "tools/radv_rra.h"
+#include "tools/radv_rti.h"
 #include "nir_builder.h"
 #include "radv_shader.h"
 
@@ -516,6 +518,40 @@ radv_load_instance_id(const struct radv_compiler_info *compiler_info, nir_builde
                           nir_iadd_imm(b, instance_addr, offsetof(struct radv_bvh_instance_node, instance_id)));
 }
 
+static void
+radv_build_iteration_token(nir_builder *b, const struct radv_compiler_info *compiler_info, nir_def *node_id)
+{
+   nir_def *dst_addr = radv_build_token_begin(b, compiler_info, radv_packed_token_iteration, sizeof(struct radv_packed_iteration_token));
+   {
+      nir_def *dispatch_indices =
+         ac_nir_load_smem(b, 2, nir_imm_int64(b, compiler_info->rra_trace->ray_history_addr),
+                          nir_imm_int(b, offsetof(struct radv_ray_history_header, dispatch_index)), 4, 0);
+      nir_def *dispatch_index = nir_iadd(b, nir_channel(b, dispatch_indices, 0), nir_channel(b, dispatch_indices, 1));
+      nir_store_global(b, dispatch_index, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_store_global(b, node_id, dst_addr, .align_mul = 4);
+   }
+   radv_build_token_end(b);
+}
+
+static void
+radv_build_accel_struct_token(nir_builder *b, const struct radv_compiler_info *compiler_info, nir_def *bvh_base)
+{
+   nir_def *dst_addr = radv_build_token_begin(b, compiler_info, radv_packed_token_accel_struct, sizeof(struct radv_packed_accel_struct_token));
+   {
+      nir_def *dispatch_indices =
+         ac_nir_load_smem(b, 2, nir_imm_int64(b, compiler_info->rra_trace->ray_history_addr),
+                          nir_imm_int(b, offsetof(struct radv_ray_history_header, dispatch_index)), 4, 0);
+      nir_def *dispatch_index = nir_iadd(b, nir_channel(b, dispatch_indices, 0), nir_channel(b, dispatch_indices, 1));
+      nir_store_global(b, dispatch_index, dst_addr, .align_mul = 4);
+      dst_addr = nir_iadd_imm(b, dst_addr, 4);
+
+      nir_store_global(b, build_node_to_addr(compiler_info, b, bvh_base, false), dst_addr, .align_mul = 4);
+   }
+   radv_build_token_end(b);
+}
+
 /* When a hit is opaque the any_hit shader is skipped for this hit and the hit
  * is assumed to be an actual hit. */
 static nir_def *
@@ -809,6 +845,9 @@ build_instance_exit(nir_builder *b, const struct radv_compiler_info *compiler_in
       nir_store_deref(b, args->vars.origin, args->origin, 7);
       nir_store_deref(b, args->vars.dir, args->dir, 7);
       nir_store_deref(b, args->vars.inv_dir, nir_frcp(b, args->dir), 7);
+
+      if (args->write_ray_history)
+         radv_build_accel_struct_token(b, compiler_info, root_bvh_base);
    }
    nir_pop_if(b, NULL);
 }
@@ -919,6 +958,9 @@ radv_build_ray_traversal(const struct radv_compiler_info *compiler_info, nir_bui
       nir_pop_if(b, NULL);
 
       nir_def *bvh_node = nir_load_deref(b, args->vars.current_node);
+      if (args->write_ray_history)
+         radv_build_iteration_token(b, compiler_info, bvh_node);
+
       if (args->use_bvh_stack_rtn)
          nir_store_var(b, last_visited_node, nir_imm_int(b, RADV_BVH_STACK_TERMINAL_NODE), 0x1);
       else
@@ -993,6 +1035,9 @@ radv_build_ray_traversal(const struct radv_compiler_info *compiler_info, nir_bui
 
                nir_store_deref(b, args->vars.bvh_base, build_bvh_base(b, compiler_info, instance_pointer, ptr_flags, false),
                                0x1);
+
+               if (args->write_ray_history)
+                  radv_build_accel_struct_token(b, compiler_info, instance_pointer);
 
                /* Push the instance root node onto the stack */
                if (args->use_bvh_stack_rtn) {
@@ -1233,6 +1278,8 @@ radv_build_ray_traversal_gfx12(const struct radv_compiler_info *compiler_info, n
       nir_pop_if(b, NULL);
 
       nir_def *bvh_node = nir_load_deref(b, args->vars.current_node);
+      if (args->write_ray_history)
+         radv_build_iteration_token(b, compiler_info, bvh_node);
 
       nir_def *prev_node = nir_load_deref(b, args->vars.previous_node);
       nir_store_deref(b, args->vars.previous_node, bvh_node, 0x1);
@@ -1283,7 +1330,10 @@ radv_build_ray_traversal_gfx12(const struct radv_compiler_info *compiler_info, n
                nir_store_deref(b, args->vars.sbt_offset_and_flags, nir_channel(b, result, 6), 1);
 
                nir_store_deref(b, args->vars.top_stack, nir_load_deref(b, args->vars.stack), 1);
-               nir_store_deref(b, args->vars.bvh_base, nir_pack_64_2x32(b, nir_channels(b, result, 0x3 << 2)), 1);
+               nir_def *new_bvh_base = nir_pack_64_2x32(b, nir_channels(b, result, 0x3 << 2));
+               nir_store_deref(b, args->vars.bvh_base, new_bvh_base, 1);
+               if (args->write_ray_history)
+                  radv_build_accel_struct_token(b, compiler_info, new_bvh_base);
 
                /* Push the instance root node onto the stack */
                if (args->use_bvh_stack_rtn) {

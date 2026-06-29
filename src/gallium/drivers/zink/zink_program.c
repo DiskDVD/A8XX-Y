@@ -1726,8 +1726,10 @@ create_compute_program(struct zink_context *ctx, nir_shader *nir)
 {
    struct zink_screen *screen = zink_screen(ctx->base.screen);
    struct zink_compute_program *comp = create_program(ctx, true);
-   if (!comp)
+   if (!comp) {
+      ralloc_free(nir);
       return NULL;
+   }
    simple_mtx_init(&comp->cache_lock, mtx_plain);
    comp->uses_bindless = nir->info.uses_bindless;
    comp->scratch_size = nir->scratch_size;

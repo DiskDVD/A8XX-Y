@@ -3403,7 +3403,7 @@ emit_samplepos_setup(nir_to_brw_state &ntb)
    brw_shader &s = ntb.s;
 
    assert(s.stage == MESA_SHADER_FRAGMENT);
-   assert(brw_fs_prog_data(s.prog_data)->persample_dispatch != INTEL_NEVER);
+   assert(brw_fs_prog_data(s.prog_data)->persample_dispatch);
 
    const brw_builder abld = bld.annotate("compute sample position");
    brw_reg pos = abld.vgrf(BRW_TYPE_F, 2);
@@ -3444,7 +3444,6 @@ emit_sampleid_setup(nir_to_brw_state &ntb)
 
    assert(s.stage == MESA_SHADER_FRAGMENT);
    ASSERTED brw_fs_prog_key *key = (brw_fs_prog_key*) s.key;
-   struct brw_fs_prog_data *fs_prog_data = brw_fs_prog_data(s.prog_data);
 
    const brw_builder abld = bld.annotate("compute sample id");
    brw_reg sample_id = abld.vgrf(BRW_TYPE_UD);
@@ -3500,8 +3499,7 @@ emit_sampleid_setup(nir_to_brw_state &ntb)
    abld.AND(sample_id, tmp, brw_imm_w(0xf));
 
    if (key->multisample_fbo == INTEL_SOMETIMES) {
-      brw_check_dynamic_fs_config(abld, fs_prog_data,
-                                  INTEL_FS_CONFIG_MULTISAMPLE_FBO);
+      brw_check_dynamic_fs_config(abld, INTEL_FS_CONFIG_MULTISAMPLE_FBO);
       set_predicate(BRW_PREDICATE_NORMAL,
                     abld.SEL(sample_id, sample_id, brw_imm_ud(0)));
    }
@@ -3924,8 +3922,8 @@ brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
    case nir_intrinsic_load_barycentric_centroid:
    case nir_intrinsic_load_barycentric_sample: {
       /* Use the delta_xy values computed from the payload */
-      enum intel_barycentric_mode bary = brw_barycentric_mode(
-         reinterpret_cast<const brw_fs_prog_key *>(s.key), instr);
+      enum intel_barycentric_mode bary = intel_fs_barycentric_mode_for_persample_dispatch(
+         brw_fs_prog_data(s.prog_data)->persample_dispatch, brw_barycentric_mode(instr));
       const brw_reg srcs[] = { offset(s.delta_xy[bary], bld, 0),
                               offset(s.delta_xy[bary], bld, 1) };
       bld.LOAD_PAYLOAD(dest, srcs, ARRAY_SIZE(srcs), 0);
@@ -3953,10 +3951,7 @@ brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
          brw_reg flag_reg;
          struct brw_fs_prog_key *fs_prog_key = (struct brw_fs_prog_key *) s.key;
          if (fs_prog_key->multisample_fbo == INTEL_SOMETIMES) {
-            struct brw_fs_prog_data *fs_prog_data = brw_fs_prog_data(s.prog_data);
-
             brw_check_dynamic_fs_config(bld.exec_all().group(8, 0),
-                                        fs_prog_data,
                                         INTEL_FS_CONFIG_MULTISAMPLE_FBO);
             flag_reg = brw_flag_reg(0, 0);
          }
@@ -4020,8 +4015,8 @@ brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
          dst_xy = retype(get_nir_src(ntb, instr->src[0], -1), BRW_TYPE_F);
       } else {
          /* Use the delta_xy values computed from the payload */
-         enum intel_barycentric_mode bary = brw_barycentric_mode(
-            reinterpret_cast<const brw_fs_prog_key *>(s.key), bary_intrinsic);
+         enum intel_barycentric_mode bary = intel_fs_barycentric_mode_for_persample_dispatch(
+            brw_fs_prog_data(s.prog_data)->persample_dispatch, brw_barycentric_mode(bary_intrinsic));
          dst_xy = s.delta_xy[bary];
       }
 
@@ -4260,11 +4255,10 @@ brw_from_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       const unsigned dpas_exec_size = devinfo->ver >= 20 ? 16 : 8;
       brw_builder bldn = bld.exec_all().group(dpas_exec_size, 0);
 
-      /* DPAS uses a different source order: Accumulator, B, A. */
       bldn.DPAS(retype(dest,   dest_type),
                 retype(src[0], dest_type),
-                retype(src[2], src_type),
                 retype(src[1], src_type),
+                retype(src[2], src_type),
                 sdepth,
                 rcount)
          ->saturate = nir_intrinsic_saturate(instr);

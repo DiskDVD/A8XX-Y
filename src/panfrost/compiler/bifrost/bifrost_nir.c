@@ -19,13 +19,31 @@
 #include "compiler.h"
 #include "../kraid/kraid.h"
 
-DEBUG_GET_ONCE_BOOL_OPTION(use_kraid, "PAN_USE_KRAID", false)
+#ifdef WITH_PANFROST_RUST
+#define USE_KRAID_INTERNAL (1ull << 31)
+
+static const struct debug_named_value pan_use_kraid_flags[] = {
+   { "cs", 1 << MESA_SHADER_COMPUTE, "Use Kraid for compute shaders" },
+   { "fs", 1 << MESA_SHADER_FRAGMENT, "Use Kraid for fragment shaders" },
+   { "vs", 1 << MESA_SHADER_VERTEX, "Use Kraid for vertex shaders" },
+   { "internal", USE_KRAID_INTERNAL, "Use Kraid for internal shaders" },
+   { "all", ~0, "Use Kraid for all shader stages" },
+   DEBUG_NAMED_VALUE_END,
+};
+
+DEBUG_GET_ONCE_FLAGS_OPTION(kraid_stages, "PAN_USE_KRAID",
+                            pan_use_kraid_flags, 0)
+#endif
 
 static bool
-bi_use_kraid(void)
+bi_use_kraid(nir_shader *nir)
 {
 #ifdef WITH_PANFROST_RUST
-   return debug_get_option_use_kraid();
+   uint64_t use_kraid = debug_get_option_kraid_stages();
+   if (nir->info.internal && !(use_kraid & USE_KRAID_INTERNAL))
+      return false;
+
+   return use_kraid & (1 << nir->info.stage);
 #else
    return false;
 #endif
@@ -281,7 +299,7 @@ static void
 bi_optimize_late(nir_shader *nir, uint64_t gpu_id,
                 nir_variable_mode robust_modes)
 {
-   NIR_PASS(_, nir, nir_opt_shrink_stores, true);
+   NIR_PASS(_, nir, nir_opt_shrink_stores, false /* shrink_image_store */);
    bi_optimize_loop(nir, gpu_id, false /* allow_copies */);
 
    NIR_PASS(_, nir, nir_opt_shrink_vectors, false);
@@ -1286,7 +1304,7 @@ bifrost_compile_shader_nir(nir_shader *nir,
    info->tls_size = nir->scratch_size;
    info->stage = nir->info.stage;
 
-   if (bi_use_kraid()) {
+   if (bi_use_kraid(nir)) {
 #ifdef WITH_PANFROST_RUST
       kraid_compile_nir(nir, inputs, binary, info);
 #endif

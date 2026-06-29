@@ -577,6 +577,14 @@ ac_nir_mem_vectorize_callback(unsigned align_mul, unsigned align_offset, unsigne
 
    assert(!is_store || hole_size <= 0);
 
+   /* We don't have 5 component stores, so it makes no sense to create them just to split
+    * them again later. Additionally, they can result in suboptimal vectorization,
+    * i.e. vec5 + vec1 + vec2 instead of vec4 + vec4 -> vec8 because NIR doesn't
+    * have vec6 or vec7, and only two instructions are combined at a time.
+    */
+   if (is_store && num_components == 5)
+      return false;
+
    /* If we get derefs here, only shared memory derefs are expected. */
    assert((low->intrinsic != nir_intrinsic_load_deref &&
            low->intrinsic != nir_intrinsic_store_deref) ||

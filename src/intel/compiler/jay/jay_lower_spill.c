@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "compiler/brw/brw_eu_defines.h"
 #include "jay_builder.h"
 #include "jay_builder_opcodes.h"
 #include "jay_ir.h"
@@ -63,7 +62,8 @@ jay_lower_spill(jay_function *func)
 
    assert(ugpr_reservation >= 0 && "must have reserved something");
 
-   jay_def sp = jay_bare_reg(UGPR, ugpr_reservation);
+   jay_def sp_0 = jay_bare_reg(UGPR, ugpr_reservation);
+   jay_def sp = sp_0;
    sp.num_values_m1 = func->shader->dispatch_width - 1;
 
    /* Calculate how much stack space we need */
@@ -83,9 +83,8 @@ jay_lower_spill(jay_function *func)
     * TODO: Need ABI for multi-function.
     */
    assert(func->is_entrypoint);
-   jay_def tmpu = jay_bare_reg(UGPR, ugpr_reservation);
-   jay_AND(&b, JAY_TYPE_U32, tmpu, jay_bare_reg(UGPR, 5), ~BITFIELD_MASK(10));
-   jay_SHR(&b, JAY_TYPE_U32, ADDRESS_REG, tmpu, 4);
+   jay_AND(&b, JAY_TYPE_U32, sp_0, jay_bare_reg(UGPR, 5), ~BITFIELD_MASK(10));
+   jay_SHR(&b, JAY_TYPE_U32, ADDRESS_REG, sp_0, 4);
 
    /* We use a 32-bit strided stack: SP = scratch + (lane ID * 4) */
    unsigned disp_width = b.shader->dispatch_width;
@@ -115,8 +114,8 @@ jay_lower_spill(jay_function *func)
 
          if (I->op == JAY_OPCODE_MOV && jay_is_send_like(I)) {
             if (!address_valid) {
-               jay_MOV(&b, ADDRESS_REG, tmpu);
-               jay_MOV(&b, tmpu, b.shader->scratch_size + sp_delta_B);
+               jay_MOV(&b, ADDRESS_REG, sp_0);
+               jay_MOV(&b, sp_0, b.shader->scratch_size + sp_delta_B);
                address_valid = true;
             }
 
@@ -131,7 +130,7 @@ jay_lower_spill(jay_function *func)
             jay_remove_instruction(I);
          } else if (address_valid && I->op == JAY_OPCODE_SHUFFLE) {
             /* Shuffles implicitly clobber the address register. Spill it. */
-            jay_MOV(&b, tmpu, ADDRESS_REG);
+            jay_MOV(&b, sp_0, ADDRESS_REG);
             address_valid = false;
          }
       }
@@ -139,8 +138,8 @@ jay_lower_spill(jay_function *func)
       /* Canonicalize our internal registers at block boundaries */
       if (jay_num_successors(block, GPR) > 0) {
          if (!address_valid) {
-            jay_MOV(&b, ADDRESS_REG, tmpu);
-            jay_MOV(&b, tmpu, b.shader->scratch_size + sp_delta_B);
+            jay_MOV(&b, ADDRESS_REG, sp_0);
+            jay_MOV(&b, sp_0, b.shader->scratch_size + sp_delta_B);
          }
 
          if (sp_delta_B > 0) {

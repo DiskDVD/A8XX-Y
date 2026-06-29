@@ -931,9 +931,6 @@ static bool visit_alu(struct ac_nir_context *ctx, const nir_alu_instr *instr)
    case nir_op_b2b1: /* after loads */
       result = emit_i2b(&ctx->ac, src[0]);
       break;
-   case nir_op_b2b16: /* before stores */
-      result = LLVMBuildZExt(ctx->ac.builder, src[0], ctx->ac.i16, "");
-      break;
    case nir_op_b2b32: /* before stores */
       result = LLVMBuildZExt(ctx->ac.builder, src[0], ctx->ac.i32, "");
       break;

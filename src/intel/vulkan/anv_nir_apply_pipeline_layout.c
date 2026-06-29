@@ -2732,16 +2732,5 @@ anv_nir_apply_pipeline_layout(nir_shader *shader,
               map->sampler_to_descriptor[i].plane);
    }
 #endif
-
-   /* Now that we're done computing the surface and sampler portions of the
-    * bind map, hash them.  This lets us quickly determine if the actual
-    * mapping has changed and not just a no-op pipeline change.
-    */
-   _mesa_blake3_compute(map->surface_to_descriptor,
-                      map->surface_count * sizeof(struct anv_pipeline_binding),
-                      map->surface_blake3);
-   _mesa_blake3_compute(map->sampler_to_descriptor,
-                      map->sampler_count * sizeof(struct anv_pipeline_binding),
-                      map->sampler_blake3);
    return progress;
 }

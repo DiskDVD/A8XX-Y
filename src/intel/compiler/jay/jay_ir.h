@@ -688,6 +688,20 @@ jay_src_type(const jay_inst *I, unsigned s)
    if (I->op == JAY_OPCODE_SHUFFLE && s == 1)
       return JAY_TYPE_U32;
 
+   /* TODO: *maybe* find a less janky way of handling mixed bfloat op type
+    * restrictions? this *might* be the "least bad" option 
+    */
+   if (I->type == JAY_TYPE_BF16) {
+      /* Bspec 56640: src2 of 3-src instructions cannot be bfloat */
+      if (jay_num_isa_srcs(I) == 3 && s == 2)
+         return JAY_TYPE_F32;
+      /* Bspec 56640: src1 of 2-src instructions involving multiplier
+       * cannot be bfloat 
+       */
+      if (jay_num_isa_srcs(I) == 2 && s == 1)
+         return JAY_TYPE_F32;
+   }
+
    /* Other instructions inherit the destination type. */
    return I->type;
 }
@@ -885,6 +899,13 @@ jay_src_alignment(jay_shader *shader, const jay_inst *I, unsigned s)
       return jay_ugpr_per_grf(shader);
    }
 
+   /* Undocumented HW restriction: All operands to an operation involving
+    * bfloats must be GRF-aligned. 
+    */
+   if (jay_src_type(I, s) == JAY_TYPE_BF16 || I->type == JAY_TYPE_BF16) {
+      return jay_ugpr_per_grf(shader);
+   }
+
    /* If the destination is 64-bit, we need the sources to be aligned. Along
     * with a suitable partitioning, this ensures only the aligned low half of
     * a strided register is used, preventing invalid assembly like:
@@ -914,9 +935,29 @@ jay_dst_alignment(jay_shader *shader, const jay_inst *I)
     *    accumulator is used as an implicit source or an explicit source in an
     *    instruction.
     */
-   if (I->dst.file == UGPR &&
-       (I->op == JAY_OPCODE_SEND || I->op == JAY_OPCODE_MUL_32)) {
+   if (I->dst.file == UGPR && (I->op == JAY_OPCODE_SEND ||
+                               I->op == JAY_OPCODE_MUL_32 ||
+                               I->op == JAY_OPCODE_COARSE_PIXEL_CORNERS)) {
 
+      return jay_ugpr_per_grf(shader);
+   }
+
+   /* Undocumented HW restriction: All operands to an operation involving
+    * bfloats must be GRF-aligned.
+    */
+   if (I->type == JAY_TYPE_BF16) {
+      return jay_ugpr_per_grf(shader);
+   }
+
+   bool is_any_operand_bf16 = false;
+   for (size_t i = 0; i < I->num_srcs; i++) {
+      if (jay_src_type(I, i) == JAY_TYPE_BF16) {
+         is_any_operand_bf16 = true;
+         break;
+      }
+   }
+
+   if (is_any_operand_bf16) {
       return jay_ugpr_per_grf(shader);
    }
 
@@ -977,10 +1018,18 @@ jay_simd_width_physical(jay_shader *s, const jay_inst *I)
 static inline unsigned
 jay_macro_length(const jay_inst *I)
 {
-   bool macro = (I->op == JAY_OPCODE_MUL_32 ||
-                 I->op == JAY_OPCODE_SHUFFLE ||
-                 I->op == JAY_OPCODE_LOOP_ONCE);
-   return macro ? 2 : 1;
+   switch (I->op) {
+   case JAY_OPCODE_MUL_32:
+   case JAY_OPCODE_SHUFFLE:
+   case JAY_OPCODE_LOOP_ONCE:
+      return 2;
+
+   case JAY_OPCODE_SLICE_REPACK:
+      return 1 << jay_slice_repack_factor_log2(I);
+
+   default:
+      return 1;
+   }
 }
 
 static inline bool
@@ -991,7 +1040,8 @@ jay_is_no_mask(const jay_inst *I)
           I->op == JAY_OPCODE_DESWIZZLE_EVEN ||
           I->op == JAY_OPCODE_DESWIZZLE_ODD ||
           I->op == JAY_OPCODE_OFFSET_PACKED_PIXEL_COORDS ||
-          I->op == JAY_OPCODE_DPAS;
+          I->op == JAY_OPCODE_DPAS ||
+          I->op == JAY_OPCODE_SLICE_REPACK;
 }
 
 /**
@@ -1100,10 +1150,17 @@ typedef struct jay_block {
    struct jay_temp_regs temps_out;
 
    /**
-    * Is this block a loop header?  If not, all of its predecessors precede it
-    * in source order.
+    * Is this block a logical loop header?  If not, all of its predecessors
+    * precede it in source order.
     */
    bool loop_header;
+
+   /**
+    * Is this a physical loop header, in the sense of using a WHILE instruction?
+    * This can be set without loop_header in the case of unconditional
+    * termination.
+    */
+   bool physical_loop_header;
 
    /** True if all non-exited lanes execute this block together */
    bool uniform;

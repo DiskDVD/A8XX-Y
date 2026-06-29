@@ -3296,9 +3296,8 @@ nir_ssa_alu_instr_src_components(const nir_alu_instr *instr, unsigned src)
 
 #define CASE_ALL_SIZES(op) \
    case op:                \
-   case op##8:             \
-   case op##16:            \
-   case op##32:
+   case op##32:            \
+   case op##_pan:
 
 bool
 nir_alu_instr_is_comparison(const nir_alu_instr *instr)
@@ -3320,8 +3319,8 @@ nir_alu_instr_is_comparison(const nir_alu_instr *instr)
       CASE_ALL_SIZES(nir_op_uge)
       CASE_ALL_SIZES(nir_op_ieq)
       CASE_ALL_SIZES(nir_op_ine)
-      CASE_ALL_SIZES(nir_op_bitz)
-      CASE_ALL_SIZES(nir_op_bitnz)
+   case nir_op_bitz:
+   case nir_op_bitnz:
    case nir_op_inot:
       return true;
    default:

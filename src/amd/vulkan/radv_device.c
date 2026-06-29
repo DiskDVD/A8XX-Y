@@ -809,6 +809,7 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pd
    b.tables[RADV_RGP_DISPATCH_TABLE] = &device->layer_dispatch.rgp;
    b.tables[RADV_RRA_DISPATCH_TABLE] = &device->layer_dispatch.rra;
    b.tables[RADV_RMV_DISPATCH_TABLE] = &device->layer_dispatch.rmv;
+   b.tables[RADV_UTRACE_DISPATCH_TABLE] = &device->layer_dispatch.utrace;
    b.tables[RADV_CTX_ROLL_DISPATCH_TABLE] = &device->layer_dispatch.ctx_roll;
 
    bool gather_ctx_rolls = instance->vk.trace_mode & RADV_TRACE_MODE_CTX_ROLLS;
@@ -827,6 +828,9 @@ init_dispatch_tables(struct radv_device *device, struct radv_physical_device *pd
    if (instance->vk.trace_mode & VK_TRACE_MODE_RMV)
       add_entrypoints(&b, &rmv_device_entrypoints, RADV_RMV_DISPATCH_TABLE);
 #endif
+
+   if (device->utrace.context)
+      add_entrypoints(&b, &utrace_device_entrypoints, RADV_UTRACE_DISPATCH_TABLE);
 
    if (gather_ctx_rolls)
       add_entrypoints(&b, &ctx_roll_device_entrypoints, RADV_CTX_ROLL_DISPATCH_TABLE);
@@ -854,7 +858,7 @@ capture_trace(VkQueue _queue)
 
    VkResult result = VK_SUCCESS;
 
-   if (instance->vk.trace_mode & RADV_TRACE_MODE_RRA)
+   if (instance->vk.trace_mode & (RADV_TRACE_MODE_RRA | RADV_TRACE_MODE_RTI))
       device->rra_trace.triggered = true;
 
    if (device->vk.memory_trace_data.is_enabled) {
@@ -1334,6 +1338,7 @@ radv_create_winsys(struct radv_device *device)
 static void
 radv_destroy_device(struct radv_device *device, const VkAllocationCallbacks *pAllocator)
 {
+   radv_device_finish_utrace(device);
    radv_device_finish_perf_counter(device);
 
    if (device->zero_bo) {
@@ -1442,6 +1447,10 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->vk.capture_trace = capture_trace;
 
    device->vk.command_buffer_ops = &radv_cmd_buffer_ops;
+
+   result = radv_device_init_utrace(device);
+   if (result != VK_SUCCESS)
+      goto fail;
 
    init_dispatch_tables(device, pdev);
 

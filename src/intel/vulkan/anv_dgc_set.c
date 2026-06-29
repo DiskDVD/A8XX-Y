@@ -10,6 +10,24 @@
 
 #include "anv_private.h"
 
+
+enum anv_dgc_stage
+anv_mesa_stage_to_dgc_stage(mesa_shader_stage stage)
+{
+   static const enum anv_dgc_stage stages[] = {
+      [MESA_SHADER_VERTEX] = ANV_DGC_STAGE_VERTEX,
+      [MESA_SHADER_TESS_CTRL] = ANV_DGC_STAGE_TESS_CTRL,
+      [MESA_SHADER_TESS_EVAL] = ANV_DGC_STAGE_TESS_EVAL,
+      [MESA_SHADER_GEOMETRY]  = ANV_DGC_STAGE_GEOMETRY,
+      [MESA_SHADER_FRAGMENT]  = ANV_DGC_STAGE_FRAGMENT,
+      [MESA_SHADER_MESH]      = ANV_DGC_STAGE_MESH,
+      [MESA_SHADER_TASK]      = ANV_DGC_STAGE_TASK,
+      [MESA_SHADER_COMPUTE]   = ANV_DGC_STAGE_COMPUTE,
+   };
+   assert(stage < ARRAY_SIZE(stages));
+   return stages[stage];
+}
+
 enum anv_dgc_stage
 anv_vk_stage_to_dgc_stage(VkShaderStageFlags vk_stage)
 {

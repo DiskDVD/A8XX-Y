@@ -150,6 +150,11 @@ blit_resolve(struct zink_context *ctx, const struct pipe_blit_info *info, bool *
                      1, &region);
    zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
 
+   if (cmdbuf == ctx->bs->cmdbuf && ctx->track_renderpasses) {
+      ctx->needs_transfer_sync = true;
+      dst->obj->transfer_rp = ctx->rp_counter;
+   }
+
    return true;
 }
 
@@ -327,6 +332,11 @@ blit_native(struct zink_context *ctx, const struct pipe_blit_info *info, bool *n
                   zink_filter(info->filter));
 
    zink_cmd_debug_marker_end(ctx, cmdbuf, marker);
+
+   if (cmdbuf == ctx->bs->cmdbuf && ctx->track_renderpasses) {
+      ctx->needs_transfer_sync = true;
+      dst->obj->transfer_rp = ctx->rp_counter;
+   }
 
    return true;
 }
@@ -666,7 +676,9 @@ zink_blit_barriers(struct zink_context *ctx, struct zink_resource *src, struct z
       VkImageLayout layout = !screen->driver_workarounds.general_layout && screen->info.have_EXT_attachment_feedback_loop_layout ?
                              VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT :
                              VK_IMAGE_LAYOUT_GENERAL;
-      screen->image_barrier(ctx, src, layout, VK_ACCESS_SHADER_READ_BIT | flags, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | pipeline);
+      /* apply read barrier first to avoid "sticky" read+write access flags in resource_needs_barrier() */
+      screen->image_barrier(ctx, src, layout, VK_ACCESS_SHADER_READ_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+      screen->image_barrier(ctx, src, layout, flags, pipeline);
    } else {
       if (src) {
          VkImageLayout layout = screen->driver_workarounds.general_layout ? VK_IMAGE_LAYOUT_GENERAL :
@@ -733,37 +745,4 @@ zink_blit_region_covers(struct u_rect region, struct u_rect covers)
     u_rect_union(&intersect, &r, &c);
     return intersect.x0 == c.x0 && intersect.y0 == c.y0 &&
            intersect.x1 == c.x1 && intersect.y1 == c.y1;
-}
-
-void
-zink_draw_rectangle(struct blitter_context *blitter, void *vertex_elements_cso,
-                    blitter_get_vs_func get_vs, int x1, int y1, int x2, int y2,
-                    float depth, unsigned num_instances, enum blitter_attrib_type type,
-                    const struct blitter_attrib *attrib)
-{
-   struct zink_context *ctx = zink_context(blitter->pipe);
-
-   struct blitter_attrib new_attrib = *attrib;
-
-   /* Avoid inconsistencies in rounding between both triangles which can show with
-    * nearest filtering by expanding the rect so only one triangle is effectively drawn.
-    */
-   if (ctx->blit_scissor && ctx->blit_nearest) {
-      int64_t new_x1 = (int64_t)x1 * 2 - x2;
-      int64_t new_y2 = (int64_t)y2 * 2 - y1;
-      if (new_x1 < INT32_MAX && new_x1 > INT32_MIN &&
-          new_y2 < INT32_MAX && new_y2 > INT32_MIN) {
-         x1 = new_x1;
-         y2 = new_y2;
-
-         if (type == UTIL_BLITTER_ATTRIB_TEXCOORD_XY ||
-             type == UTIL_BLITTER_ATTRIB_TEXCOORD_XYZW) {
-            new_attrib.texcoord.x1 += new_attrib.texcoord.x1 - new_attrib.texcoord.x2;
-            new_attrib.texcoord.y2 += new_attrib.texcoord.y2 - new_attrib.texcoord.y1;
-         }
-      }
-   }
-
-   util_blitter_draw_rectangle(blitter, vertex_elements_cso, get_vs, x1, y1, x2, y2,
-                               depth, num_instances, type, &new_attrib);
 }

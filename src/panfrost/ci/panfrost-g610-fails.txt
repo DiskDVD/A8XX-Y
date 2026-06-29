@@ -15,7 +15,6 @@ afbcp-spec@arb_shader_texture_lod@execution@tex-miplevel-selection *projgradarb 
 afbcp-spec@arb_shader_texture_lod@execution@tex-miplevel-selection *projgradarb 2d_projvec4,Fail
 afbcp-spec@arb_shader_texture_lod@execution@tex-miplevel-selection *projgradarb 2dshadow,Fail
 afbcp-spec@arb_shader_texture_lod@execution@tex-miplevel-selection *projgradarb 3d,Fail
-afbcp-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 afbcp-spec@glsl-1.30@execution@tex-miplevel-selection texturegrad 1darray,Fail
 afbcp-spec@glsl-1.30@execution@tex-miplevel-selection texturegrad 1darrayshadow,Fail
 afbcp-spec@glsl-1.30@execution@tex-miplevel-selection texturegrad 1d,Fail
@@ -110,7 +109,6 @@ spec@ext_framebuffer_multisample@draw-buffers-alpha-to-coverage 8,Fail
 spec@ext_framebuffer_multisample@sample-alpha-to-coverage 16 color,Fail
 spec@ext_framebuffer_multisample@sample-alpha-to-coverage 6 color,Fail
 spec@ext_framebuffer_multisample@sample-alpha-to-coverage 8 color,Fail
-spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount-multithread,Crash
 spec@ext_shader_framebuffer_fetch@execution@gles3@discard-ms8,Fail
 spec@ext_shader_framebuffer_fetch_non_coherent@execution@gles3@discard-ms8,Fail
 spec@ext_transform_feedback2@draw-auto,Fail

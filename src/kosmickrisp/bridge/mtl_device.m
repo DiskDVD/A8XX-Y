@@ -89,6 +89,21 @@ mtl_device_get_architecture_name(mtl_device *dev, char buffer[256])
    }
 }
 
+uint32_t
+mtl_device_get_gpu_apple_family(mtl_device *dev)
+{
+   @autoreleasepool {
+      id<MTLDevice> device = (id<MTLDevice>)dev;
+      uint32_t gpu_family = 0u;
+      MTLGPUFamily family = MTLGPUFamilyApple1;
+      while([device supportsFamily:family]) {
+         family += 1u;
+         gpu_family += 1u;
+      }
+      return gpu_family;
+   }
+}
+
 uint64_t
 mtl_device_get_registry_id(mtl_device *dev)
 {
@@ -279,5 +294,23 @@ mtl_new_buffer_with_bytes_no_copy(mtl_device *device, void* ptr,
    @autoreleasepool {
       id<MTLDevice> dev = (id<MTLDevice>)device;
       return [dev newBufferWithBytesNoCopy:ptr length:size_B options:KK_MTL_RESOURCE_OPTIONS deallocator:nil];
+   }
+}
+
+mtl_command_allocator *
+mtl_new_command_allocator(mtl_device *device)
+{
+   @autoreleasepool {
+      id<MTLDevice> dev = (id<MTLDevice>)device;
+      return [dev newCommandAllocator];
+   }
+}
+
+mtl_command_buffer *
+mtl_new_command_buffer(mtl_device *device)
+{
+   @autoreleasepool {
+      id<MTLDevice> dev = (id<MTLDevice>)device;
+      return [dev newCommandBuffer];
    }
 }

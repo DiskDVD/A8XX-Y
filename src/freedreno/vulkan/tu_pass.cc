@@ -1551,7 +1551,8 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
          subpass->srgb_cntl |= 1 << i;
 
       if (!att_is_msrtss) {
-         if (att_info->resolveMode != VK_RESOLVE_MODE_NONE) {
+         if (att_info->resolveMode != VK_RESOLVE_MODE_NONE &&
+             att_info->resolveImageView) {
             struct tu_render_pass_attachment *resolve_att = &pass->attachments[a];
             VK_FROM_HANDLE(tu_image_view, resolve_view, att_info->resolveImageView);
             tu_setup_dynamic_attachment(resolve_att, resolve_view,
@@ -1658,7 +1659,8 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
          }
 
          if (!att_is_msrtss) {
-            if (common_info->resolveMode != VK_RESOLVE_MODE_NONE) {
+            if (common_info->resolveMode != VK_RESOLVE_MODE_NONE &&
+                common_info->resolveImageView) {
                struct tu_render_pass_attachment *resolve_att = &pass->attachments[a];
                VK_FROM_HANDLE(tu_image_view, resolve_view,
                               common_info->resolveImageView);

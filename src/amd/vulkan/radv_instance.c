@@ -90,6 +90,7 @@ static const struct debug_control radv_debug_options[] = {
    {"nosmemmitigation", RADV_DEBUG_NO_SMEM_MITIGATION},
    {"fullsync", RADV_DEBUG_FULL_SYNC},
    {"notmz", RADV_DEBUG_NO_TMZ},
+   {"noheap", RADV_DEBUG_NO_HEAP},
    {NULL, 0},
 };
 
@@ -138,7 +139,6 @@ static const struct debug_control radv_experimental_options[] = {
    {"hic", RADV_EXPERIMENTAL_HIC},
    {"sparse", RADV_EXPERIMENTAL_SPARSE},
    {"bfloat16", RADV_EXPERIMENTAL_BFLOAT16},
-   {"heap", RADV_EXPERIMENTAL_DESCRIPTOR_HEAP},
    {NULL, 0},
 };
 
@@ -175,7 +175,9 @@ radv_get_perftest_option_name(int id)
 static const struct debug_control trace_options[] = {
    {"rgp", RADV_TRACE_MODE_RGP},
    {"rra", RADV_TRACE_MODE_RRA},
+   {"rti", RADV_TRACE_MODE_RTI},
    {"ctxroll", RADV_TRACE_MODE_CTX_ROLLS},
+   {"ranges", RADV_TRACE_MODE_RANGES},
    {NULL, 0},
 };
 

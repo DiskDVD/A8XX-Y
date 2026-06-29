@@ -76,7 +76,7 @@ op('avg',   2, 's16 s32 u16 u32', Props.NEGATE | Props.CMOD)
 op('bfe',   3, 'u32 s32', Props.NEGATE0)
 op('bfi1',  2, 'u32')
 op('bfi2',  3, 'u32')
-op('bfn',   3, 'u32', Props.CMOD, ['uint8_t ctrl'])
+op('bfn',   3, 'u16 u32', Props.CMOD, ['uint8_t ctrl'])
 op('bfrev', 1, 'u32', Props.NEGATE)
 op('cbit',  1, 'u32')
 op('cmp',   2, 'u32', Props.NEGATE | Props.CMOD)
@@ -175,7 +175,8 @@ op('and_u32_u16', 2, 'u32')
 # per-lane value. Then offset_packed_pixel_coords adds the appropriate packed
 # 2x16-bit offset within each quad, giving 2x16-bit per-lane coordinates.
 op('expand_quad', 2, 'u32')
-op('offset_packed_pixel_coords', 1, 'u32')
+op('offset_packed_pixel_coords', 2, 'u32')
+op("coarse_pixel_corners", 1, 'u32')
 op('extract_subspan_info', 2, 'u32', Props.CMOD, ['uint16_t mask'])
 
 # Phi function representations
@@ -233,6 +234,12 @@ op('dpas', 3, 'u32', 0, [
     'enum jay_type src_type',
     'uint8_t sbid',
     'uint8_t pad[3]',
+])
+
+# Pack/unpack multiple sources to/from a single 32-bit def.
+op('slice_repack', 1, 'u32', 0, [
+   'uint8_t factor_log2',
+   'bool unpack',
 ])
 
 # Initialize helper invocations. Takes 16-bit halves of the dispatch mask.

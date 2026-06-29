@@ -410,7 +410,9 @@ struct anv_dgc_gfx_state {
    struct anv_dgc_gfx_descriptor descriptor;
 
    struct {
-      uint64_t addresses[4];
+      struct {
+         uint64_t addresses[4];
+      } stages[ANV_DGC_N_GFX_STAGES];
    } push_constants;
 
    struct {

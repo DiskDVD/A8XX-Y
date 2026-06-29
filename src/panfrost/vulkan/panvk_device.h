@@ -48,11 +48,6 @@ enum panvk_queue_family {
    PANVK_QUEUE_FAMILY_COUNT,
 };
 
-struct panvk_device_queue_family {
-   struct vk_queue **queues;
-   int queue_count;
-};
-
 struct panvk_device {
    struct vk_device vk;
 
@@ -98,8 +93,6 @@ struct panvk_device {
    uint32_t *dump_region_size;
 
    struct vk_device_dispatch_table cmd_dispatch;
-
-   struct panvk_device_queue_family queue_families[PANVK_QUEUE_FAMILY_COUNT];
 
    struct panvk_precomp_cache *precomp_cache;
 
@@ -213,6 +206,12 @@ panvk_as_free(struct panvk_device *device, struct util_vma_heap *heap,
    util_vma_heap_free(heap, address, size);
    simple_mtx_unlock(&device->as.lock);
 }
+
+struct nir_shader;
+
+bool panvk_nir_lower_tile_image(struct nir_shader *nir,
+                                uint32_t *color_read_out, bool *z_read_out,
+                                bool *s_read_out);
 
 #if PAN_ARCH
 VkResult

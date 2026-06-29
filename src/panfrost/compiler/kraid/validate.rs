@@ -69,9 +69,8 @@ fn validate_instr(instr: &Instr, ssa_vals: &mut FxHashSet<SSAValue>) {
         let dst_type_bits = dst_type.bits();
         let dst_type_comps = dst_type.comps();
         if dst_type_bits >= 32 {
-            assert_eq!(dst_type_comps, 1);
             assert_eq!(dst.lanes, DstLanes::All);
-            let nregs = dst_type_bits.div_ceil(32);
+            let nregs = (dst_type_bits * dst_type_comps).div_ceil(32);
             assert_eq!(nregs * 4, dst.dst_ref.bytes_written());
         } else {
             let dst_type_bytes =
@@ -96,9 +95,24 @@ impl Shader<'_> {
             blocks.insert(bb.label);
         }
 
+        let mut allow_reg_in = true;
+        let mut allow_non_reg_out = true;
         let mut ssa_vals: FxHashSet<SSAValue> = Default::default();
-        for bb in &self.blocks {
+        for (bi, bb) in self.blocks.iter().enumerate() {
             for i in &bb.instrs {
+                if matches!(&i.op, Op::RegIn(_)) {
+                    assert!(bi == 0);
+                    assert!(allow_reg_in);
+                } else if !matches!(&i.op, Op::Nop(_)) {
+                    allow_reg_in = false;
+                }
+
+                if matches!(&i.op, Op::RegOut(_)) {
+                    allow_non_reg_out = false;
+                } else if !matches!(&i.op, Op::Nop(_)) {
+                    assert!(allow_non_reg_out);
+                }
+
                 validate_instr(&i, &mut ssa_vals);
             }
         }

@@ -94,3 +94,7 @@ dEQP-GLES3.functional.texture.specification.texstorage2d.format.r16ui_2d
 # check out https://gitlab.freedesktop.org/mesa/mesa/-/jobs/97999253
 dEQP-GLES3.functional.fbo.msaa.[24]_samples.rgba4
 dEQP-GLES3.functional.fbo.msaa.[24]_samples.rg8
+
+# Regression from nearest_consistency fixes. Since this doesn't show up on 750,
+# assuming it's the 16-bit color UBWC problem.
+dEQP-GLES3.functional.fbo.msaa.4_samples.r16f

@@ -253,7 +253,9 @@ struct radv_llvm_compiler_options {
 #define PS_STATE_RAST_PRIM__MASK                0x3
 #define PS_STATE_USE_FLOAT_FRAG_COORD_XY__SHIFT 24
 #define PS_STATE_USE_FLOAT_FRAG_COORD_XY__MASK  0x1
-#define PS_STATE_USE_SAMPLE_MASK_IN__SHIFT      25
+#define PS_STATE_USE_QUAD_POS__SHIFT            25
+#define PS_STATE_USE_QUAD_POS__MASK             0x1
+#define PS_STATE_USE_SAMPLE_MASK_IN__SHIFT      26
 #define PS_STATE_USE_SAMPLE_MASK_IN__MASK       0x1
 
 struct radv_shader_layout {
@@ -270,8 +272,6 @@ struct radv_shader_layout {
    bool independent_sets;
 
    const VkShaderDescriptorSetAndBindingMappingInfoEXT *mapping;
-
-   struct vk_sampler_state_array embedded_samplers;
 };
 
 struct radv_shader_stage {
@@ -668,8 +668,8 @@ struct radv_shader_binary *radv_shader_nir_to_asm(const struct radv_compiler_inf
                                                   struct radv_shader_stage *pl_stage, struct nir_shader *const *shaders,
                                                   int shader_count, const struct radv_graphics_state_key *gfx_state);
 
-void radv_shader_dump_asm(const struct radv_compiler_info *compiler_info, const struct radv_shader_debug_info *debug,
-                          const struct radv_shader_info *info);
+void radv_shader_dump_asm(const struct radv_compiler_info *compiler_info, struct radv_shader_debug_info *debug,
+                          const struct radv_shader_binary *binary, const struct radv_shader_info *info);
 
 char *radv_dump_nir_shaders(const struct radv_compiler_info *compiler_info, struct nir_shader *const *shaders, int shader_count);
 

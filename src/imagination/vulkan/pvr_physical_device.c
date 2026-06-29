@@ -185,6 +185,7 @@ static void pvr_physical_device_get_supported_extensions(
       .EXT_debug_marker = true,
       .EXT_depth_clamp_zero_one = true,
       .EXT_depth_clip_enable = true,
+      .EXT_device_memory_report = true,
       .EXT_image_drm_format_modifier = true,
       .EXT_extended_dynamic_state = true,
       .EXT_extended_dynamic_state2 = true,
@@ -503,6 +504,9 @@ static void pvr_physical_device_get_supported_features(
 
       /* VK_EXT_depth_clip_enable */
       .depthClipEnable = true,
+
+      /* VK_EXT_device_memory_report */
+      .deviceMemoryReport = true,
 
       /* VK_KHR_line_rasterization */
       .bresenhamLines = true,

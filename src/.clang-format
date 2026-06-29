@@ -337,7 +337,6 @@ ForEachMacros:
   - jay_foreach_index_rev
   - jay_foreach_src_index
   - jay_foreach_src_index_rev
-  - jay_repair_foreach_phi
   - jay_foreach_phi_src_in_block
   - jay_foreach_phi_dst_in_block
   - jay_foreach_preload

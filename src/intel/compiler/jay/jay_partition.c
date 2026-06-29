@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <math.h>
 #include "util/u_math.h"
 #include "jay_ir.h"
 #include "jay_private.h"
@@ -231,6 +232,30 @@ jay_partition_grf(jay_shader *shader)
       jay_compute_liveness(f);
       jay_calculate_register_demands(f);
 
+      unsigned ugpr_limit = 1024;
+
+      if (jay_debug & JAY_DBG_SPILL) {
+         /* UGPR spilling needs 1 extra register throughout the program but 2
+          * extra registers right at the beginning with all the preloading.
+          */
+         ugpr_limit = analyze_per_inst(shader).ugpr + 1;
+
+         jay_foreach_preload(f, I) {
+            if (I->dst.file == UGPR) {
+               uint32_t max = jay_preload_reg(I) + jay_num_values(I->dst) + 2;
+               ugpr_limit = MAX2(ugpr_limit, max);
+            }
+         }
+      }
+
+      if (f->demand[UGPR] > ugpr_limit) {
+         jay_spill(f, UGPR, ugpr_limit);
+         jay_compute_liveness(f);
+         jay_calculate_register_demands(f);
+      }
+
+      assert(f->demand[UGPR] <= ugpr_limit);
+
       demand[GPR] = MAX2(demand[GPR], f->demand[GPR]);
       demand[UGPR] = MAX2(demand[UGPR], f->demand[UGPR]);
    }
@@ -250,13 +275,13 @@ jay_partition_grf(jay_shader *shader)
    unsigned spilling_grfs = 0, mem_slots = 0;
    unsigned special_4 = payload_4[0] + payload_4[1] + eot_4, special_u;
 
-   /* Our current stride partition heuristic is rather dumb: allocate as few
-    * non-32-bit GRFs as possible, and assign the rest to 32-bit. This performs
-    * well for 32-bit code but poorly for 16-bit/64-bit heavy routines.
-    * We'll need stride-aware demand calculations to fix that (TODO).
-    */
-   unsigned grf_8 = align(instr_req.gpr[JAY_STRIDE_8], 2) * grf_per_gpr;
-   unsigned grf_2 = instr_req.gpr[JAY_STRIDE_2] * grf_per_gpr;
+   unsigned increment[JAY_NUM_STRIDES] = { grf_per_gpr, grf_per_gpr,
+                                           2 * grf_per_gpr };
+   unsigned min_grf[JAY_NUM_STRIDES] = {};
+   for (unsigned i = 0; i < JAY_NUM_STRIDES; ++i) {
+      min_grf[i] = align(instr_req.gpr[i] * grf_per_gpr, increment[i]);
+   }
+
    unsigned mapped_accums = grf_per_gpr == 1 ? 2 : 0;
 
    for (unsigned spilling = 0; spilling <= 1; spilling++) {
@@ -274,8 +299,10 @@ jay_partition_grf(jay_shader *shader)
        */
       uniform_grfs = DIV_ROUND_UP(demand[UGPR], ugpr_per_grf) + spilling_grfs;
       unsigned bonus_grfs = 4 * grf_per_gpr;
-      unsigned estimate_nonunif_grf =
-         (demand[GPR] * grf_per_gpr) + grf_8 + grf_2 + special_4;
+      unsigned estimate_nonunif_grf = (demand[GPR] * grf_per_gpr) +
+                                      min_grf[JAY_STRIDE_8] +
+                                      min_grf[JAY_STRIDE_2] +
+                                      special_4;
 
       if ((uniform_grfs + estimate_nonunif_grf + bonus_grfs) <=
           JAY_NUM_PHYS_GRF) {
@@ -319,6 +346,53 @@ jay_partition_grf(jay_shader *shader)
       shader->num_regs[MEM] = demand[GPR];
    }
 
+   /* Now that we've decided how many GRFs to use for GPRs, we need to partition
+    * those GRFs by stride. This does not affect spilling but it has a
+    * significant effect on moves inserted by RA. We use a simple heuristic to
+    * pick a balanced partition: give each stride GRFs proportionate to the
+    * number of SSA defs with that associated stride, plus a slight bias towards
+    * 32-bit to avoid divsion by zero. This reflects our intuition that shaders
+    * heavy on 16-bit (or 64-bit) arithmetic should have more 16-bit (or 64-bit)
+    * registers overall.
+    */
+   unsigned counts[3] = { [JAY_STRIDE_4] = 1 };
+   jay_foreach_inst_in_shader(shader, block, I) {
+      if (I->dst.file == GPR) {
+         counts[jay_dst_stride_minmax(I, false)] += jay_num_values(I->dst);
+      }
+   }
+
+   min_grf[JAY_STRIDE_4] = MAX2(min_grf[JAY_STRIDE_4], special_4);
+   unsigned denom_i = counts[0] + counts[1] + counts[2];
+   float factor = nonuniform_grfs / ((float) denom_i);
+
+   unsigned picked_grf[JAY_NUM_STRIDES] = {}, total = 0;
+   for (unsigned i = 0; i < JAY_NUM_STRIDES; ++i) {
+      float ideal = ((float) counts[i]) * factor;
+
+      picked_grf[i] = align(MAX2(roundf(ideal), min_grf[i]), increment[i]);
+      total += picked_grf[i];
+   }
+
+   if (total < nonuniform_grfs) {
+      /* If we have GRFs to spare due to rounding, put them on 32-bit */
+      picked_grf[JAY_STRIDE_4] += nonuniform_grfs - total;
+   } else {
+      /* If we used too many GRFs, remove where we can */
+      unsigned excess = total - nonuniform_grfs;
+      assert(util_is_aligned(excess, grf_per_gpr));
+
+      for (unsigned i = 0; i < JAY_NUM_STRIDES; ++i) {
+         while (excess && picked_grf[i] > min_grf[i]) {
+            assert(excess >= increment[i]);
+            picked_grf[i] -= increment[i];
+            excess -= increment[i];
+         }
+      }
+   }
+
+   assert(picked_grf[0] + picked_grf[1] + picked_grf[2] == nonuniform_grfs);
+
    struct jay_partition_builder blocks[] = {
       /* Stage-specific payload */
       { UGPR, 0, payload_u[0] },
@@ -328,9 +402,9 @@ jay_partition_grf(jay_shader *shader)
 
       /* General registers */
       { UGPR, 0, uniform_grfs - special_u },
-      { GPR, JAY_STRIDE_4, nonuniform_grfs - (special_4 + grf_8 + grf_2) },
-      { GPR, JAY_STRIDE_8, grf_8 },
-      { GPR, JAY_STRIDE_2, grf_2 },
+      { GPR, JAY_STRIDE_4, picked_grf[JAY_STRIDE_4] - special_4 },
+      { GPR, JAY_STRIDE_8, picked_grf[JAY_STRIDE_8] },
+      { GPR, JAY_STRIDE_2, picked_grf[JAY_STRIDE_2] },
 
       /* Spilling registers */
       { UGPR, 0, spilling_grfs, JAY_BLOCK_SPILL },

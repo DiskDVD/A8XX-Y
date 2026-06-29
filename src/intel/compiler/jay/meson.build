@@ -67,7 +67,6 @@ libintel_compiler_jay_files = files(
   'jay_print.c',
   'jay_private.h',
   'jay_prog_data.c',
-  'jay_repair_ssa.c',
   'jay_register_allocate.c',
   'jay_simd_width.c',
   'jay_schedule.c',
@@ -105,7 +104,6 @@ if with_tests
       files(
          'test/test-lower-post-ra.cpp',
          'test/test-optimizer.cpp',
-         'test/test-repair-ssa.cpp',
       ),
       c_args : [c_msvc_compat_args, no_override_init_args, soong_compat_c_args],
       gnu_symbol_visibility : 'hidden',

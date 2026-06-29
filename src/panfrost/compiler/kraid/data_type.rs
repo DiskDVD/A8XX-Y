@@ -11,6 +11,11 @@ use std::num::NonZeroU8;
 /// whatever it's defined to do on the bits.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum NumericType {
+    /// An automatic type
+    ///
+    /// This is used by certain message instructions to indicate Auto32 mode.
+    Auto,
+
     /// A generic integer type
     ///
     /// This type is used when we just want the bits and no widening will
@@ -40,6 +45,7 @@ pub enum NumericType {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, DataType)]
 pub enum PartialDataType {
     None,
+    A32,
     F16,
     F32,
     F64,
@@ -72,6 +78,25 @@ pub enum PartialDataType {
     V4U8,
     VNIN,
     VNI8,
+    V3F16,
+    V3S16,
+    V3U16,
+    V2A32,
+    V2F32,
+    V2S32,
+    V2U32,
+    V4F16,
+    V4S16,
+    V4U16,
+    V3A32,
+    V3F32,
+    V3I32,
+    V3S32,
+    V3U32,
+    V4A32,
+    V4F32,
+    V4S32,
+    V4U32,
 }
 
 impl PartialDataType {
@@ -112,6 +137,7 @@ impl PartialDataType {
 /// Data type
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, DataType)]
 pub enum DataType {
+    A32,
     F16,
     F32,
     F64,
@@ -141,6 +167,25 @@ pub enum DataType {
     V4I8,
     V4S8,
     V4U8,
+    V3F16,
+    V3S16,
+    V3U16,
+    V2A32,
+    V2F32,
+    V2S32,
+    V2U32,
+    V4F16,
+    V4S16,
+    V4U16,
+    V3A32,
+    V3F32,
+    V3I32,
+    V3S32,
+    V3U32,
+    V4A32,
+    V4F32,
+    V4S32,
+    V4U32,
 }
 
 impl DataType {
@@ -207,5 +252,60 @@ impl DataType {
     pub fn total_bits(&self) -> u8 {
         let (comps, _, bits) = self.to_pieces();
         comps * bits
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that we have all the 32-bit data types and we didn't miss one
+    #[test]
+    fn test_32bit_alu_types() {
+        const NUM_TYPES: &'static [NumericType] = &[
+            NumericType::Integer,
+            NumericType::Float,
+            NumericType::SignedInteger,
+            NumericType::UnsignedInteger,
+        ];
+
+        for comps in [1, 2, 4] {
+            for num_type in NUM_TYPES.iter().cloned() {
+                for bits in [8, 16, 32, 64] {
+                    if u16::from(comps) * u16::from(bits) > 32 {
+                        continue;
+                    }
+
+                    if bits == 8 && num_type == NumericType::Float {
+                        continue;
+                    }
+                    PartialDataType::from_pieces(comps, Some(num_type), bits);
+                    DataType::from_pieces(comps, Some(num_type), bits);
+                }
+            }
+        }
+    }
+
+    /// Tests that we have all the message data types and we didn't miss one
+    #[test]
+    fn test_message_types() {
+        const NUM_TYPES: &'static [NumericType] = &[
+            NumericType::Auto,
+            NumericType::Float,
+            NumericType::SignedInteger,
+            NumericType::UnsignedInteger,
+        ];
+
+        for comps in [1, 2, 3, 4] {
+            for num_type in NUM_TYPES.iter().cloned() {
+                for bits in [16, 32] {
+                    if num_type == NumericType::Auto && bits != 32 {
+                        continue;
+                    }
+                    PartialDataType::from_pieces(comps, Some(num_type), bits);
+                    DataType::from_pieces(comps, Some(num_type), bits);
+                }
+            }
+        }
     }
 }

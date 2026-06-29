@@ -65,13 +65,20 @@ build_sampler_handle(nir_builder *b, nir_def *heap_offset,
                      uint32_t plane, bool non_uniform, bool embedded,
                      const struct anv_physical_device *pdevice)
 {
-   if (plane != 0)
-      heap_offset = nir_iadd_imm(b, heap_offset, plane * ANV_SAMPLER_STATE_SIZE);
-   nir_def *sampler_handle =
-      embedded ? heap_offset :
-      nir_iadd(b,
-               anv_load_driver_uniform(b, 1, desc_surface_offsets[1]),
-               heap_offset);
+   /* Embedded samplers are using a relocated constant, the plane index is
+    * irrelevant as 2 planes of the same image could be using the same sampler
+    * config and so the same relocated offset.
+    */
+   nir_def *sampler_handle;
+   if (embedded) {
+      sampler_handle = heap_offset;
+   } else {
+      sampler_handle = nir_iadd(
+         b,
+         anv_load_driver_uniform(b, 1, desc_surface_offsets[1]),
+         plane == 0 ? heap_offset :
+         nir_iadd_imm(b, heap_offset, plane * ANV_SAMPLER_STATE_SIZE));
+   }
    return nir_resource_intel(
       b,
       nir_imm_int(b, 0xdeaddead),

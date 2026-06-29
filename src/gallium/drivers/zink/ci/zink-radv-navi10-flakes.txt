@@ -21,6 +21,7 @@ dEQP-GLES31.functional.copy_image.compressed.viewclass_astc_6x6_rgba.srgb8_alpha
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.rgba32f_rgba_astc_5x5_khr.texture2d_array_to_texture2d
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.rgba32f_rgba_astc_8x8_khr.texture3d_to_texture2d_array
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.rgba32i_srgb8_alpha8_astc_8x5_khr.texture2d_array_to_texture3d
+dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.rgba32ui_srgb8_alpha8_astc_4x4_khr.texture3d_to_texture2d_array
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.srgb8_alpha8_astc_10x5_khr_rgba32i.texture2d_array_to_texture2d_array
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.srgb8_alpha8_astc_12x10_khr_rgba32ui.texture2d_array_to_texture3d
 dEQP-GLES31.functional.copy_image.mixed.viewclass_128_bits_mixed.srgb8_alpha8_astc_8x6_khr_rgba32f.texture2d_to_texture3d
@@ -38,6 +39,7 @@ glx@glx-buffer-age
 glx@glx_ext_no_config_context@no fbconfig
 glx@glx-multithread-texture
 
+spec@!opengl 1.1@draw-sync
 spec@!opengl 1.0@rasterpos
 spec@!opengl 1.0@rasterpos@glsl_vs_gs_linked
 spec@!opengl 1.0@rasterpos@glsl_vs_tes_linke
@@ -58,6 +60,7 @@ spec@ext_texture_array@copyteximage 1d_array samples=6
 spec@ext_texture_array@copyteximage 1d_array samples=8
 spec@ext_texture_array@copyteximage 2d_array samples=6
 spec@ext_texture_array@copyteximage 2d_array samples=8
+spec@ext_texture_array@fbo-depth-array stencil-layered-clear
 spec@ext_transform_feedback@max-varyings
 spec@ext_transform_feedback@max-varyings@max-varying-arrays-of-arrays
 spec@glsl-1.30@execution@texelfetch fs sampler2d 281x1-281x281
@@ -78,3 +81,5 @@ glx@glx-visuals-depth
 glx@glx-visuals-depth -pixmap
 glx@glx-visuals-stencil
 glx@glx-visuals-stencil -pixmap
+
+spec@arb_query_buffer_object@qbo

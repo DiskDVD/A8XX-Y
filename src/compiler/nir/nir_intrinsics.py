@@ -1151,6 +1151,12 @@ system_value("user_data_amd", 8)
 intrinsic("load_use_float_frag_coord_xy_amd", dest_comp=1, bit_sizes=[1],
           flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# Whether to use pixel_coord or compute pixel_coord from the fragment quad position
+# based on dynamic states. pixel_coord is computed from the quad position only
+# if just bit 0 of pixel_coord is needed.
+intrinsic("load_use_quad_pos_amd", dest_comp=1, bit_sizes=[1],
+          flags=[CAN_ELIMINATE, CAN_REORDER])
+
 # If true, derive sample_mask_in from helper_invocation because sample_mask_in
 # is uninitialized.
 intrinsic("load_use_sample_mask_in_amd", dest_comp=1, bit_sizes=[1],
@@ -1355,6 +1361,11 @@ load("global_constant_bounded", [1, 1, 1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET],
 load("kernel_input", [1], [BASE, RANGE, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { offset }.
 load("scratch", [1], [ACCESS, ALIGN_MUL, ALIGN_OFFSET], [CAN_ELIMINATE])
+
+# Read the current fragment's tile value for VK_EXT_shader_tile_image.
+# io_semantics.location selects the attachment, ACCESS carries ACCESS_COHERENT.
+# src[] = { offset, sample }
+load("tile_image", [1, 1], [COMPONENT, DEST_TYPE, IO_SEMANTICS, ACCESS], flags=[CAN_ELIMINATE])
 
 # Stores work the same way as loads, except now the first source is the value
 # to store and the second (and possibly third) source specify where to store
@@ -1788,6 +1799,11 @@ intrinsic("texc1_pan", [1, 1, 1, -1], dest_comp=4, bit_sizes=[16, 32],
           indices=[DEST_TYPE, FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
 intrinsic("texc2_pan", [1, 1, 1, -1, -1], dest_comp=4, bit_sizes=[16, 32],
           indices=[DEST_TYPE, FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
+
+# src = { coords, desc }
+load("tex_pan", [2, 1], indices=[ACCESS, DEST_TYPE], flags=[CAN_ELIMINATE])
+# src = { coords, desc }
+intrinsic("lea_tex_pan", [2, 1], dest_comp=3, indices=[SRC_TYPE], flags=[CAN_ELIMINATE, CAN_REORDER], bit_sizes=[32])
 
 # Loads the sampler paramaters <min_lod, max_lod, lod_bias>
 # src[] = { sampler_index }
@@ -2902,19 +2918,16 @@ system_value("btd_shader_type_intel", 1)
 # 64B, the pointer needs 256B aligned.
 system_value("ray_query_global_intel", 1, bit_sizes=[64])
 
-# Source 0: Accumulator matrix (type specified by DEST_TYPE)
-# Source 1: A matrix (type specified by SRC_TYPE)
-# Source 2: B matrix (type specified by SRC_TYPE)
+# Source order same as DPAS instruction in the HW.
+#
+# Source 0: Accumulator matrix (type specified by DEST_BASE_TYPE)
+# Source 1: B matrix (type specified by SRC_BASE_TYPE)
+# Source 2: A matrix (type specified by SRC_BASE_TYPE)
 #
 # The matrix parameters are the slices owned by the invocation.
 #
-# The accumulator is source 0 because that is the source the intrinsic
-# infrastructure in NIR uses to determine the number of components in the
-# result.
-#
-# The number of components for the second and third sources is -1 to avoid
-# validation of its value. Some supported configurations will have the
-# component count of that matrix different than the others.
+# The number of components in the A/B sources may not match the
+# destination due to different packing factors.
 intrinsic("dpas_intel", dest_comp=0, src_comp=[0, -1, -1],
           indices=[DEST_BASE_TYPE, SRC_BASE_TYPE, SATURATE, SYSTOLIC_DEPTH, REPEAT_COUNT],
           flags=[CAN_ELIMINATE])

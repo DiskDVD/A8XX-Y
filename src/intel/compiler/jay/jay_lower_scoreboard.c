@@ -504,18 +504,20 @@ jay_lower_scoreboard_trivial(jay_shader *shader)
 {
    jay_foreach_inst_in_shader_safe(shader, func, I) {
       if (jay_inst_has_sbid(I)) {
-         if (I->op == JAY_OPCODE_DPAS) {
-            /* DPAS can't have an A@1, so insert an extra SYNC.nop. */
-            jay_builder before = jay_init_builder(func, jay_before_inst(I));
-            jay_SYNC(&before, jay_null(), TGL_SYNC_NOP)->dep =
-               gen_swsb_regdist(1);
-            I->dep = gen_swsb_sbid(GEN_SBID_SET, 0);
-         } else {
-            I->dep = gen_swsb_dst_dep(gen_swsb_sbid(GEN_SBID_SET, 0), 1);
-         }
+         /* DPAS can't have an A@1, so insert an extra SYNC.nop. */
+         jay_builder before = jay_init_builder(func, jay_before_inst(I));
+         jay_SYNC(&before, jay_null(), TGL_SYNC_NOP)->dep = gen_swsb_regdist(1);
+         I->dep = gen_swsb_sbid(GEN_SBID_SET, 0);
 
          jay_builder b = jay_init_builder(func, jay_after_inst(I));
          sync_sbids(&b, BITFIELD_BIT(0), GEN_SBID_DST);
+
+         /* Barriers are non-EOT gateway messages. Insert the needed SYNC */
+         if (I->op == JAY_OPCODE_SEND &&
+             jay_send_sfid(I) == GEN_SFID_MESSAGE_GATEWAY) {
+            b.cursor = jay_after_inst(I);
+            jay_SYNC(&b, jay_null(), TGL_SYNC_BAR);
+         }
       } else if (I->op == JAY_OPCODE_SCHEDULE_BARRIER) {
          jay_remove_instruction(I);
       } else {

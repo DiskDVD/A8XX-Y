@@ -2969,10 +2969,35 @@ lp_build_fetch_texel(struct lp_build_sample_context *bld,
 
       first_level = lp_build_broadcast_scalar(&bld->leveli_bld, first_level);
       last_level = lp_build_broadcast_scalar(&bld->leveli_bld, last_level);
+
+      LLVMValueRef requested_level = ilevel;
       lp_build_nearest_mip_level(bld,
                                  first_level, last_level,
                                  ilevel, &ilevel,
                                  out_of_bound_ret_zero ? &out_of_bounds : NULL);
+
+      /* The Vulkan spec defines an OpImageFetch with LOD below the view's
+       * minLodInteger as reading zero.
+       * Since view_min_lod is view-relative, clamp against its floor.
+       */
+      if (out_of_bound_ret_zero &&
+          bld->static_texture_state->apply_view_min_lod &&
+          bld->dynamic_state->view_min_lod) {
+         LLVMValueRef vml =
+            bld->dynamic_state->view_min_lod(bld->gallivm, bld->resources_type,
+                                             bld->resources_ptr, texture_unit, NULL);
+         LLVMValueRef min_level =
+            lp_build_broadcast_scalar(&bld->leveli_bld,
+                                      lp_build_ifloor(&bld->float_bld, vml));
+         LLVMValueRef below = lp_build_cmp(&bld->leveli_bld, PIPE_FUNC_LESS,
+                                           requested_level, min_level);
+         if (bld->num_mips == 1)
+            below = lp_build_broadcast_scalar(&bld->int_coord_bld, below);
+         else if (bld->num_mips != bld->coord_bld.type.length)
+            below = lp_build_unpack_broadcast_aos_scalars(bld->gallivm,
+                       bld->leveli_bld.type, bld->int_coord_bld.type, below);
+         out_of_bounds = lp_build_or(int_coord_bld, out_of_bounds, below);
+      }
    } else {
       assert(bld->num_mips == 1);
       if (bld->static_texture_state->target != PIPE_BUFFER) {
@@ -3838,6 +3863,39 @@ lp_build_sample_soa_code(struct gallivm_state *gallivm,
 
          for (unsigned j = 0; j < 4; j++) {
             texel_out[j] = lp_build_concat(gallivm, texelouttmp[j], type4, num_quads);
+         }
+      }
+
+      /*
+       * VK_EXT_image_view_min_lod for gather: textureGather always reads the
+       * view's base level. When the integer minLod clamp is above it,
+       * that level is below the accessible LOD range and the gather reads
+       * as zero (robustImageAccess2).
+       *
+       * This zeroes the final gathered result, which is a shortcut that is
+       * only correct for a plain gather of a colour component. It is wrong in
+       * two cases that would need the out-of-bounds value to be applied where
+       * the texels are actually fetched (lp_build_sample_image_linear()):
+       * - depth-comparison gather where the result should be compare(ref, 0),
+       * - an actual out-of-bounds read returns 1 for the alpha component, so
+       *   gathering the alpha component should yield 1 rather than 0.
+       * Neither is exercised by the current CTS coverage. Fixing them properly
+       * means plumbing the out-of-bounds value down to the fetch.
+       */
+      if (op_is_gather &&
+          static_texture_state->apply_view_min_lod &&
+          dynamic_state->view_min_lod) {
+         LLVMValueRef vml =
+            dynamic_state->view_min_lod(gallivm, resources_type, resources_ptr,
+                                        texture_index, NULL);
+         LLVMValueRef below =
+            LLVMBuildFCmp(builder, LLVMRealOGE, vml,
+                          lp_build_const_float(gallivm, 1.0f),
+                          "gather_below_view_min_lod");
+         for (unsigned j = 0; j < 4; j++) {
+            texel_out[j] = LLVMBuildSelect(builder, below,
+                                           LLVMConstNull(LLVMTypeOf(texel_out[j])),
+                                           texel_out[j], "");
          }
       }
    }

@@ -1122,7 +1122,7 @@ vn_queue_submit_2_to_1(struct vn_device *dev,
                submit->signalSemaphoreInfoCount);
    STACK_ARRAY(uint32_t, _signal_dev_indices,
                submit->signalSemaphoreInfoCount);
-   STACK_ARRAY(uint64_t, _signal_values, submit->waitSemaphoreInfoCount);
+   STACK_ARRAY(uint64_t, _signal_values, submit->signalSemaphoreInfoCount);
 
    if (submit->flags & VK_SUBMIT_PROTECTED_BIT) {
       _protected = (VkProtectedSubmitInfo){
@@ -1136,8 +1136,12 @@ vn_queue_submit_2_to_1(struct vn_device *dev,
    if (dev->device_mask > 1) {
       for (uint32_t i = 0; i < submit->waitSemaphoreInfoCount; i++) {
          _wait_dev_indices[i] = submit->pWaitSemaphoreInfos[i].deviceIndex;
+      }
+      for (uint32_t i = 0; i < submit->commandBufferInfoCount; i++) {
          _cmd_dev_indices[i] = submit->pCommandBufferInfos[i].deviceMask;
-         _signal_dev_indices[i] = submit->pWaitSemaphoreInfos[i].deviceIndex;
+      }
+      for (uint32_t i = 0; i < submit->signalSemaphoreInfoCount; i++) {
+         _signal_dev_indices[i] = submit->pSignalSemaphoreInfos[i].deviceIndex;
       }
       _group = (VkDeviceGroupSubmitInfo){
          .sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO,
@@ -1517,6 +1521,9 @@ vn_QueueWaitIdle(VkQueue _queue)
       if (result != VK_SUCCESS)
          return result;
    }
+
+   /* ensure the idle wait occurs after renderer fence submit */
+   vn_ring_roundtrip(dev->primary_ring);
 
    result = vn_queue_submit(&(struct vn_queue_submission){
       .batch_type = VK_STRUCTURE_TYPE_SUBMIT_INFO,

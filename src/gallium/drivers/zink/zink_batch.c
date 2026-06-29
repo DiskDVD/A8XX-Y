@@ -24,8 +24,10 @@ debug_describe_zink_batch_state(char *buf, const struct zink_batch_state *ptr)
 static void
 reset_obj(struct zink_screen *screen, struct zink_batch_state *bs, struct zink_resource_object *obj)
 {
-   /* if no batch usage exists after removing the usage from 'bs', this resource is considered fully idle */
-   if (!zink_resource_object_usage_unset(obj, bs)) {
+   /* if this is the only batch usage, this resource is considered fully idle */
+   struct zink_bo *bo = obj->bo;
+   if ((!bo->reads.u || zink_batch_usage_matches(bo->reads.u, bs)) &&
+       (!bo->writes.u || zink_batch_usage_matches(bo->writes.u, bs))) {
       /* the resource is idle, so reset all access/reordering info */
       obj->unordered_read = true;
       obj->unordered_write = true;
@@ -960,6 +962,9 @@ zink_end_batch(struct zink_context *ctx)
    } else {
       submit_queue(bs, NULL, 0);
    }
+
+   ctx->last_transfer_sync = 0;
+   ctx->rp_counter = 0;
 
 #if HAVE_RENDERDOC_INTEGRATION
    if (!(ctx->flags & ZINK_CONTEXT_COPY_ONLY) && screen->renderdoc_capturing && !screen->renderdoc_capture_all &&

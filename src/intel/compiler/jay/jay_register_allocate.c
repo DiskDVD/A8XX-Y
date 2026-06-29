@@ -373,12 +373,11 @@ jay_emit_parallel_copies(jay_builder *b,
    BITSET_WORD *packed = BITSET_CALLOC(UINT16_MAX);
 
    if (0) {
-      const char *files = "ruMm";
       printf("[[\n");
 
       for (unsigned i = 0; i < num_copies; i++) {
-         printf("  %c%u = %c%u\n", files[r_file(pcopies[i].dst)],
-                r_reg(pcopies[i].dst), files[r_file(pcopies[i].src)],
+         printf("  %s%u = %s%u\n", jay_file_prefix(r_file(pcopies[i].dst)),
+                r_reg(pcopies[i].dst), jay_file_prefix(r_file(pcopies[i].src)),
                 r_reg(pcopies[i].src));
       }
 
@@ -1302,14 +1301,8 @@ jay_register_allocate_function(jay_function *f)
       UNREACHABLE("spiller bug");
    }
 
-   /* The spiller/SSA repair does not work on UGPRs because it cannot tolerate
-    * the critical edges on the physical CFG. Fortunately, dynamic GPR/UGPR
-    * partitioning means this should ~never be hit -- we can allocate 1000 UGPRs
-    * if we need them. I believe ACO has the same corner case.
-    */
-   if (f->demand[UGPR] > f->shader->num_regs[UGPR]) {
-      UNREACHABLE("UGPR spilling is unimplemented");
-   }
+   assert(f->demand[UGPR] <= f->shader->num_regs[UGPR] &&
+          "UGPRs already spilled");
 
    typed_memcpy(ra.num_regs, shader->num_regs, JAY_NUM_RA_FILES);
 

@@ -23,6 +23,7 @@ dep_xml_rs = dependency('xml',
   version: '>= 1.2.1',
   fallback: ['xml-rs', 'dep_xml_rs'],
   required: true,
+  native: true,
 )
 
 _kraid_bindings_deps = [
@@ -87,6 +88,7 @@ _libkraid_proc_rs = static_library(
   ],
   rust_args : rust_global_args,
   rust_abi : 'rust',
+  native : true,
 )
 
 _libkraid_proc_macros_rs = rust.proc_macro(

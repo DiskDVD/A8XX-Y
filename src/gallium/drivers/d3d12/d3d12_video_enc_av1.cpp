@@ -1947,14 +1947,14 @@ fill_av1_pic_header(EncodedBitstreamResolvedMetadata &associatedMetadata,
 
    pic_header->frame_type = associatedMetadata.m_associatedEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData.FrameType;
    {
-      UINT EncodeOrderInGop =
-         (associatedMetadata.m_associatedEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData.PictureIndex %
-          associatedMetadata.m_associatedEncodeConfig.m_encoderGOPConfigDesc.m_AV1SequenceStructure.IntraDistance);
+      UINT IntraDistance = associatedMetadata.m_associatedEncodeConfig.m_encoderGOPConfigDesc.m_AV1SequenceStructure.IntraDistance;
+      UINT EncodeOrderInGop = associatedMetadata.m_associatedEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData.PictureIndex;
+      UINT ShowOrderInGop = associatedMetadata.m_associatedEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData.OrderHint;
 
-      UINT ShowOrderInGop =
-         (associatedMetadata.m_associatedEncodeConfig.m_encoderPicParamsDesc.m_AV1PicData.OrderHint %
-          associatedMetadata.m_associatedEncodeConfig.m_encoderGOPConfigDesc.m_AV1SequenceStructure.IntraDistance);
-
+      if (IntraDistance != 0) {
+         EncodeOrderInGop = EncodeOrderInGop % IntraDistance;
+         ShowOrderInGop = ShowOrderInGop % IntraDistance;
+      }
       pic_header->show_frame = (ShowOrderInGop <= EncodeOrderInGop);
    }
 

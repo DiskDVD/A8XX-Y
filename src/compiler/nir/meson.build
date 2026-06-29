@@ -398,7 +398,7 @@ idep_nir = declare_dependency(
   link_with : _libnir,
 )
 
-if with_tests
+if with_tests and not with_nir_headers_only
   if cc.get_id() == 'msvc' and cc.version().version_compare('< 19.29')
     msvc_designated_initializer = 'cpp_std=c++latest'
   else

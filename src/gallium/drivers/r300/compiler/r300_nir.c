@@ -7,6 +7,39 @@
 
 #include "compiler/nir/nir_builder.h"
 #include "r300_screen.h"
+#include "util/log.h"
+#include "util/u_endian.h"
+
+static bool
+r300_nir_stub_deriv_instr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
+{
+   switch (intr->intrinsic) {
+   case nir_intrinsic_ddx:
+   case nir_intrinsic_ddx_coarse:
+   case nir_intrinsic_ddy:
+   case nir_intrinsic_ddy_coarse:
+      break;
+   default:
+      return false;
+   }
+
+   mesa_logw_once("r300: WARNING: Shader is trying to use derivatives, "
+                  "but the hardware doesn't support it. "
+                  "Expect possible misrendering (it's not a bug, do not report it).");
+
+   b->cursor = nir_before_instr(&intr->instr);
+   nir_def_rewrite_uses(&intr->def,
+                        nir_imm_zero(b, intr->def.num_components, intr->def.bit_size));
+   nir_instr_remove(&intr->instr);
+   return true;
+}
+
+static bool
+r300_nir_stub_deriv(nir_shader *s)
+{
+   return nir_shader_intrinsics_pass(s, r300_nir_stub_deriv_instr,
+                                     nir_metadata_control_flow, NULL);
+}
 
 bool
 r300_is_only_used_as_float(const nir_alu_instr *instr)
@@ -187,9 +220,16 @@ r300_optimize_nir(struct nir_shader *s, struct r300_screen *screen)
          }
          NIR_PASS(_, s, nir_remove_dead_variables, nir_var_shader_out, NULL);
          fprintf(stderr, "r300: no HW support for clip vertex, expect misrendering.\n");
+#if !UTIL_ARCH_BIG_ENDIAN
          fprintf(stderr, "r300: software emulation can be enabled with RADEON_DEBUG=notcl.\n");
+#endif
       }
    }
+
+   /* R300/R400 doesn't support derivatives in FS, we replace it with zero,
+    * emit warning and hope for the best. */
+   if (s->info.stage == MESA_SHADER_FRAGMENT && !is_r500)
+      NIR_PASS(_, s, r300_nir_stub_deriv);
 
    bool progress;
    do {
@@ -245,6 +285,7 @@ r300_optimize_nir(struct nir_shader *s, struct r300_screen *screen)
       if (!progress)
          NIR_PASS(progress, s, nir_lower_undef_to_zero, NULL);
       NIR_PASS(progress, s, nir_opt_loop_unroll);
+      NIR_PASS(progress, s, nir_opt_licm, NULL);
 
       /* Try to fold addressing math into ubo_vec4's base to avoid load_consts
        * and ALU ops for it.

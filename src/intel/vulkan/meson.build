@@ -246,8 +246,7 @@ libanv_files = files(
   'anv_va.c',
   'anv_video.c',
   'anv_wsi.c',
-  'bvh/anv_bvh.h',
-  'bvh/anv_build_interface.h',
+  'bvh/anv_bvh_defines.h',
 )
 
 anv_deps = [

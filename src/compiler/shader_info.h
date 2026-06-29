@@ -37,6 +37,12 @@ extern "C" {
 #define MAX_XFB_BUFFERS        4
 #define MAX_INLINABLE_UNIFORMS 4
 
+enum shader_info_hash_type {
+   SHADER_INFO_HASH_TYPE_RAW = 0,
+   SHADER_INFO_HASH_TYPE_DXIL,
+   SHADER_INFO_HASH_TYPE_DXBC,
+};
+
 typedef struct shader_info {
    const char *name;
 
@@ -376,6 +382,10 @@ typedef struct shader_info {
     */
    bool occupancy_bounded_workgroup_fairness:1;
 
+   /* Type of hash carried in source_blake3.
+    */
+   enum shader_info_hash_type hash_type:2;
+
    union {
       struct {
          /* Which inputs are doubles */
@@ -550,6 +560,12 @@ typedef struct shader_info {
           * SPV_KHR_cooperative_matrix.
           */
          bool has_cooperative_matrix:1;
+
+         /*
+          * If the shader might have a control barrier with only one of
+          * NIR_MEMORY_CONTROL_ARRIVE/NIR_MEMORY_CONTROL_WAIT.
+          */
+         bool has_split_control_barriers:1;
 
          /**
           * Number of bytes of shared imageblock memory per thread. Currently,

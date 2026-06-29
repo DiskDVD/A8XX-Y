@@ -487,6 +487,11 @@ typedef struct nir_variable {
        */
       unsigned mode : 26;
 
+      /* A temporary for passes to store information. Used, for example, to
+       * replace an unordered set with an ordered util_dynarray.
+       */
+      bool pass_flags : 1;
+
       /**
        * Is the variable read-only?
        *
@@ -2085,6 +2090,17 @@ typedef enum {
    /* Memory visibility operations. */
    NIR_MEMORY_MAKE_AVAILABLE = 1 << 2,
    NIR_MEMORY_MAKE_VISIBLE = 1 << 3,
+
+   /* Control barrier operations. If both of these are set, or neither are set
+    * and the execution scope is not SCOPE_NONE, it's a combined arrive+wait
+    * barrier.
+    *
+    * Because a barrier can be a control one without either of these, the best
+    * way to see if it's a control one is to check the execution scope.
+    */
+   NIR_MEMORY_CONTROL_ARRIVE = 1 << 4,
+   NIR_MEMORY_CONTROL_WAIT = 1 << 5,
+   NIR_MEMORY_CONTROL_ARRIVE_WAIT = NIR_MEMORY_CONTROL_ARRIVE | NIR_MEMORY_CONTROL_WAIT,
 } nir_memory_semantics;
 
 /**
@@ -3321,6 +3337,19 @@ nir_alu_src_comp_as_uint(nir_alu_src src, unsigned comp)
 {
    nir_scalar scalar = nir_scalar_resolved(src.src.ssa, src.swizzle[comp]);
    return nir_scalar_as_uint(scalar);
+}
+
+static inline bool
+nir_alu_src_comp_get_uint(nir_alu_src src, unsigned comp, uint64_t *value)
+{
+   nir_scalar scalar = nir_scalar_resolved(src.src.ssa, src.swizzle[comp]);
+
+   if (nir_scalar_is_const(scalar)) {
+      *value = nir_scalar_as_uint(scalar);
+      return true;
+   }
+
+   return false;
 }
 
 typedef struct nir_binding {
@@ -5507,7 +5536,7 @@ bool nir_lower_vars_to_scratch(nir_shader *shader,
                                glsl_type_size_align_func variable_size_align,
                                glsl_type_size_align_func scratch_layout_size_align);
 
-typedef void (*nir_lower_vars_to_scratch_cb)(struct set *, void *);
+typedef void (*nir_lower_vars_to_scratch_cb)(struct util_dynarray *, void *);
 
 bool nir_lower_vars_to_scratch_global(nir_shader *shader,
                                       glsl_type_size_align_func scratch_layout_size_align,
@@ -6026,7 +6055,6 @@ nir_shader *nir_create_passthrough_gs(const nir_shader_compiler_options *options
 
 bool nir_lower_fragcolor(nir_shader *shader, unsigned max_cbufs);
 bool nir_lower_fragcoord_wtrans(nir_shader *shader);
-bool nir_all_uses_of_float_are_integer(nir_def *def, unsigned component_mask);
 bool nir_opt_frag_coord_to_pixel_coord(nir_shader *shader);
 bool nir_lower_frag_coord_to_pixel_coord(nir_shader *shader);
 bool nir_lower_viewport_transform(nir_shader *shader);
@@ -6646,6 +6674,7 @@ bool nir_lower_discard_if(nir_shader *shader, nir_lower_discard_if_options optio
 bool nir_lower_terminate_to_demote(nir_shader *nir);
 
 bool nir_lower_memory_model(nir_shader *shader);
+bool nir_lower_disordered_control_barriers(nir_shader *shader);
 
 bool nir_lower_goto_ifs(nir_shader *shader);
 bool nir_lower_continue_constructs(nir_shader *shader);

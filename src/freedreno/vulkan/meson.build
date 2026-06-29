@@ -31,8 +31,7 @@ tu_drirc = custom_target(
 )
 
 libtu_files = files(
-  'bvh/tu_bvh.h',
-  'bvh/tu_build_interface.h',
+  'bvh/tu_bvh_defines.h',
   'layers/tu_rmv_layer.cc',
   'tu_acceleration_structure.cc',
   'tu_autotune.cc',

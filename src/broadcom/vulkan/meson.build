@@ -72,7 +72,6 @@ files_per_version = files(
   'v3dvx_meta_common.c',
   'v3dvx_pipeline.c',
   'v3dvx_private.h',
-  'v3dvx_queue.c',
 )
 
 v3d_versions = ['42', '71']

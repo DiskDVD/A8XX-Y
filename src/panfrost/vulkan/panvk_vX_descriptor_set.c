@@ -1,6 +1,7 @@
 /*
  * Copyright © 2024 Collabora Ltd.
  * Copyright © 2025 Arm Ltd.
+ * Copyright © 2026 Google LLC
  * SPDX-License-Identifier: MIT
  */
 
@@ -147,8 +148,7 @@ write_image_view_desc(struct panvk_descriptor_set *set,
 
    VK_FROM_HANDLE(panvk_image_view, view, pImageInfo->imageView);
 
-   uint8_t plane_count = vk_format_get_plane_count(view->vk.format);
-   for (uint8_t plane = 0; plane < plane_count; plane++) {
+   for (uint8_t plane = 0; plane < binding_layout->textures_per_desc; plane++) {
       struct panvk_subdesc_info subdesc = get_tex_subdesc_info(type, plane);
 #if PAN_ARCH >= 9
       if (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)

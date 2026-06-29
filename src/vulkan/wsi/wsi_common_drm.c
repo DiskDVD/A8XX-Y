@@ -650,6 +650,14 @@ wsi_configure_native_image(const struct wsi_swapchain *chain,
             __vk_append_struct(&format_info, &format_list);
          }
 
+         VkImageCompressionControlEXT img_compr_ctrl;
+         if (info->img_compr_ctrl.sType ==
+             VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT) {
+            img_compr_ctrl = info->img_compr_ctrl;
+            img_compr_ctrl.pNext = NULL;
+            __vk_append_struct(&format_info, &img_compr_ctrl);
+         }
+
          struct wsi_image_create_info wsi_info = (struct wsi_image_create_info) {
             .sType = VK_STRUCTURE_TYPE_WSI_IMAGE_CREATE_INFO_MESA,
             .pNext = NULL,

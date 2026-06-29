@@ -30,6 +30,8 @@ pub trait Model {
     fn op_dst_supports_lanes(&self, op: &Op, lanes: DstLanes) -> bool;
 
     fn small_constants(&self) -> &[SmallConstant];
+
+    fn preload_reg(&self, reg: PreloadReg) -> u8;
 }
 
 struct ValhallModel {
@@ -113,6 +115,33 @@ impl Model for ValhallModel {
 
     fn small_constants(&self) -> &[SmallConstant] {
         &self.sc_table
+    }
+
+    fn preload_reg(&self, reg: PreloadReg) -> u8 {
+        use PreloadReg::*;
+
+        match reg {
+            LocalId01 => 55,
+            LocalId2 => 56,
+            WorkgroupId0 => 57,
+            WorkgroupId1 => 58,
+            WorkgroupId2 => 59,
+            GlobalId0 => 60,
+            GlobalId1 => 61,
+            GlobalId2 => 62,
+            InternalId => 59,
+            VertexId => 60,
+            InstanceId => 61,
+            DrawId => 62,
+            ViewId => 63,
+            PrimitiveId => 57,
+            PrimitiveFlags => 58,
+            PositionXY => 59,
+            CumulativeCoverage => 60,
+            RasterizerSampleCentroid => 61,
+            FrameArgLow => 62,
+            FrameArgHigh => 63,
+        }
     }
 }
 

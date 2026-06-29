@@ -73,6 +73,7 @@ struct lp_jit_texture
    uint8_t last_level;    /* contains num_samples for multisample */
    uint32_t mip_offsets[PIPE_MAX_TEXTURE_LEVELS]; /* sample stride is in mip_offsets[15] */
    uint32_t sampler_index;
+   float view_min_lod;
 };
 
 enum {
@@ -86,6 +87,7 @@ enum {
    LP_JIT_TEXTURE_LAST_LEVEL,
    LP_JIT_TEXTURE_MIP_OFFSETS,
    LP_JIT_SAMPLER_INDEX_DUMMY,
+   LP_JIT_TEXTURE_VIEW_MIN_LOD,
    LP_JIT_TEXTURE_NUM_FIELDS  /* number of fields above */
 };
 
@@ -238,6 +240,7 @@ struct lp_jit_bindless_texture
    const void *base;
    const void *residency;
    uint32_t base_offset;
+   float view_min_lod; /* VK_EXT_image_view_min_lod, relative to first_level */
 };
 
 struct lp_image_descriptor {

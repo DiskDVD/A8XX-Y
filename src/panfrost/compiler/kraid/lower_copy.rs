@@ -130,8 +130,8 @@ fn lower_copy(copy: OpCopy) -> MappedInstrs {
             // Upgrade to a 32-bit type.  The lane mask will take care of
             // masking off the unused components
             let bits = copy.dst_type.bits();
-            assert!(bits <= 32);
-            let comps = 32 / bits;
+            assert!(bits <= 64);
+            let comps = 32_u8.div_ceil(bits);
             let dst_type = DataType::v(comps, DataType::u(bits));
 
             let lop = OpShiftLop {

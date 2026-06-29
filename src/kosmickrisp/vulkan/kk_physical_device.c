@@ -477,10 +477,10 @@ kk_get_device_properties(const struct kk_physical_device *pdev,
       /* Vulkan 1.0 limits */
       /* Values taken from Apple7
          https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf */
-      .maxImageDimension1D = kk_image_max_dimension(VK_IMAGE_TYPE_2D),
-      .maxImageDimension2D = kk_image_max_dimension(VK_IMAGE_TYPE_2D),
-      .maxImageDimension3D = kk_image_max_dimension(VK_IMAGE_TYPE_3D),
-      .maxImageDimensionCube = 16384,
+      .maxImageDimension1D = kk_image_max_dimension(pdev, VK_IMAGE_TYPE_1D),
+      .maxImageDimension2D = kk_image_max_dimension(pdev, VK_IMAGE_TYPE_2D),
+      .maxImageDimension3D = kk_image_max_dimension(pdev, VK_IMAGE_TYPE_3D),
+      .maxImageDimensionCube = kk_image_max_dimension(pdev, VK_IMAGE_TYPE_2D),
       .maxImageArrayLayers = 2048,
       .maxTexelBufferElements = 16384 * 16384,
       .maxUniformBufferRange = 65536,
@@ -1009,6 +1009,8 @@ get_metal_limits(struct kk_physical_device *pdev)
       mtl_device_max_threadgroup_memory_length(pdev->mtl_dev_handle);
    pdev->info.max_buffer_size =
       mtl_device_max_buffer_length(pdev->mtl_dev_handle);
+   pdev->info.gpu_apple_family =
+      mtl_device_get_gpu_apple_family(pdev->mtl_dev_handle);
 
    pdev->supported_sample_counts = VK_SAMPLE_COUNT_1_BIT;
    for (uint32_t sample_count = VK_SAMPLE_COUNT_2_BIT;

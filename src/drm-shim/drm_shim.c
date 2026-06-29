@@ -96,14 +96,16 @@ REAL_FUNCTION_POINTER(fstat);
 REAL_FUNCTION_POINTER(fstat64);
 #endif
 
+#define STRINGIZE2(x) #x
+#define STRINGIZE(x) STRINGIZE2(x)
+
 static char render_node_dir[] = "/dev/dri/";
 /* Full path of /dev/dri/renderD* */
 static char *render_node_path;
 /* renderD* */
 static char *render_node_dirent_name;
 /* /sys/dev/char/major: */
-static int drm_device_path_len;
-static char *drm_device_path;
+static char drm_device_path[] = "/sys/dev/char/" STRINGIZE(DRM_MAJOR) ":";
 /* /sys/dev/char/major:minor/device */
 static int device_path_len;
 static char *device_path;
@@ -189,7 +191,50 @@ drm_shim_override_file(const char *contents, const char *path_format, ...)
    override->contents = strdup(contents);
 }
 
+static uint32_t got_function_pointers = 0;
+
+static void
+get_function_pointers(void)
+{
+   if (p_atomic_cmpxchg(&got_function_pointers, 0, 1))
+      return;
+
+   GET_FUNCTION_POINTER(access);
+   GET_FUNCTION_POINTER(close);
+   GET_FUNCTION_POINTER(closedir);
+   GET_FUNCTION_POINTER(dup);
+   GET_FUNCTION_POINTER(fcntl);
+   GET_FUNCTION_POINTER(fopen);
+   GET_FUNCTION_POINTER(ioctl);
+   GET_FUNCTION_POINTER(mmap);
+   GET_FUNCTION_POINTER(mmap64);
+   GET_FUNCTION_POINTER(open);
+   GET_FUNCTION_POINTER(opendir);
+   GET_FUNCTION_POINTER(readdir);
+   GET_FUNCTION_POINTER(readdir64);
+   GET_FUNCTION_POINTER(readlink);
+   GET_FUNCTION_POINTER(realpath);
+
+#if HAS_XSTAT
+   GET_FUNCTION_POINTER(__xstat);
+   GET_FUNCTION_POINTER(__xstat64);
+   GET_FUNCTION_POINTER(__fxstat);
+   GET_FUNCTION_POINTER(__fxstat64);
+#else
+   GET_FUNCTION_POINTER(stat);
+   GET_FUNCTION_POINTER(stat64);
+   GET_FUNCTION_POINTER(fstat);
+   GET_FUNCTION_POINTER(fstat64);
+#endif
+}
+
 static uint32_t inited = 0;
+
+bool
+drm_shim_inited(void)
+{
+   return p_atomic_read(&inited);
+}
 
 static void
 destroy_shim(void)
@@ -220,33 +265,7 @@ init_shim(void)
                                   _mesa_hash_string,
                                   _mesa_key_string_equal);
 
-   GET_FUNCTION_POINTER(access);
-   GET_FUNCTION_POINTER(close);
-   GET_FUNCTION_POINTER(closedir);
-   GET_FUNCTION_POINTER(dup);
-   GET_FUNCTION_POINTER(fcntl);
-   GET_FUNCTION_POINTER(fopen);
-   GET_FUNCTION_POINTER(ioctl);
-   GET_FUNCTION_POINTER(mmap);
-   GET_FUNCTION_POINTER(mmap64);
-   GET_FUNCTION_POINTER(open);
-   GET_FUNCTION_POINTER(opendir);
-   GET_FUNCTION_POINTER(readdir);
-   GET_FUNCTION_POINTER(readdir64);
-   GET_FUNCTION_POINTER(readlink);
-   GET_FUNCTION_POINTER(realpath);
-
-#if HAS_XSTAT
-   GET_FUNCTION_POINTER(__xstat);
-   GET_FUNCTION_POINTER(__xstat64);
-   GET_FUNCTION_POINTER(__fxstat);
-   GET_FUNCTION_POINTER(__fxstat64);
-#else
-   GET_FUNCTION_POINTER(stat);
-   GET_FUNCTION_POINTER(stat64);
-   GET_FUNCTION_POINTER(fstat);
-   GET_FUNCTION_POINTER(fstat64);
-#endif
+   get_function_pointers();
 
    get_dri_render_node_minor();
 
@@ -254,9 +273,6 @@ init_shim(void)
       fprintf(stderr, "Initializing DRM shim on %s\n",
               render_node_path);
    }
-
-   drm_device_path_len =
-      nfasprintf(&drm_device_path, "/sys/dev/char/%d:", DRM_MAJOR);
 
    device_path_len =
       nfasprintf(&device_path,
@@ -272,30 +288,34 @@ init_shim(void)
    atexit(destroy_shim);
 }
 
-static bool hide_drm_device_path(const char *path)
+static bool is_drm_device_path(const char *path)
 {
    if (render_node_minor == -1)
       return false;
 
+   /* String starts with /sys/dev/char/226: */
+   if (strncmp(path, drm_device_path, sizeof(drm_device_path) - 1) == 0)
+      return true;
+
+   /* String starts with /dev/dri/ */
+   if (strncmp(path, render_node_dir, sizeof(render_node_dir) - 1) == 0)
+      return true;
+
+   return false;
+}
+
+static bool hide_drm_device_path(const char *path)
+{
    /* If the path looks like our fake render node device, then don't hide it.
     */
    if (strncmp(path, device_path, device_path_len) == 0 ||
        strcmp(path, render_node_path) == 0)
       return false;
 
-   /* String starts with /sys/dev/char/226: but is not the fake render node.
+   /* String looks like a device but is not the fake render node.
     * We want to hide all other drm devices for the shim.
     */
-   if (strncmp(path, drm_device_path, drm_device_path_len) == 0)
-      return true;
-
-   /* String starts with /dev/dri/ but is not the fake render node. We want to
-    * hide all other drm devices for the shim.
-    */
-   if (strncmp(path, render_node_dir, sizeof(render_node_dir) - 1) == 0)
-      return true;
-
-   return false;
+   return is_drm_device_path(path);
 }
 
 static int file_override_open(const char *path)
@@ -471,7 +491,7 @@ PUBLIC int __xstat64(int ver, const char *path, struct stat64 *st)
 /* Fakes fstat to return character device stuff for our fake render node. */
 PUBLIC int __fxstat(int ver, int fd, struct stat *st)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
 
@@ -487,7 +507,7 @@ PUBLIC int __fxstat(int ver, int fd, struct stat *st)
 
 PUBLIC int __fxstat64(int ver, int fd, struct stat64 *st)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
 
@@ -581,7 +601,7 @@ PUBLIC int stat64(const char* path, struct stat64* stat_buf)
 
 PUBLIC int fstat(int fd, struct stat* stat_buf)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
 
@@ -597,7 +617,7 @@ PUBLIC int fstat(int fd, struct stat* stat_buf)
 
 PUBLIC int fstat64(int fd, struct stat64* stat_buf)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
 
@@ -712,6 +732,12 @@ closedir(DIR *dir)
 PUBLIC ssize_t
 readlink(const char *path, char *buf, size_t size)
 {
+   /* Shortcut to the real readlink so that jemalloc can use this. */
+   if (!is_drm_device_path(path)) {
+      get_function_pointers();
+      return real_readlink(path, buf, size);
+   }
+
    init_shim();
 
    if (hide_drm_device_path(path)) {
@@ -776,7 +802,7 @@ realpath(const char *path, char *resolved_path)
 PUBLIC int
 ioctl(int fd, unsigned long request, ...)
 {
-   init_shim();
+   get_function_pointers();
 
    va_list ap;
    va_start(ap, request);
@@ -794,7 +820,7 @@ ioctl(int fd, unsigned long request, ...)
 PUBLIC int
 fcntl(int fd, int cmd, ...)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
 
@@ -830,7 +856,7 @@ PUBLIC int fcntl64(int, int, ...)
 PUBLIC int
 dup(int fd)
 {
-   init_shim();
+   get_function_pointers();
 
    int ret = real_dup(fd);
 
@@ -844,7 +870,7 @@ dup(int fd)
 PUBLIC void *
 mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
    if (shim_fd)
@@ -856,7 +882,7 @@ mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 PUBLIC void *
 mmap64(void* addr, size_t length, int prot, int flags, int fd, off64_t offset)
 {
-   init_shim();
+   get_function_pointers();
 
    struct shim_fd *shim_fd = drm_shim_fd_lookup(fd);
    if (shim_fd)

@@ -2026,13 +2026,21 @@ CDX12EncHMFT::xThreadProc( void *pCtx )
          // For low-latency, some callers (like RDP) require a ping-pong pattern of:
          // - METransformNeedInput
          // - METransformHaveOutput
-         pThis->m_dwNeedInputCount++;
-         HMFT_ETW_EVENT_INFO( "METransformNeedInput", pThis );
-         HRESULT hr = pThis->QueueEvent( METransformNeedInput, GUID_NULL, S_OK, nullptr );
-         if( FAILED( hr ) )
+         bool sendNeedInput = false;
          {
-            pThis->m_dwNeedInputCount--;
-            assert( false );   // TODO: need to quit.
+            std::lock_guard<std::mutex> lock( pThis->m_OutputQueueLock );
+            sendNeedInput = ( pThis->m_dwProcessOutputCount == pThis->m_dwHaveOutputCount );
+         }
+         if( sendNeedInput )
+         {
+            pThis->m_dwNeedInputCount++;
+            HMFT_ETW_EVENT_INFO( "METransformNeedInput", pThis );
+            HRESULT hr = pThis->QueueEvent( METransformNeedInput, GUID_NULL, S_OK, nullptr );
+            if( FAILED( hr ) )
+            {
+               pThis->m_dwNeedInputCount--;
+               assert( false );   // TODO: need to quit.
+            }
          }
       }
    }   // while(TRUE)
@@ -2865,6 +2873,11 @@ CDX12EncHMFT::ProcessOutput( DWORD dwFlags, DWORD cOutputBufferCount, MFT_OUTPUT
    }
    pOutputSamples[0].pSample = pSample;
    pSample = nullptr;
+
+   if( m_bLowLatency )
+   {
+      m_eventHaveInput.set();
+   }
 
 done:
    SAFE_RELEASE( pSample );

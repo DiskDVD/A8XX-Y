@@ -111,11 +111,6 @@ static /* const */ char *error_list[] = {
    "GLXBadProfileARB",
 };
 
-#ifdef GLX_USE_APPLEGL
-static char *__glXErrorString(Display *dpy, int code, XExtCodes *codes,
-                              char *buf, int n);
-#endif
-
 static
 XEXT_GENERATE_ERROR_STRING(__glXErrorString, __glXExtensionName,
                            __GLX_NUMBER_ERRORS, error_list)
@@ -409,14 +404,7 @@ __glXInitializeVisualConfigFromTags(struct glx_config * config, int count,
       config->numAuxBuffers = *bp++;
       config->level = *bp++;
 
-#ifdef GLX_USE_APPLEGL
-       /* AppleSGLX supports pixmap and pbuffers with all config. */
-       config->drawableType = GLX_WINDOW_BIT | GLX_PIXMAP_BIT | GLX_PBUFFER_BIT;
-       /* Unfortunately this can create an ABI compatibility problem. */
-       count -= 18;
-#else
       count -= __GLX_MIN_CONFIG_PROPS;
-#endif
    }
 
    /*
@@ -512,10 +500,6 @@ __glXInitializeVisualConfigFromTags(struct glx_config * config, int count,
          break;
       case GLX_DRAWABLE_TYPE:
          config->drawableType = *bp++;
-#ifdef GLX_USE_APPLEGL
-         /* AppleSGLX supports pixmap and pbuffers with all config. */
-         config->drawableType |= GLX_WINDOW_BIT | GLX_PIXMAP_BIT | GLX_PBUFFER_BIT;
-#endif
          break;
       case GLX_RENDER_TYPE: /* fbconfig render type bits */
          config->renderType = *bp++;
@@ -535,7 +519,6 @@ __glXInitializeVisualConfigFromTags(struct glx_config * config, int count,
       case GLX_MAX_PBUFFER_PIXELS:
          config->maxPbufferPixels = *bp++;
          break;
-#ifndef GLX_USE_APPLEGL
       case GLX_OPTIMAL_PBUFFER_WIDTH_SGIX:
          config->optimalPbufferWidth = *bp++;
          break;
@@ -545,7 +528,6 @@ __glXInitializeVisualConfigFromTags(struct glx_config * config, int count,
       case GLX_VISUAL_SELECT_GROUP_SGIX:
          config->visualSelectGroup = *bp++;
          break;
-#endif
       case GLX_SAMPLE_BUFFERS_SGIS:
          config->sampleBuffers = *bp++;
          break;
@@ -758,6 +740,12 @@ static void
 bind_extensions(struct glx_screen *psc, const char *driverName)
 {
    unsigned mask;
+
+#if defined(GLX_DIRECT_RENDERING) && (!defined(GLX_USE_APPLEGL) || defined(GLX_USE_APPLE))
+   /* Some implementations (eg: AppleGL) never populate frontend_screen. */
+   if (psc->frontend_screen == NULL)
+      return;
+#endif
 
    if (psc->display->driver != GLX_DRIVER_SW) {
       __glXEnableDirectExtension(psc, "GLX_EXT_buffer_age");
@@ -1028,7 +1016,7 @@ __glXInitialize(Display * dpy)
    if (glx_direct)
       glx_driver |= GLX_DRIVER_SW;
 
-#if !defined(GLX_USE_APPLE)
+#if !defined(GLX_USE_APPLEGL)
    if (!dpyPriv->has_multibuffer && glx_accel && !debug_get_bool_option("LIBGL_KOPPER_DRI2", false)) {
       if (glx_driver & GLX_DRIVER_ZINK_YES) {
          /* only print error if zink was explicitly requested */
@@ -1044,7 +1032,7 @@ __glXInitialize(Display * dpy)
    if (glx_direct && glx_accel)
       glx_driver |= GLX_DRIVER_WINDOWS;
 #endif
-#endif /* GLX_DIRECT_RENDERING && !GLX_USE_APPLEGL */
+#endif /* GLX_DIRECT_RENDERING && (!GLX_USE_APPLEGL || GLX_USE_APPLE) */
 
 #if defined(GLX_USE_APPLEGL) && !defined(GLX_USE_APPLE)
    glx_driver |= GLX_DRIVER_SW;

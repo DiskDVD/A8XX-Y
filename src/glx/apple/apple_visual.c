@@ -86,20 +86,17 @@ apple_visual_create_pfobj(CGLPixelFormatObj * pfobj, const struct glx_config * m
    bool use_core_profile = debug_get_bool_option("LIBGL_PROFILE_CORE", false);
 
    if (offscreen) {
-      apple_glx_diagnostic
-         ("offscreen rendering enabled.  Using kCGLPFAOffScreen\n");
+      apple_glx_log_debug("offscreen rendering enabled.  Using kCGLPFAOffScreen");
 
       attr[numattr++] = kCGLPFAOffScreen;
    }
    else if (debug_get_bool_option("LIBGL_ALWAYS_SOFTWARE", false)) {
-      apple_glx_diagnostic
-         ("Software rendering requested.  Using kCGLRendererGenericFloatID.\n");
+      apple_glx_log_debug("Software rendering requested.  Using kCGLRendererGenericFloatID.");
       attr[numattr++] = kCGLPFARendererID;
       attr[numattr++] = kCGLRendererGenericFloatID;
    }
    else if (debug_get_bool_option("LIBGL_ALLOW_SOFTWARE", false)) {
-      apple_glx_diagnostic
-         ("Software rendering is not being excluded.  Not using kCGLPFAAccelerated.\n");
+      apple_glx_log_debug("Software rendering is not being excluded.  Not using kCGLPFAAccelerated.");
    }
    else {
       attr[numattr++] = kCGLPFAAccelerated;
@@ -170,8 +167,8 @@ apple_visual_create_pfobj(CGLPixelFormatObj * pfobj, const struct glx_config * m
    error = apple_cgl.choose_pixel_format(attr, pfobj, &vsref);
 
    if ((error == kCGLBadAttribute || vsref == 0) && use_core_profile) {
-      apple_glx_diagnostic
-         ("Trying again without CoreProfile: error=%s, vsref=%d\n", apple_cgl.error_string(error), vsref);
+      apple_glx_log_info("Trying again without CoreProfile: error=%s, vsref=%d",
+                         apple_cgl.error_string(error), vsref);
 
       if (!error)
          apple_cgl.destroy_pixel_format(*pfobj);

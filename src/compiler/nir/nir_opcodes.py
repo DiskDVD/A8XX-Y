@@ -128,8 +128,6 @@ tfloat = "float"
 tint = "int"
 tbool = "bool"
 tbool1 = "bool1"
-tbool8 = "bool8"
-tbool16 = "bool16"
 tbool32 = "bool32"
 tuint = "uint"
 tuint8 = "uint8"
@@ -161,7 +159,7 @@ def type_sizes(type_):
     if type_has_size(type_):
         return [type_size(type_)]
     elif type_ == 'bool':
-        return [1, 8, 16, 32]
+        return [1, 32]
     elif type_ == 'float':
         return [16, 32, 64]
     else:
@@ -649,26 +647,21 @@ def binop_compare(name, ty, alg_props, const_expr, description = "", ty2=None,
                   valid_fp_math_ctrl=None):
    binop_convert(name, tbool1, ty, alg_props, const_expr, description, ty2, False, valid_fp_math_ctrl)
 
-def binop_compare8(name, ty, alg_props, const_expr, description = "", ty2=None,
-                   valid_fp_math_ctrl=None):
-   binop_convert(name, tbool8, ty, alg_props, const_expr, description, ty2, False, valid_fp_math_ctrl)
-
-def binop_compare16(name, ty, alg_props, const_expr, description = "", ty2=None,
-                    valid_fp_math_ctrl=None):
-   binop_convert(name, tbool16, ty, alg_props, const_expr, description, ty2, False, valid_fp_math_ctrl)
-
 def binop_compare32(name, ty, alg_props, const_expr, description = "", ty2=None,
                     valid_fp_math_ctrl=None):
    binop_convert(name, tbool32, ty, alg_props, const_expr, description, ty2, False, valid_fp_math_ctrl)
+
+def binop_compare_pan(name, ty, alg_props, const_expr, description = "", ty2=None,
+                      valid_fp_math_ctrl=None):
+   binop_convert(name, tuint, ty, alg_props, const_expr, description, ty2, False, valid_fp_math_ctrl)
 
 def binop_compare_all_sizes(name, ty, alg_props, const_expr, description = "", ty2=None):
    valid_fp_math_ctrl = None
    if type_base_type(ty) == 'float':
       valid_fp_math_ctrl = preserve_inf + preserve_nan
    binop_compare(name, ty, alg_props, const_expr, description, ty2, valid_fp_math_ctrl)
-   binop_compare8(name + "8", ty, alg_props, const_expr, description, ty2, valid_fp_math_ctrl)
-   binop_compare16(name + "16", ty, alg_props, const_expr, description, ty2, valid_fp_math_ctrl)
    binop_compare32(name + "32", ty, alg_props, const_expr, description, ty2, valid_fp_math_ctrl)
+   binop_compare_pan(name + "_pan", ty, alg_props, const_expr + " ? -1 : 0", description, ty2, valid_fp_math_ctrl)
 
 def binop_horiz(name, out_size, out_type, src1_size, src1_type, src2_size,
                 src2_type, const_expr, description = ""):
@@ -709,10 +702,6 @@ def binop_reduce_all_sizes(name, output_size, src_type, prereduce_expr,
    if type_base_type(src_type) == 'float':
       valid_fp_math_ctrl = preserve_inf + preserve_nan
    binop_reduce(name, output_size, tbool1, src_type, prereduce_expr,
-                reduce_expr, final_expr, "", description, valid_fp_math_ctrl)
-   binop_reduce("b8" + name[1:], output_size, tbool8, src_type, prereduce_expr,
-                reduce_expr, final_expr, "", description, valid_fp_math_ctrl)
-   binop_reduce("b16" + name[1:], output_size, tbool16, src_type, prereduce_expr,
                 reduce_expr, final_expr, "", description, valid_fp_math_ctrl)
    binop_reduce("b32" + name[1:], output_size, tbool32, src_type, prereduce_expr,
                 reduce_expr, final_expr, "", description, valid_fp_math_ctrl)
@@ -946,10 +935,10 @@ binop_compare_all_sizes("ine", tint, _2src_commutative, "src0 != src1")
 binop_compare_all_sizes("ult", tuint, "", "src0 < src1")
 binop_compare_all_sizes("uge", tuint, "", "src0 >= src1")
 
-binop_compare_all_sizes("bitnz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x1",
+binop_compare("bitnz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x1",
    "only uses the least significant bits like SM5 shifts", tuint32)
 
-binop_compare_all_sizes("bitz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x0",
+binop_compare("bitz", tuint, "", "((uint64_t)src0 >> (src1 & (bit_size - 1)) & 0x1) == 0x0",
    "only uses the least significant bits like SM5 shifts", tuint32)
 
 # integer-aware GLSL-style comparisons that compare floats and ints
@@ -1249,15 +1238,12 @@ triop("fcsel", tfloat32, selection, "(src0 != 0.0f) ? src1 : src2",
 opcode("bcsel", 0, tuint, [0, 0, 0],
        [tbool1, tuint, tuint], False, selection, "src0 ? src1 : src2",
        description = csel_description.format("a 1-bit", "0 vs 1"))
-opcode("b8csel", 0, tuint, [0, 0, 0],
-       [tbool8, tuint, tuint], False, selection, "src0 ? src1 : src2",
-       description = csel_description.format("an 8-bit", "0 vs ~0"))
-opcode("b16csel", 0, tuint, [0, 0, 0],
-       [tbool16, tuint, tuint], False, selection, "src0 ? src1 : src2",
-       description = csel_description.format("a 16-bit", "0 vs ~0"))
 opcode("b32csel", 0, tuint, [0, 0, 0],
        [tbool32, tuint, tuint], False, selection, "src0 ? src1 : src2",
        description = csel_description.format("a 32-bit", "0 vs ~0"))
+opcode("bcsel_pan", 0, tuint, [0, 0, 0],
+       [tuint, tuint, tuint], False, selection, "src0 ? src1 : src2",
+       description = csel_description.format("a same-sized", "0 vs ~0"))
 
 triop("icsel_eqz", tint, selection, "(src0 == 0) ? src1 : src2")
 
@@ -2001,6 +1987,25 @@ triop("bffma", tuint16, _2src_commutative, """
     const float c = _mesa_bfloat16_bits_to_float(src2);
     dst = _mesa_float_to_bfloat16_bits_rte(fmaf(a, b, c));
 """, valid_fp_math_ctrl = preserve_sz_inf_nan + exact)
+
+opcode("bfmul_mixed_intel",
+       0, tuint16,
+       [0, 0], [tuint16, tfloat32],
+       False, "", """
+   const float a = _mesa_bfloat16_bits_to_float(src0);
+   const float b = src1;
+   dst = _mesa_float_to_bfloat16_bits_rte(a * b);
+""", "like bfmul but with f32 src1", valid_fp_math_ctrl = preserve_sz_inf_nan + exact)
+
+opcode("bffma_mixed_intel",
+       0, tuint16,
+       [0, 0, 0], [tfloat32, tuint16, tuint16],
+       False, "", """
+    const float a = src0;
+    const float b = _mesa_bfloat16_bits_to_float(src1);
+    const float c = _mesa_bfloat16_bits_to_float(src2);
+    dst = _mesa_float_to_bfloat16_bits_rte(fmaf(a, b, c));
+""", "like bffma but with f32 src0", valid_fp_math_ctrl = preserve_sz_inf_nan + exact)
 
 binop_reduce("bfdot", 1, tuint16, tuint16,
              "_mesa_bfloat16_bits_to_float({src0}) * _mesa_bfloat16_bits_to_float({src1})",

@@ -317,6 +317,8 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .NV_shader_atomic_float16_vector = info->cls_eng3d >= TURING_A,
       .NV_shader_sm_builtins = true,
       .NVX_image_view_handle = info->cls_eng3d >= MAXWELL_A, /* needs true bindless descriptors */
+      .NVX_binary_import = info->cls_eng3d >= MAXWELL_A &&
+         instance->experimental_flags & NVK_EXPERIMENTAL_DLSS,
       .VALVE_mutable_descriptor_type = true,
    };
 }
@@ -853,7 +855,7 @@ nvk_get_device_properties(const struct nvk_instance *instance,
       .maxImageArrayLayers = 2048,
       .maxTexelBufferElements = 128 * 1024 * 1024,
       .maxUniformBufferRange = 65536,
-      .maxStorageBufferRange = 1ull << 31,
+      .maxStorageBufferRange = UINT32_MAX,
       .maxPushConstantsSize = NVK_MAX_PUSH_SIZE,
       .maxMemoryAllocationCount = 4096,
       .maxSamplerAllocationCount = 4000,

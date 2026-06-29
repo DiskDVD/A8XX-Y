@@ -850,19 +850,15 @@ update_fs_config(struct anv_gfx_dynamic_state *hw_state,
    if (!fs_prog_data)
       return;
 
-   /* If we have any dynamic bits here, we might need to update the value
-    * in the push constant for the shader.
-    */
-   if (!brw_fs_prog_data_is_dynamic(fs_prog_data))
+   /* Only update the value if the shader uses it. */
+   if (!fs_prog_data->uses_fs_config)
       return;
 
    UNUSED const struct brw_mesh_prog_data *mesh_prog_data = get_gfx_mesh_prog_data(gfx);
 
    enum intel_fs_config fs_config =
       intel_fs_config((struct intel_fs_params) {
-            .shader_sample_shading     = fs_prog_data->sample_shading,
-            .shader_min_sample_shading = fs_prog_data->min_sample_shading,
-            .state_sample_shading      = fs_prog_data->api_sample_shading,
+            .persample_interp          = fs_prog_data->persample_interp,
             .rasterization_samples     = dyn->ms.rasterization_samples,
             .coarse_pixel              = !vk_fragment_shading_rate_is_disabled(&dyn->fsr),
             .alpha_to_coverage         = dyn->ms.alpha_to_coverage_enable,
@@ -1073,9 +1069,8 @@ update_ps(struct anv_gfx_dynamic_state *hw_state,
 
    SET(PS, ps.PositionXYOffsetSelect,
            !fs_prog_data->uses_pos_offset ? POSOFFSET_NONE :
-           brw_fs_prog_data_is_persample(fs_prog_data,
-                                         hw_state->fs_config) ?
-           POSOFFSET_SAMPLE : POSOFFSET_CENTROID);
+           fs_prog_data->persample_dispatch ? POSOFFSET_SAMPLE :
+           POSOFFSET_CENTROID);
 }
 
 ALWAYS_INLINE static void
@@ -1087,8 +1082,7 @@ update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
    if (!fs_prog_data)
       return;
 
-   UNUSED const bool uses_coarse_pixel =
-      brw_fs_prog_data_is_coarse(fs_prog_data, hw_state->fs_config);
+   UNUSED const bool uses_coarse_pixel = fs_prog_data->coarse_pixel_dispatch;
 
    uint32_t InputCoverageMaskState = ICMS_NONE;
    assert(!fs_prog_data->inner_coverage); /* Not available in SPIR-V */
@@ -1104,8 +1098,7 @@ update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
    SET(PS_EXTRA, ps_extra.InputCoverageMaskState, InputCoverageMaskState);
 
    SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample,
-                 brw_fs_prog_data_is_persample(fs_prog_data,
-                                               hw_state->fs_config));
+                 fs_prog_data->persample_dispatch);
 #if GFX_VER >= 11
    SET(PS_EXTRA, ps_extra.PixelShaderIsPerCoarsePixel, uses_coarse_pixel);
 #endif
@@ -1117,7 +1110,7 @@ update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
 #endif
 
    SET(WM, wm.BarycentricInterpolationMode,
-           fs_prog_data_barycentric_modes(fs_prog_data, hw_state->fs_config));
+       fs_prog_data->barycentric_interp_modes);
 
 #if INTEL_WA_18038825448_GFX_VER
    SET(WA_18038825448, coarse_state, uses_coarse_pixel ?
@@ -4097,8 +4090,7 @@ genX(cmd_buffer_flush_gfx_hw_state)(struct anv_cmd_buffer *cmd_buffer)
    const struct brw_fs_prog_data *fs_prog_data = get_gfx_fs_prog_data(gfx);
    if (fs_prog_data) {
       genX(cmd_buffer_set_coarse_pixel_active)(
-         cmd_buffer,
-         brw_fs_prog_data_is_coarse(fs_prog_data, hw_state->fs_config));
+         cmd_buffer, fs_prog_data->coarse_pixel_dispatch);
    }
 #endif
 
