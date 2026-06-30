@@ -1319,7 +1319,7 @@ a8xx_base_raw_magic_regs = [
         [A6XXRegs.REG_A7XX_RB_LRZ_CNTL2,      0x00000000],
         [A6XXRegs.REG_A8XX_RB_RESOLVE_CNTL_5, 0x00000001],
 
-        [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB01,   0x00000000],
+        [A6XXRegs.REG_A7XX_SP_UNKNOWN_AB01,   0x00000001], # На чипах 8 серии чаще встречается это значение. Предыдущие 0x00000000
         [A6XXRegs.REG_A7XX_SP_HLSQ_MODE_CNTL, 0x00000000],
         [A6XXRegs.REG_A8XX_SP_UNKNOWN_AB23,   0x00000000],
 
@@ -1517,7 +1517,11 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
-         GPUProps(shading_rate_matches_vk = True)],
+         GPUProps(shading_rate_matches_vk = True
+                   gmem_vpc_attr_buf_size = 131072, 
+                   gmem_vpc_pos_buf_size = 49152,
+                   gmem_vpc_bv_pos_buf_size = 65536,
+                   )],
         num_ccu = 6,
         num_slices = 3,
         tile_align_w = 96,
