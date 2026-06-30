@@ -1517,7 +1517,7 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
-         GPUProps(shading_rate_matches_vk = True
+         GPUProps(shading_rate_matches_vk = True,
                    gmem_vpc_attr_buf_size = 131072, 
                    gmem_vpc_pos_buf_size = 49152,
                    gmem_vpc_bv_pos_buf_size = 65536,
