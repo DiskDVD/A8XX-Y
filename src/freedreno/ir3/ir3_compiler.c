@@ -71,7 +71,8 @@ ir3_get_gpu_profile(uint32_t chip_id)
         return (struct ir3_gpu_profile){75, 16, 12, false, 0};
     case 0x43050A31: /* Adreno 830 variant */
         return (struct ir3_gpu_profile){75, 16, 12, false, 0};
-    case 0x43050A32: /* Adreno 840 */
+    case 0x44050A31: /* Adreno 840 */
+    case 0x43050A32: /* Adreno 840 variant */
         return (struct ir3_gpu_profile){70, 20, 16, false, 0};
     default:
         return (struct ir3_gpu_profile){85, 8, 8, false, 0};
