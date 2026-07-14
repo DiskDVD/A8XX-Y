@@ -1,7 +1,7 @@
 name: Cherry-Pick Hardcoded Commits
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   cherry-pick:
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout my repo
         uses: actions/checkout@v4
         with:
-          ref: A8XX             
+          ref: A8XX
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -27,8 +27,33 @@ jobs:
 
           # Запуск cherry-pick для ваших коммитов
           echo "Переносим коммиты..."
-          git cherry-pick df922c3 3c49123 c05725b 4c49c67 acf1422 b08da28 e6803d1 8af9339 e4850b0 ac7f680 8eb5e4b 7173c19 a89c561 6d9555c 03156bd c7e4c9e 2a449c3 5ee734f 85e16cb ad15931 7ac21f0 28c8c20 5acdbb0 7905ed8 1b15bad 42d6f81 a22ce20 7520b73 9e000e7 86405d7 e960a72 1cceecc d6a3ee4 fa15658 
+          commits="df922c3 3c49123 c05725b 4c49c67 acf1422 b08da28 e6803d1 8af9339 e4850b0 ac7f680 8eb5e4b 7173c19 a89c561 6d9555c 03156bd c7e4c9e 2a449c3 5ee734f 85e16cb ad15931 7ac21f0 28c8c20 5acdbb0 7905ed8 1b15bad a22ce20 7520b73 9e000e7 86405d7 e960a72 1cceecc d6a3ee4 fa15658"
+
+          for commit in $commits; do
+            echo "Cherry-picking $commit..."
+            parent_count=$(git rev-list --parents -n 1 "$commit" | awk '{print NF - 1}')
+
+            if [ "$parent_count" -gt 1 ]; then
+              echo "Commit $commit is a merge commit; cherry-picking with mainline parent 1."
+              cherry_pick_args=(-m 1 -X theirs "$commit")
+            else
+              cherry_pick_args=(-X theirs "$commit")
+            fi
+
+            if git cherry-pick "${cherry_pick_args[@]}"; then
+              continue
+            fi
+
+            if git diff --quiet && git diff --cached --quiet; then
+              echo "Commit $commit is empty after conflict resolution; skipping."
+              git cherry-pick --skip
+            else
+              echo "Cherry-pick of $commit failed with unresolved changes."
+              git status
+              exit 1
+            fi
+          done
 
       - name: Push changes
         run: git push origin HEAD:A8XX
-        
+
