@@ -527,7 +527,7 @@ ir3_nir_can_lower_to_ldg_k(nir_intrinsic_instr *intrin)
 }
 
 static bool
-instr_is_load_const(nir_instr *instr)
+instr_is_ldg_k_load(nir_instr *instr)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -600,12 +600,11 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
 
    struct ir3_ubo_analysis_state state = {};
    uint32_t upload_remaining = max_upload;
-
    nir_foreach_function (function, nir) {
       if (function->impl && !function->is_preamble) {
          nir_foreach_block (block, function->impl) {
             nir_foreach_instr (instr, block) {
-               if (instr_is_load_const(instr) &&
+               if (instr_is_ldg_k_load(instr) &&
                    ir3_def_is_rematerializable_for_preamble(nir_instr_as_intrinsic(instr)->src[0].ssa, NULL))
                   gather_ubo_ranges(nir, nir_instr_as_intrinsic(instr), &state,
                                     align_vec4, 0,
@@ -614,7 +613,6 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
          }
       }
    }
-
    assign_offsets(&state, global_offset, max_upload);
 
    bool progress = copy_global_to_uniform(nir, &state);
