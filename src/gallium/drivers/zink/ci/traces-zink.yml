@@ -132,9 +132,9 @@ traces:
       checksum: c4ae80a143de76e137e5dd406586a459
       text: Different rendering from iris, but still looks correct (common result with this trace)
     zink-radv-vangogh:
-      checksum: 9ced84dc92fd3748e43888403b1474c8
+      checksum: 00ca21f3a459555080b6e7f1bfee4fde
     zink-radv-gfx1201:
-      checksum: 9ced84dc92fd3748e43888403b1474c8
+      checksum: 00ca21f3a459555080b6e7f1bfee4fde
 
   gputest/plot3d-v2.trace:
     gl-zink-anv-adl:

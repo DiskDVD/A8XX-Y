@@ -1667,6 +1667,7 @@ anv_h265_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
    const StdVideoH265PictureParameterSet *pps = vk_video_find_h265_enc_std_pps(params, frame_info->pStdPictureInfo->pps_pic_parameter_set_id);
    StdVideoEncodeH265ReferenceListsInfo* ref_lists =
       (struct StdVideoEncodeH265ReferenceListsInfo *)frame_info->pStdPictureInfo->pRefLists;
+   const bool is_10bit = (sps->bit_depth_luma_minus8 == 2) || (sps->bit_depth_chroma_minus8 == 2);
 
    const struct anv_image_view *iv = anv_image_view_from_handle(enc_info->srcPictureResource.imageViewBinding);
    const struct anv_image *src_img = iv->image;
@@ -1744,7 +1745,7 @@ anv_h265_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
          }
 
          ss.SurfacePitch = img_->planes[0].primary_surface.isl.row_pitch_B - 1;
-         ss.SurfaceFormat = PLANAR_420_8;
+         ss.SurfaceFormat = is_10bit ? P010 : PLANAR_420_8;
 
          ss.YOffsetforUCb = img_->planes[1].primary_surface.memory_range.offset /
                             img_->planes[0].primary_surface.isl.row_pitch_B;
@@ -2042,6 +2043,7 @@ anv_h265_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
 
    anv_batch_emit(&cmd->batch, GENX(VDENC_PIPE_MODE_SELECT), vdenc_pipe_mode) {
       vdenc_pipe_mode.StandardSelect = SS_HEVC;
+      vdenc_pipe_mode.BitDepth = is_10bit ? 2 : 0;
       vdenc_pipe_mode.PAKChromaSubSamplingType = _420;
       vdenc_pipe_mode.HMERegionPrefetchEnable = !vdenc_pipe_mode.TLBPrefetchEnable;
       vdenc_pipe_mode.TopPrefetchEnableMode = 1;
@@ -2059,7 +2061,7 @@ anv_h265_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
    anv_batch_emit(&cmd->batch, GENX(VDENC_SRC_SURFACE_STATE), vdenc_surface) {
       vdenc_surface.SurfaceState.Width = enc_info->srcPictureResource.codedExtent.width - 1;
       vdenc_surface.SurfaceState.Height = enc_info->srcPictureResource.codedExtent.height - 1;
-      vdenc_surface.SurfaceState.SurfaceFormat = VDENC_PLANAR_420_8;
+      vdenc_surface.SurfaceState.SurfaceFormat = is_10bit ? VDENC_P010 : VDENC_PLANAR_420_8;
 
       vdenc_surface.SurfaceState.TileWalk = TW_YMAJOR;
       vdenc_surface.SurfaceState.TiledSurface = src_img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
@@ -2073,7 +2075,7 @@ anv_h265_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
    anv_batch_emit(&cmd->batch, GENX(VDENC_REF_SURFACE_STATE), vdenc_surface) {
       vdenc_surface.SurfaceState.Width = base_ref_img->vk.extent.width - 1;
       vdenc_surface.SurfaceState.Height = base_ref_img->vk.extent.height - 1;
-      vdenc_surface.SurfaceState.SurfaceFormat = VDENC_PLANAR_420_8;
+      vdenc_surface.SurfaceState.SurfaceFormat = is_10bit ? VDENC_P010 : VDENC_PLANAR_420_8;
       vdenc_surface.SurfaceState.SurfacePitch = base_ref_img->planes[0].primary_surface.isl.row_pitch_B - 1;
 
       vdenc_surface.SurfaceState.TileWalk = TW_YMAJOR;

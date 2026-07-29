@@ -117,6 +117,7 @@ struct kk_rendering_state {
    bool sample_locations_enable;
    uint32_t sample_locations_count;
    VkSampleLocationEXT sample_locations[KK_MAX_SAMPLES];
+   bool force_attachment_store;
 };
 
 /* Dirty tracking bits for state not tracked by vk_dynamic_graphics_state or
@@ -197,11 +198,21 @@ struct kk_uploader {
    uint32_t offset;
 };
 
+/* A pending resolve of one timestamp counter-heap entry into a query pool BO.
+ * Recorded by vkCmdWriteTimestamp2 and flushed on the GPU timeline at cs_end. */
+struct kk_ts_resolve {
+   mtl_counter_heap *heap;
+   uint32_t index;
+   uint64_t dst_addr;
+};
+
 struct kk_encoder_state {
    /* either a mtl_compute_encoder or a mtl_render_encoder */
    mtl_command_encoder *encoder;
    mtl_command_allocator *allocator;
    mtl_command_buffer *cmd_buf;
+   /* Pending timestamp resolves (struct kk_ts_resolve), flushed at cs_end. */
+   struct util_dynarray ts_resolves;
 };
 
 struct kk_cmd_buffer {
@@ -320,6 +331,8 @@ uint64_t kk_upload_descriptor_root(struct kk_cmd_buffer *cmd,
 
 void kk_cmd_buffer_flush_push_descriptors(struct kk_cmd_buffer *cmd,
                                           struct kk_descriptor_state *desc);
+
+void kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store);
 
 enum kk_grid_mode {
    KK_GRID_DIRECT = 0u,

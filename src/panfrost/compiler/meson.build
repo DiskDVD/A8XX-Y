@@ -7,7 +7,7 @@ libpanfrost_compiler_files = files(
   'pan_nir_collect_varyings.c',
   'pan_nir_fuse_io_cvt.c',
   'pan_nir_lower_bool_to_bitsize.c',
-  'pan_nir_lower_var_special.c',
+  'pan_nir_lower_divergent_scratch.c',
   'pan_nir_lower_framebuffer.c',
   'pan_nir_lower_fs_inputs.c',
   'pan_nir_lower_fs_outputs.c',
@@ -19,9 +19,9 @@ libpanfrost_compiler_files = files(
   'pan_nir_lower_noperspective.c',
   'pan_nir_lower_sample_position.c',
   'pan_nir_lower_tex.c',
+  'pan_nir_lower_var_special.c',
   'pan_nir_lower_vertex_id.c',
   'pan_nir_lower_vs_outputs.c',
-  'pan_nir_lower_xfb.c',
   'pan_nir_resize_varying_io.c',
 )
 

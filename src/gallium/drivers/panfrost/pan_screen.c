@@ -828,6 +828,7 @@ panfrost_init_screen_caps(struct panfrost_screen *screen)
 
    caps->texture_transfer_modes = 0;
 
+   caps->device_type = PIPE_DEVICE_TYPE_INTEGRATED_GPU;
    caps->endianness = PIPE_ENDIAN_NATIVE;
 
    caps->max_texture_gather_components = 4;

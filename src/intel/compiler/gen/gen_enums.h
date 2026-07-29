@@ -240,8 +240,10 @@ typedef enum ENUM_PACKED gen_sfid {
 enum ENUM_PACKED lsc_opcode {
    LSC_OP_LOAD            = 0,
    LSC_OP_LOAD_CMASK      = 2,
+   LSC_OP_LOAD_2D_BLOCK   = 3,
    LSC_OP_STORE           = 4,
    LSC_OP_STORE_CMASK     = 6,
+   LSC_OP_STORE_2D_BLOCK  = 7,
    LSC_OP_ATOMIC_INC      = 8,
    LSC_OP_ATOMIC_DEC      = 9,
    LSC_OP_ATOMIC_LOAD     = 10,

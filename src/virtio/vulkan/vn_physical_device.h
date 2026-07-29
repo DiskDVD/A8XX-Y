@@ -118,11 +118,6 @@ struct vn_physical_device {
       VkExternalMemoryHandleTypeFlags supported_handle_types;
    } external_memory;
 
-   struct {
-      bool fence_exportable;
-      bool semaphore_exportable;
-   } renderer_sync_fd;
-
    VkExternalFenceHandleTypeFlags external_fence_handles;
    VkExternalSemaphoreHandleTypeFlags external_binary_semaphore_handles;
    VkExternalSemaphoreHandleTypeFlags external_timeline_semaphore_handles;

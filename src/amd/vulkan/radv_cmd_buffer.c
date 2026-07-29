@@ -225,18 +225,56 @@ radv_cmd_set_rasterizer_discard_enable(struct radv_cmd_buffer *cmd_buffer, bool 
    state->dirty_dynamic |= RADV_DYNAMIC_RASTERIZER_DISCARD_ENABLE;
 }
 
+ALWAYS_INLINE static bool
+radv_raster_prim_is_point(const struct radv_cmd_buffer *cmd_buffer)
+{
+   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+   const unsigned vgt_outprim_type = cmd_buffer->state.vgt_outprim_type;
+
+   return radv_vgt_outprim_is_point(vgt_outprim_type) ||
+          (radv_vgt_outprim_is_triangle(vgt_outprim_type) && radv_polygon_mode_is_point(d->vk.rs.polygon_mode));
+}
+
+ALWAYS_INLINE static bool
+radv_raster_prim_is_line(const struct radv_cmd_buffer *cmd_buffer)
+{
+   const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
+   const unsigned vgt_outprim_type = cmd_buffer->state.vgt_outprim_type;
+
+   return radv_vgt_outprim_is_line(vgt_outprim_type) ||
+          (radv_vgt_outprim_is_triangle(vgt_outprim_type) && radv_polygon_mode_is_line(d->vk.rs.polygon_mode));
+}
+
+ALWAYS_INLINE static unsigned
+radv_get_raster_prim(const struct radv_cmd_buffer *cmd_buffer)
+{
+   return radv_raster_prim_is_point(cmd_buffer)  ? V_030998_POINTLIST
+          : radv_raster_prim_is_line(cmd_buffer) ? V_030998_LINESTRIP
+                                                 : V_030998_TRISTRIP;
+}
+
+ALWAYS_INLINE static void
+radv_update_guardband_raster_prim(struct radv_cmd_buffer *cmd_buffer)
+{
+   struct radv_cmd_state *state = &cmd_buffer->state;
+   unsigned raster_prim = radv_get_raster_prim(cmd_buffer);
+
+   if (raster_prim != cmd_buffer->state.guardband_raster_prim) {
+      state->guardband_raster_prim = raster_prim;
+      state->dirty |= RADV_CMD_DIRTY_GUARDBAND;
+   }
+}
+
 ALWAYS_INLINE static void
 radv_cmd_set_polygon_mode(struct radv_cmd_buffer *cmd_buffer, VkPolygonMode polygon_mode)
 {
    struct radv_cmd_state *state = &cmd_buffer->state;
 
-   if (radv_polygon_mode_is_points_or_lines(state->dynamic.vk.rs.polygon_mode) !=
-       radv_polygon_mode_is_points_or_lines(polygon_mode))
-      state->dirty |= RADV_CMD_DIRTY_GUARDBAND;
-
+   /* This must be set before calling radv_update_guardband_raster_prim. */
    state->dynamic.vk.rs.polygon_mode = polygon_mode;
 
    state->dirty_dynamic |= RADV_DYNAMIC_POLYGON_MODE;
+   radv_update_guardband_raster_prim(cmd_buffer);
 }
 
 ALWAYS_INLINE static void
@@ -1986,15 +2024,7 @@ radv_get_line_mode(const struct radv_cmd_buffer *cmd_buffer)
 {
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
 
-   const unsigned vgt_outprim_type = cmd_buffer->state.vgt_outprim_type;
-
-   const bool draw_lines =
-      (radv_vgt_outprim_is_line(vgt_outprim_type) && !radv_polygon_mode_is_point(d->vk.rs.polygon_mode)) ||
-      (radv_polygon_mode_is_line(d->vk.rs.polygon_mode) && !radv_vgt_outprim_is_point(vgt_outprim_type));
-   if (draw_lines)
-      return d->vk.rs.line.mode;
-
-   return VK_LINE_RASTERIZATION_MODE_DEFAULT;
+   return radv_raster_prim_is_line(cmd_buffer) ? d->vk.rs.line.mode : VK_LINE_RASTERIZATION_MODE_DEFAULT;
 }
 
 static ALWAYS_INLINE unsigned
@@ -5820,14 +5850,11 @@ radv_emit_guardband_state(struct radv_cmd_buffer *cmd_buffer)
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_dynamic_state *d = &cmd_buffer->state.dynamic;
-   unsigned vgt_outprim_type = cmd_buffer->state.vgt_outprim_type;
-   const bool draw_points =
-      radv_vgt_outprim_is_point(vgt_outprim_type) || radv_polygon_mode_is_point(d->vk.rs.polygon_mode);
-   const bool draw_lines =
-      radv_vgt_outprim_is_line(vgt_outprim_type) || radv_polygon_mode_is_line(d->vk.rs.polygon_mode);
    struct radv_cmd_stream *cs = cmd_buffer->cs;
    float clip_discard_distance = 0.0f;
    struct ac_guardband guardband;
+
+   assert(cmd_buffer->state.guardband_raster_prim == radv_get_raster_prim(cmd_buffer));
 
    if (!d->vk.vp.viewport_count)
       return;
@@ -5850,9 +5877,9 @@ radv_emit_guardband_state(struct radv_cmd_buffer *cmd_buffer)
    /* When rendering wide points or lines, we need to be more conservative about when to discard
     * them entirely.
     */
-   if (draw_points) {
+   if (cmd_buffer->state.guardband_raster_prim == V_030998_POINTLIST) {
       clip_discard_distance = 8191.875f;
-   } else if (draw_lines) {
+   } else if (cmd_buffer->state.guardband_raster_prim == V_030998_LINESTRIP) {
       clip_discard_distance = d->vk.rs.line.width;
    }
 
@@ -12069,6 +12096,8 @@ radv_emit_ps_state(struct radv_cmd_buffer *cmd_buffer)
    bool use_float_frag_coord_xy = false;
    bool use_quad_pos = false;
    bool use_sample_mask_in = false;
+   int front_face_select = 0;
+   unsigned raster_prim = 0;
 
    if (ps->info.ps.selects_frag_coord_xy_dynamically || ps->info.ps.selects_quad_pos_dynamically) {
       /* Whether VRS can be other than 1x1. */
@@ -12115,6 +12144,19 @@ radv_emit_ps_state(struct radv_cmd_buffer *cmd_buffer)
          spi_ps_input_ena &= C_0286CC_SAMPLE_COVERAGE_ENA;
    }
 
+   if (ps->info.ps.load_rasterization_prim || ps->info.ps.selects_front_face_dynamically)
+      raster_prim = radv_get_raster_prim(cmd_buffer);
+
+   if (ps->info.ps.selects_front_face_dynamically) {
+      if (raster_prim != V_030998_TRISTRIP || cmd_buffer->state.dynamic.vk.rs.cull_mode == VK_CULL_MODE_BACK_BIT)
+         front_face_select = 1;
+      else if (cmd_buffer->state.dynamic.vk.rs.cull_mode == VK_CULL_MODE_FRONT_BIT)
+         front_face_select = -1;
+
+      if (front_face_select)
+         spi_ps_input_ena &= C_0286CC_FRONT_FACE_ENA;
+   }
+
    struct radv_cmd_stream *cs = cmd_buffer->cs;
 
    radeon_begin(cs);
@@ -12130,14 +12172,14 @@ radv_emit_ps_state(struct radv_cmd_buffer *cmd_buffer)
       const unsigned rasterization_samples = cmd_buffer->state.num_rast_samples;
       const unsigned ps_iter_samples = radv_get_ps_iter_samples(cmd_buffer);
       const uint16_t ps_iter_mask = ac_get_ps_iter_mask(ps_iter_samples);
-      const unsigned vgt_outprim_type = cmd_buffer->state.vgt_outprim_type;
       const unsigned ps_state = SET_SGPR_FIELD(PS_STATE_NUM_SAMPLES, rasterization_samples) |
                                 SET_SGPR_FIELD(PS_STATE_PS_ITER_MASK, ps_iter_mask) |
                                 SET_SGPR_FIELD(PS_STATE_LINE_RAST_MODE, line_rast_mode) |
-                                SET_SGPR_FIELD(PS_STATE_RAST_PRIM, vgt_outprim_type) |
+                                SET_SGPR_FIELD(PS_STATE_RAST_PRIM, raster_prim) |
                                 SET_SGPR_FIELD(PS_STATE_USE_FLOAT_FRAG_COORD_XY, use_float_frag_coord_xy) |
                                 SET_SGPR_FIELD(PS_STATE_USE_QUAD_POS, use_quad_pos) |
-                                SET_SGPR_FIELD(PS_STATE_USE_SAMPLE_MASK_IN, use_sample_mask_in);
+                                SET_SGPR_FIELD(PS_STATE_USE_SAMPLE_MASK_IN, use_sample_mask_in) |
+                                SET_SGPR_FIELD(PS_STATE_FRONT_FACE_SELECT, front_face_select);
 
       if (pdev->info.gfx_level >= GFX12) {
          gfx12_push_sh_reg(ps_state_offset, ps_state);
@@ -13277,6 +13319,20 @@ radv_validate_dynamic_states(struct radv_cmd_buffer *cmd_buffer, uint64_t dynami
         RADV_DYNAMIC_RASTERIZER_DISCARD_ENABLE | RADV_DYNAMIC_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE))
       cmd_buffer->state.dirty |= RADV_CMD_DIRTY_RASTER_STATE;
 
+   if (dynamic_states & RADV_DYNAMIC_POLYGON_MODE) {
+      const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+
+      if (ps && (ps->info.ps.load_rasterization_prim || ps->info.ps.selects_front_face_dynamically))
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PS_STATE;
+   }
+
+   if (dynamic_states & RADV_DYNAMIC_CULL_MODE) {
+      const struct radv_shader *ps = cmd_buffer->state.shaders[MESA_SHADER_FRAGMENT];
+
+      if (ps && ps->info.ps.selects_front_face_dynamically)
+         cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PS_STATE;
+   }
+
    if (dynamic_states &
        (RADV_DYNAMIC_LINE_STIPPLE_ENABLE | RADV_DYNAMIC_CONSERVATIVE_RAST_MODE | RADV_DYNAMIC_SAMPLE_LOCATIONS |
         RADV_DYNAMIC_SAMPLE_LOCATIONS_ENABLE | RADV_DYNAMIC_ALPHA_TO_COVERAGE_ENABLE | RADV_DYNAMIC_SAMPLE_MASK))
@@ -13381,14 +13437,14 @@ radv_emit_all_graphics_states(struct radv_cmd_buffer *cmd_buffer, const struct r
       const uint32_t vgt_outprim_type = radv_get_vgt_outprim_type(cmd_buffer);
 
       if (cmd_buffer->state.vgt_outprim_type != vgt_outprim_type) {
-         if (radv_vgt_outprim_is_point_or_line(cmd_buffer->state.vgt_outprim_type) !=
-             radv_vgt_outprim_is_point_or_line(vgt_outprim_type))
-            cmd_buffer->state.dirty |= RADV_CMD_DIRTY_GUARDBAND;
-
+         /* This must be set before calling radv_update_guardband_raster_prim. */
          cmd_buffer->state.vgt_outprim_type = vgt_outprim_type;
+
          cmd_buffer->state.dirty |= RADV_CMD_DIRTY_PS_STATE | RADV_CMD_DIRTY_NGG_STATE | RADV_CMD_DIRTY_NGGC_SETTINGS |
                                     RADV_CMD_DIRTY_VGT_PRIM_STATE;
       }
+
+      radv_update_guardband_raster_prim(cmd_buffer);
 
       const VkLineRasterizationModeEXT line_rast_mode = radv_get_line_mode(cmd_buffer);
 

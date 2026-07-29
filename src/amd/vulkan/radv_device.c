@@ -1264,7 +1264,7 @@ radv_device_init_compiler_info(struct radv_device *device)
       .rra_trace = &device->rra_trace,
       /* Cache */
       .cache_disabled = radv_device_is_cache_disabled(device),
-      .enable_nir_cache = !!(instance->debug_flags & RADV_PERFTEST_NIR_CACHE),
+      .enable_nir_cache = !!(instance->perftest_flags & RADV_PERFTEST_NIR_CACHE),
       .mem_cache = device->mem_cache,
       .override_graphics_shader_version = instance->drirc.misc.override_graphics_shader_version,
       .override_ray_tracing_shader_version = instance->drirc.misc.override_ray_tracing_shader_version,

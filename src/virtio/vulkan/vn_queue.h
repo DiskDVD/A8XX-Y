@@ -16,6 +16,9 @@
 struct vn_queue {
    struct vn_queue_base base;
 
+   /* internal queue index within vn_device::queues */
+   uint32_t index;
+
    /* emulated queue shares base queue id and ring_idx with another queue */
    bool emulated;
 
@@ -24,6 +27,24 @@ struct vn_queue {
 
    /* only used if renderer supports multiple timelines */
    uint32_t ring_idx;
+
+   /* Ensure fence submission via the virtqueue is executed AFTER the queue
+    * submission via the ring.
+    *
+    * 1. driver submit queue batch via the ring
+    * 2. driver submit via vq to wait for ring and then submit queue fences
+    */
+   bool ring_seqno_valid;
+   uint32_t ring_seqno;
+
+   /* Ensure fence submission via the virtqueue is executed BEFORE the next
+    * queue submission via the ring.
+    *
+    * 1. driver submit via vq to update vq seqno
+    * 2. driver submit via ring to wait for vq and then submit queue batch
+    */
+   bool roundtrip_seqno_valid;
+   uint64_t roundtrip_seqno;
 
    /* wait fence used for vn_QueueWaitIdle */
    VkFence wait_fence;

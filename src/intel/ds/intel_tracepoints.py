@@ -270,6 +270,8 @@ def define_tracepoints(args):
     begin_end_tp('as_update', repeat_last=True,
                   tp_args=[Arg(type='uint32_t', var='build_flags', c_format='%x')])
     begin_end_tp('as_copy', repeat_last=True)
+    begin_end_tp('as_pair_triangles', repeat_last=True)
+    begin_end_tp('as_id_prefix_sum', repeat_last=True)
 
     begin_end_tp('rays',
                  tp_args=[Arg(type='uint32_t', var='group_x', c_format='%u'),

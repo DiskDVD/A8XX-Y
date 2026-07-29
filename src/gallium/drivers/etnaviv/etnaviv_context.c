@@ -138,36 +138,6 @@ etna_context_destroy(struct pipe_context *pctx)
    FREE(pctx);
 }
 
-/* Update render state where needed based on draw operation */
-static void
-etna_update_state_for_draw(struct etna_context *ctx, const struct pipe_draw_info *info)
-{
-   /* Handle primitive restart:
-    * - If not an indexed draw, we don't care about the state of the primitive restart bit.
-    * - Otherwise, set the bit in INDEX_STREAM_CONTROL in the index buffer state
-    *   accordingly
-    * - If the value of the INDEX_STREAM_CONTROL register changed due to this, or
-    *   primitive restart is enabled and the restart index changed, mark the index
-    *   buffer state as dirty
-    */
-
-   if (info->index_size) {
-      uint32_t new_control = ctx->index_buffer.FE_INDEX_STREAM_CONTROL;
-
-      if (info->primitive_restart)
-         new_control |= VIVS_FE_INDEX_STREAM_CONTROL_PRIMITIVE_RESTART;
-      else
-         new_control &= ~VIVS_FE_INDEX_STREAM_CONTROL_PRIMITIVE_RESTART;
-
-      if (ctx->index_buffer.FE_INDEX_STREAM_CONTROL != new_control ||
-          (info->primitive_restart && ctx->index_buffer.FE_PRIMITIVE_RESTART_INDEX != info->restart_index)) {
-         ctx->index_buffer.FE_INDEX_STREAM_CONTROL = new_control;
-         ctx->index_buffer.FE_PRIMITIVE_RESTART_INDEX = info->restart_index;
-         ctx->dirty |= ETNA_DIRTY_INDEX_BUFFER;
-      }
-   }
-}
-
 static bool
 etna_get_vs(struct etna_context *ctx, struct etna_shader_key* const key)
 {
@@ -343,6 +313,7 @@ etna_reset_gpu_state(struct etna_context *ctx)
 
    etna_cmd_stream_mark_end_of_context_init(stream);
 
+   ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo = NULL;
    ctx->dirty = ~0L;
    ctx->dirty_sampler_views = ~0L;
    ctx->prev_active_samplers = ~0L;
@@ -417,22 +388,37 @@ etna_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
       /* Add start to index offset, when rendering indexed */
       index_offset += draws[0].start * info->index_size;
 
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo = etna_buffer_resource(indexbuf)->bo;
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.offset = index_offset;
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.flags = ETNA_RELOC_READ;
-      ctx->index_buffer.FE_INDEX_STREAM_CONTROL = translate_index_size(info->index_size);
+      struct etna_bo *bo = etna_buffer_resource(indexbuf)->bo;
+      uint32_t control = translate_index_size(info->index_size);
 
-      if (!ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo) {
+      if (!bo) {
          BUG("Unsupported or no index buffer");
          return;
       }
-   } else {
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo = 0;
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.offset = 0;
-      ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.flags = 0;
-      ctx->index_buffer.FE_INDEX_STREAM_CONTROL = 0;
+
+      if (info->primitive_restart)
+         control |= VIVS_FE_INDEX_STREAM_CONTROL_PRIMITIVE_RESTART;
+
+      /* Only mark the index buffer state dirty when it changed. Non-indexed
+       * draws leave the stale state in place, as the FE only consumes it
+       * when executing an indexed draw command. The bo pointer compare is
+       * safe as the cache never outlives the command stream that emitted
+       * it - the stream references every relocated bo until submit and the
+       * cache is invalidated on GPU state reset.
+       */
+      if (ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo != bo ||
+          ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.offset != index_offset ||
+          ctx->index_buffer.FE_INDEX_STREAM_CONTROL != control ||
+          (info->primitive_restart &&
+           ctx->index_buffer.FE_PRIMITIVE_RESTART_INDEX != info->restart_index)) {
+         ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.bo = bo;
+         ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.offset = index_offset;
+         ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR.flags = ETNA_RELOC_READ;
+         ctx->index_buffer.FE_INDEX_STREAM_CONTROL = control;
+         ctx->index_buffer.FE_PRIMITIVE_RESTART_INDEX = info->restart_index;
+         ctx->dirty |= ETNA_DIRTY_INDEX_BUFFER;
+      }
    }
-   ctx->dirty |= ETNA_DIRTY_INDEX_BUFFER;
 
    struct etna_shader_key key = {
       .front_ccw = ctx->rasterizer->front_ccw,
@@ -470,7 +456,7 @@ etna_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
    }
 
    /* Update any derived state */
-   if (!etna_state_update(ctx))
+   if (ctx->dirty && !etna_state_update(ctx))
       return;
 
    /*
@@ -552,9 +538,6 @@ etna_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info,
 
    ctx->stats.prims_generated += u_reduced_prims_for_vertices(info->mode, draws[0].count);
    ctx->stats.draw_calls++;
-
-   /* Update state for this draw operation */
-   etna_update_state_for_draw(ctx, info);
 
    /* First, sync state, then emit DRAW_PRIMITIVES or DRAW_INDEXED_PRIMITIVES */
    etna_emit_state(ctx);

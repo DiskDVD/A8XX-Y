@@ -741,6 +741,16 @@ tu_render_pass_gmem_config(struct tu_render_pass *pass,
    if (pass->attachment_count == 0)
       return;
 
+   bool custom_resolve_depth_stencil = false;
+   for (uint32_t i = 0; i < pass->subpass_count; i++) {
+      const struct tu_subpass *subpass = &pass->subpasses[i];
+      if (subpass->custom_resolve && subpass->depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED &&
+          (subpass->depth_used || subpass->stencil_used)) {
+         custom_resolve_depth_stencil = true;
+         break;
+      }
+   }
+
    for (enum tu_gmem_layout layout = (enum tu_gmem_layout) 0;
         layout < TU_GMEM_LAYOUT_COUNT;
         layout = (enum tu_gmem_layout)(layout + 1)) {
@@ -803,9 +813,17 @@ tu_render_pass_gmem_config(struct tu_render_pass *pass,
          return;
       }
 
-      uint32_t gmem_size = layout == TU_GMEM_LAYOUT_FULL
-                              ? phys_dev->usable_gmem_size_gmem
-                              : phys_dev->config_gmem.color_ccu_offset;
+      /* TODO: this algorithm isn't optimal
+       * for example, two attachments with cpp = {1, 4}
+       * result:  nblocks = {12, 52}, pixels = 196608
+       * optimal: nblocks = {13, 51}, pixels = 208896
+       */
+      uint32_t gmem_size = phys_dev->usable_gmem_size_gmem;
+      if (layout == TU_GMEM_LAYOUT_AVOID_CCU) {
+         gmem_size = MIN2(gmem_size, phys_dev->config_gmem.color_ccu_offset);
+         if (custom_resolve_depth_stencil)
+            gmem_size = MIN2(gmem_size, phys_dev->config_gmem.depth_ccu_offset);
+      }
       uint32_t gmem_blocks = gmem_size / gmem_align;
       uint32_t alloc_align[num_gmem_alloc];
       uint32_t min_blocks_total = 0;

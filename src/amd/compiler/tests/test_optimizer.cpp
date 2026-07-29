@@ -1999,6 +1999,37 @@ BEGIN_TEST(optimize.s_pack)
    finish_opt_test();
 END_TEST
 
+BEGIN_TEST(optimize.s_pack_shift_const)
+   for (unsigned i = GFX9; i <= GFX11; i++) {
+      //>> s1: %a:s[0], s1: %b:s[1] = p_startpgm
+      if (!setup_cs("s1 s1", (amd_gfx_level)i))
+         continue;
+
+      Temp hi = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[1],
+                           Operand::c32(1), Operand::c32(16u), Operand::c32(false));
+
+      /* Before GFX11 there is no s_pack_hl, but a constant second operand can be
+       * shifted into the high half in order to use s_pack_hh instead.
+       */
+      //~gfx(9|10_3|10)! s1: %res0 = s_pack_hh_b32_b16 %b, 0x12340000
+      //~gfx11! s1: %res0 = s_pack_hl_b32_b16 %b, 0x1234
+      //! p_unit_test 0, %res0
+      writeout(0, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), hi, Operand::c32(0x1234u)));
+
+      hi = bld.pseudo(aco_opcode::p_extract, bld.def(s1), bld.def(s1, scc), inputs[1],
+                      Operand::c32(1), Operand::c32(16u), Operand::c32(false));
+
+      /* A non-constant second operand can't be shifted. */
+      //~gfx(9|10_3|10)! s1: %hi1, s1: %_:scc = p_extract %b, 1, 16, 0
+      //~gfx(9|10_3|10)! s1: %res1 = s_pack_ll_b32_b16 %hi1, %a
+      //~gfx11! s1: %res1 = s_pack_hl_b32_b16 %b, %a
+      //! p_unit_test 1, %res1
+      writeout(1, bld.sop2(aco_opcode::s_pack_ll_b32_b16, bld.def(s1), hi, inputs[0]));
+
+      finish_opt_test();
+   }
+END_TEST
+
 BEGIN_TEST(optimizer.trans_inline_constant)
    if (!setup_cs("", GFX12))
       return;

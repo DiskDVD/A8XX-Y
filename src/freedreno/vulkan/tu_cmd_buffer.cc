@@ -195,6 +195,7 @@ tu_emit_event_write(struct tu_cmd_buffer *cmd,
                     enum fd_gpu_event event)
 {
    struct fd_gpu_event_info event_info = fd_gpu_events<CHIP>[event];
+   assert(event_info.raw_event);
    tu_emit_raw_event_write<CHIP>(cmd, cs, event_info.raw_event,
                                  event_info.needs_seqno);
 }
@@ -584,11 +585,10 @@ tu_emit_cache_flush_renderpass(struct tu_cmd_buffer *cmd_buffer)
    struct tu_cs *cs = &cmd_buffer->draw_cs;
    struct tu_cache_state *cache = &cmd_buffer->state.renderpass_cache;
 
-   tu6_emit_flushes<CHIP>(cmd_buffer, cs, cache);
-   if (cmd_buffer->state.renderpass_cache.flush_bits &
-       TU_CMD_FLAG_BLIT_CACHE_CLEAN) {
+   if (cache->flush_bits & TU_CMD_FLAG_BLIT_CACHE_CLEAN) {
       cmd_buffer->state.blit_cache_cleaned = true;
    }
+   tu6_emit_flushes<CHIP>(cmd_buffer, cs, cache);
 }
 TU_GENX(tu_emit_cache_flush_renderpass);
 
@@ -635,14 +635,15 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
     * overwrite GMEM when sysmem operations are performed.
     *
     * The vast majority of GMEM rendering doesn't need any sysmem operations
-    * but there are some cases where it is required. For example, when the
-    * framebuffer isn't aligned to the tile size or with certain MSAA resolves.
+    * but there are some cases where it is required. For example:
+    * - Framebuffer isn't aligned to the tile size;
+    * - Certain MSAA resolves;
+    * - Custom shader resolves with color/depth outputs.
     *
     * To correctly handle these cases, we need to be able to switch between
     * sysmem and GMEM rendering. We do this by allocating a carveout at the
-    * end of GMEM for the color CCU (as none of these operations are depth)
-    * which the color CCU offset is set to and the GMEM size available to the
-    * GMEM layout calculations is adjusted accordingly.
+    * end of GMEM for the color CCU or color + depth CCU. The GMEM size
+    * available to the GMEM layout calculations is adjusted accordingly.
     */
    const struct fd6_gmem_config *cfg = gmem ?
       &dev->physical_device->config_gmem :
@@ -670,7 +671,7 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
       tu_cs_emit_regs(cs, RB_CCU_CACHE_CNTL(CHIP,
          .depth_offset_hi = depth_offset_hi,
          .color_offset_hi = color_offset_hi,
-         .depth_cache_size = CCU_CACHE_SIZE_FULL,
+         .depth_cache_size = (enum a6xx_ccu_cache_size)cfg->depth_cache_fraction,
          .depth_offset = depth_offset,
          .color_cache_size = color_cache_size,
          .color_offset = color_offset
@@ -681,10 +682,10 @@ emit_rb_ccu_cntl(struct tu_cs *cs, struct tu_device *dev, bool gmem)
             !dev->physical_device->info->props.has_gmem_fast_clear,
          .concurrent_resolve =
             dev->physical_device->info->props.concurrent_resolve,
-         .depth_offset_hi = 0,
+         .depth_offset_hi = depth_offset_hi,
          .color_offset_hi = color_offset_hi,
-         .depth_cache_size = CCU_CACHE_SIZE_FULL,
-         .depth_offset = 0,
+         .depth_cache_size = (enum a6xx_ccu_cache_size)cfg->depth_cache_fraction,
+         .depth_offset = depth_offset,
          .color_cache_size = color_cache_size,
          .color_offset = color_offset
       ));
@@ -2632,11 +2633,14 @@ emit_vsc_overflow_test(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 template <chip CHIP>
 static void
 tu6_emit_binning_pass(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
-                      const VkOffset2D *fdm_offsets, bool use_cb)
+                      const VkOffset2D *fdm_offsets, bool use_cb,
+                      tu_autotune::rp_ctx_t rp_ctx)
 {
    struct tu_physical_device *phys_dev = cmd->device->physical_device;
    const struct tu_framebuffer *fb = cmd->state.framebuffer;
    const struct tu_tiling_config *tiling = cmd->state.tiling;
+
+   cmd->device->autotune->begin_binning(cs, rp_ctx);
 
    /* If this command buffer may be executed multiple times, then
     * viewports/scissor states may have been changed by previous executions
@@ -2773,6 +2777,8 @@ tu6_emit_binning_pass(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
    tu_cs_emit_pkt7(cs, CP_SET_MODE, 1);
    tu_cs_emit(cs, 0x0);
+
+   cmd->device->autotune->end_binning(cs, rp_ctx);
 }
 
 template <chip CHIP>
@@ -3006,7 +3012,7 @@ tu_trace_start_render_pass(struct tu_cmd_buffer *cmd)
 
    trace_start_render_pass(&cmd->trace, &cmd->cs, cmd, cmd->state.framebuffer,
                            cmd->state.tiling, max_samples, clear_cpp,
-                           load_cpp, store_cpp, has_depth, ubwc,
+                           load_cpp, store_cpp, has_depth, ubwc, cmd->state.pass->has_msrtss,
                            cmd->state.rp.cb_disable_reason ? cmd->state.rp.cb_disable_reason : "");
 }
 
@@ -3076,6 +3082,11 @@ tu_renderpass_begin(struct tu_cmd_buffer *cmd)
     */
    BITSET_SET(cmd->vk.dynamic_graphics_state.dirty,
               MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_ENABLE);
+   /* PC_RESTART_INDEX is emitted directly into draw_cs and must be re-emitted
+    * for each renderpass.
+    */
+   BITSET_SET(cmd->vk.dynamic_graphics_state.dirty,
+              MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_INDEX);
 
    cmd->state.fdm_enabled = cmd->state.pass->has_fdm;
 
@@ -3284,7 +3295,8 @@ tu6_sysmem_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
       tu_cs_emit_regs(cs, RB_BIN_FOVEAT(CHIP));
    }
 
-   cmd->device->autotune->begin_renderpass(cmd, cs, rp_ctx, true, 0);
+   cmd->device->autotune->init_renderpass(rp_ctx, true, 0);
+   cmd->device->autotune->begin_renderpass(cmd, cs, rp_ctx);
 
    tu_cs_sanity_check(cs);
 }
@@ -3307,7 +3319,7 @@ tu6_sysmem_render_end(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    if (cmd->state.fdm_subsampled) {
       for (unsigned i = 0; i < cmd->state.pass->attachment_count; i++) {
          if (i != cmd->state.pass->fragment_density_map.attachment &&
-             cmd->state.pass->attachments[i].store) {
+             (cmd->state.pass->attachments[i].store || cmd->state.pass->attachments[i].store_stencil)) {
             /* emit dummy subsampled metadata since we didn't use FDM */
             tu_emit_subsampled_metadata(cmd, &cmd->cs, i,
                                         NULL, NULL, NULL,
@@ -3490,6 +3502,9 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    const struct tu_vsc_config *vsc = tu_vsc_config(cmd, tiling);
    const struct tu_render_pass *pass = cmd->state.pass;
    bool use_binning = use_hw_binning(cmd);
+   uint32_t tile_count = vsc->tile_count.width * vsc->tile_count.height;
+
+   cmd->device->autotune->init_renderpass(rp_ctx, false, tile_count);
 
    /* User flushes should always be executed on BR. */
    tu_emit_cache_flush_ccu<CHIP>(cmd, cs, TU_CMD_CCU_GMEM);
@@ -3558,7 +3573,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
 
       tu6_emit_render_cntl<CHIP>(cmd, cmd->state.subpass, cs, true);
 
-      tu6_emit_binning_pass<CHIP>(cmd, cs, fdm_offsets, use_cb);
+      tu6_emit_binning_pass<CHIP>(cmd, cs, fdm_offsets, use_cb, rp_ctx);
 
       /* Enable early return from CP_INDIRECT_BUFFER once the visibility stream
        * is done.  We don't enable this if there are stores in a non-final
@@ -3661,8 +3676,7 @@ tu6_tile_render_begin(struct tu_cmd_buffer *cmd, struct tu_cs *cs,
    if (use_cb)
       tu_trace_start_render_pass(cmd);
 
-   uint32_t tile_count = vsc->tile_count.width * vsc->tile_count.height;
-   cmd->device->autotune->begin_renderpass(cmd, cs, rp_ctx, false, tile_count);
+   cmd->device->autotune->begin_renderpass(cmd, cs, rp_ctx);
 
    tu_cs_sanity_check(cs);
 }
@@ -3813,7 +3827,7 @@ tu_emit_subsampled(struct tu_cmd_buffer *cmd,
 
    for (unsigned i = 0; i < cmd->state.pass->attachment_count; i++) {
       if (i != cmd->state.pass->fragment_density_map.attachment &&
-          cmd->state.pass->attachments[i].store) {
+          (cmd->state.pass->attachments[i].store || cmd->state.pass->attachments[i].store_stencil)) {
          tu_emit_subsampled_metadata(cmd, cs, i,
                                      tiles, tiling, vsc,
                                      cmd->state.framebuffer,
@@ -3853,12 +3867,11 @@ tu_emit_subsampled(struct tu_cmd_buffer *cmd,
       if (count != 0) {
          for (unsigned i = 0; i < cmd->state.pass->attachment_count; i++) {
             if (i != cmd->state.pass->fragment_density_map.attachment &&
-                cmd->state.pass->attachments[i].store &&
-                (cmd->state.pass->num_views == 0 ||
-                 (cmd->state.pass->attachments[i].used_views & (1u << layer)) ||
+                (cmd->state.pass->attachments[i].store || cmd->state.pass->attachments[i].store_stencil) &&
+                (cmd->state.pass->num_views == 0 || (cmd->state.pass->attachments[i].used_views & (1u << layer)) ||
                  (cmd->state.pass->attachments[i].resolve_views & (1u << layer)))) {
-               tu_blit_subsampled_apron<CHIP>(cmd, cs, cmd->state.attachments[i],
-                                              layer, dst, src, count);
+               tu_blit_subsampled_apron<CHIP>(cmd, cs, cmd->state.attachments[i], cmd->state.pass->attachments[i].store,
+                                              cmd->state.pass->attachments[i].store_stencil, layer, dst, src, count);
             }
          }
       }
@@ -4592,7 +4605,6 @@ tu_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
    size = buf ? vk_buffer_range(&buf->vk, offset, size) : 0;
 
    uint32_t index_size, index_shift;
-   uint32_t restart_index = vk_index_to_restart(indexType);
 
    switch (indexType) {
    case VK_INDEX_TYPE_UINT16:
@@ -4611,11 +4623,16 @@ tu_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer,
       UNREACHABLE("invalid VkIndexType");
    }
 
-   if (buf) {
-      /* initialize/update the restart index */
-      if (cmd->state.index_size != index_size)
-         tu_cs_emit_regs(&cmd->draw_cs, PC_RESTART_INDEX(CHIP, restart_index));
+   /* From the Vulkan 1.4.348 spec, vkCmdSetPrimitiveRestartIndexEXT():
+    *
+    *    "Binding an index buffer invalidates the custom index value."
+    *
+    * Updating the dynamic state here resets the restart index to the type's
+    * default and lets the draw path re-emit PC_RESTART_INDEX.
+    */
+   vk_cmd_set_index_buffer_type(&cmd->vk, indexType);
 
+   if (buf) {
       cmd->state.index_va = vk_buffer_address(&buf->vk, offset);
       cmd->state.max_index_count = size >> index_shift;
       cmd->state.index_size = index_size;
@@ -4751,7 +4768,7 @@ tu_bind_descriptor_sets(struct tu_cmd_buffer *cmd,
       descriptors_state->set_iova[idx] = set ?
          (set->va | BINDLESS_DESCRIPTOR_64B) : 0;
 
-      if (cmd->device->physical_device->enable_ssbo_emulation)
+      if (cmd->device->physical_device->compiler_options.enable_ssbo_emulation)
          cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
 
       if (!set)
@@ -4820,7 +4837,7 @@ tu_bind_descriptor_sets(struct tu_cmd_buffer *cmd,
                         va += desc_offset << offset_shift;
                         va += offset;
 
-                        if (cmd->device->physical_device->enable_ssbo_emulation) {
+                        if (cmd->device->physical_device->compiler_options.enable_ssbo_emulation) {
                            dst_desc[11] = va;
                            dst_desc[12] = va >> 32;
                         }
@@ -4927,7 +4944,7 @@ tu_set_descriptor_buffer_offsets(
           info->pOffsets[i]) |
          BINDLESS_DESCRIPTOR_64B;
 
-      if (cmd->device->physical_device->enable_ssbo_emulation ||
+      if (cmd->device->physical_device->compiler_options.enable_ssbo_emulation ||
           set_layout->has_inline_uniforms)
          cmd->state.dirty |= TU_CMD_DIRTY_SHADER_CONSTS;
    }
@@ -5826,7 +5843,7 @@ vk2tu_access(VkAccessFlags2 flags, VkAccessFlags3KHR flags2,
       mask |= TU_ACCESS_SYSMEM_READ;
 
    if (gfx_write_access(flags, stages,
-                        VK_ACCESS_2_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT,
+                        VK_ACCESS_2_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT,
                         VK_PIPELINE_STAGE_2_TRANSFORM_FEEDBACK_BIT_EXT))
       mask |= TU_ACCESS_CP_WRITE;
 
@@ -6212,6 +6229,10 @@ tu_restore_suspended_pass(struct tu_cmd_buffer *cmd,
    cmd->state.tiling = tu_framebuffer_get_tiling_config(cmd->state.framebuffer, cmd->device, cmd->state.pass,
                                                         cmd->state.gmem_layout, cmd->state.gmem_layout_divisor);
    cmd->state.lrz = suspended->state.suspended_pass.lrz;
+
+#ifdef HAVE_PERFETTO
+   cmd->vk.dynamic_graphics_state.vp = suspended->vk.dynamic_graphics_state.vp;
+#endif
 }
 
 /* Take the saved pre-chain in "secondary" and copy its commands to "cmd",
@@ -7297,8 +7318,10 @@ tu_CmdSetRenderingAttachmentLocationsKHR(
    /* Same case as a drawcall not writing to some color attachments, but not
     * trying to make LRZ work in cases where we can prove that LRZ can work.
     */
-   if (cmd->state.lrz.valid)
+   if (cmd->state.lrz.valid && !cmd->state.lrz.disable_write_for_rp) {
       tu_lrz_disable_write_for_rp(cmd, "CmdSetRenderingAttachmentLocations");
+      cmd->state.dirty |= TU_CMD_DIRTY_LRZ;
+   }
 
    /* Because this is just a remapping and not a different "reference", there
     * doesn't need to be a barrier between accesses to the same attachment
@@ -7379,6 +7402,15 @@ tu_next_subpass_lrz(struct tu_cmd_buffer *cmd,
                     const struct tu_subpass *subpass,
                     const struct tu_subpass *new_subpass)
 {
+   /* If custom resolve writes depth LRZ shouldn't be used for it. */
+   if (new_subpass->custom_resolve) {
+      if (new_subpass->depth_stencil_attachment.attachment != VK_ATTACHMENT_UNUSED)
+         cmd->state.lrz.valid = false;
+
+      cmd->state.dirty |= TU_CMD_DIRTY_LRZ;
+      return;
+   }
+
    /* Track LRZ valid state
     *
     * TODO: Improve this tracking for keeping the state of the past depth/stencil images,
@@ -8434,6 +8466,13 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
       }
    }
 
+   if (BITSET_TEST(cmd->vk.dynamic_graphics_state.dirty,
+                   MESA_VK_DYNAMIC_IA_PRIMITIVE_RESTART_INDEX) ||
+       (cmd->state.dirty & TU_CMD_DIRTY_DRAW_STATE)) {
+      tu_cs_emit_regs(cs, PC_RESTART_INDEX(CHIP,
+         cmd->vk.dynamic_graphics_state.ia.primitive_restart_index));
+   }
+
    if (cmd->device->physical_device->info->props.has_rt_workaround &&
        cmd->state.program.uses_ray_intersection) {
       tu_set_render_mode<CHIP>(cs, { .shader_uses_rt = true });
@@ -8474,12 +8513,13 @@ tu6_draw_common(struct tu_cmd_buffer *cmd,
                     ir3_tess_factor_stride(tes->variant->key.tessellation),
                  TU_TESS<CHIP>::PARAM_SIZE / (tcs->variant->output_size * 4))
             : 0;
-      /* convert from # of patches to draw count */
-      subdraw_size *= cmd->vk.dynamic_graphics_state.ts.patch_control_points;
 
       /* For gen8 tess_bo is sized for two draws, adjust subdraw size accordingly: */
       if (CHIP >= A8XX)
          subdraw_size /= 2;
+
+      /* convert from # of patches to draw count */
+      subdraw_size *= cmd->vk.dynamic_graphics_state.ts.patch_control_points;
 
       tu_cs_emit_pkt7(cs, CP_SET_SUBDRAW_SIZE, 1);
       tu_cs_emit(cs, subdraw_size);

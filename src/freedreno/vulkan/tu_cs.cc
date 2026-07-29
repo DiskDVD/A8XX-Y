@@ -568,6 +568,8 @@ tu_cs_reset(struct tu_cs *cs)
    if (cs->read_write.bo_count) {
       cs->read_write.bos[0] = cs->read_write.bos[cs->read_write.bo_count - 1];
       cs->read_write.bo_count = 1;
+
+      cs->read_write.start = (uint32_t *) cs->read_write.bos[0]->map;
    }
 
    cs->entry_count = 0;

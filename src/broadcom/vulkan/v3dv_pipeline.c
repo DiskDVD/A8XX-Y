@@ -371,9 +371,14 @@ preprocess_nir(nir_shader *nir)
    v3d_optimize_nir(NULL, nir);
 }
 
-static nir_shader *
+/* Returns the stage's NIR in nir_out on success. Otherwise it returns
+ * VK_ERROR_OUT_OF_HOST_MEMORY for allocation failures or VK_ERROR_UNKNOWN for
+ * compile errors.
+ */
+static VkResult
 shader_module_compile_to_nir(struct v3dv_device *device,
-                             struct v3dv_pipeline_stage *stage)
+                             struct v3dv_pipeline_stage *stage,
+                             nir_shader **nir_out)
 {
    assert(stage->module || stage->module_info);
 
@@ -403,7 +408,7 @@ shader_module_compile_to_nir(struct v3dv_device *device,
                                                      nir_options,
                                                      NULL, &nir);
    if (result != VK_SUCCESS)
-      return NULL;
+      return result;
    assert(nir->info.stage == gl_stage);
 
    if (V3D_DBG(SHADERDB) && (!stage->module || stage->module->nir == NULL)) {
@@ -421,7 +426,9 @@ shader_module_compile_to_nir(struct v3dv_device *device,
 
    preprocess_nir(nir);
 
-   return nir;
+   *nir_out = nir;
+
+   return VK_SUCCESS;
 }
 
 static unsigned
@@ -1813,7 +1820,8 @@ pipeline_lower_nir(struct v3dv_pipeline *pipeline,
     * shader doesn't need any other samplers, get rid of them so we can
     * recognize that this program doesn't use any samplers at all.
     */
-   if (!needs_default_sampler_state && maps->sampler_map.num_desc == 2)
+   if (!needs_default_sampler_state &&
+       maps->sampler_map.num_desc == V3DV_NUM_NO_SAMPLER_IDX)
       maps->sampler_map.num_desc = 0;
 
    p_stage->feedback.duration += os_time_get_nano() - stage_start;
@@ -1840,10 +1848,11 @@ get_ucp_enable_mask(struct v3dv_pipeline_stage *p_stage)
    return 0;
 }
 
-static nir_shader *
-pipeline_stage_get_nir(struct v3dv_pipeline_stage *p_stage,
-                       struct v3dv_pipeline *pipeline,
-                       struct v3dv_pipeline_cache *cache)
+/* Sets p_stage->nir from the cache or by compiling the shader module. */
+static VkResult
+pipeline_stage_init_nir(struct v3dv_pipeline_stage *p_stage,
+                        struct v3dv_pipeline *pipeline,
+                        struct v3dv_pipeline_cache *cache)
 {
    int64_t stage_start = os_time_get_nano();
 
@@ -1865,33 +1874,36 @@ pipeline_stage_get_nir(struct v3dv_pipeline_stage *p_stage,
 
       p_stage->feedback.duration += os_time_get_nano() - stage_start;
 
-      return nir;
+      p_stage->nir = nir;
+
+      return VK_SUCCESS;
    }
 
-   nir = shader_module_compile_to_nir(pipeline->device, p_stage);
+   VkResult result =
+      shader_module_compile_to_nir(pipeline->device, p_stage, &nir);
+   if (result != VK_SUCCESS)
+      return result;
+   assert(nir);
 
-   if (nir) {
-      struct v3dv_pipeline_cache *default_cache =
-         &pipeline->device->default_pipeline_cache;
+   struct v3dv_pipeline_cache *default_cache =
+      &pipeline->device->default_pipeline_cache;
 
-      v3dv_pipeline_cache_upload_nir(pipeline, cache, nir,
+   v3dv_pipeline_cache_upload_nir(pipeline, cache, nir,
+                                  p_stage->shader_blake3);
+
+   /* Ensure that the variant is on the default cache, as cmd_buffer could
+    * need to change the current variant
+    */
+   if (default_cache != cache) {
+      v3dv_pipeline_cache_upload_nir(pipeline, default_cache, nir,
                                      p_stage->shader_blake3);
-
-      /* Ensure that the variant is on the default cache, as cmd_buffer could
-       * need to change the current variant
-       */
-      if (default_cache != cache) {
-         v3dv_pipeline_cache_upload_nir(pipeline, default_cache, nir,
-                                        p_stage->shader_blake3);
-      }
-
-      p_stage->feedback.duration += os_time_get_nano() - stage_start;
-
-      return nir;
    }
 
-   /* FIXME: this shouldn't happen, raise error? */
-   return NULL;
+   p_stage->feedback.duration += os_time_get_nano() - stage_start;
+
+   p_stage->nir = nir;
+
+   return VK_SUCCESS;
 }
 
 static VkResult
@@ -2284,14 +2296,18 @@ multiview_gs_output_primitive_from_pipeline(struct v3dv_pipeline *pipeline)
    }
 }
 
-static bool
+static VkResult
 pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
                           struct v3dv_pipeline_cache *cache,
                           const VkAllocationCallbacks *pAllocator)
 {
    /* Create the passthrough GS from the VS output interface */
    struct v3dv_pipeline_stage *p_stage_vs = pipeline->stages[BROADCOM_SHADER_VERTEX];
-   p_stage_vs->nir = pipeline_stage_get_nir(p_stage_vs, pipeline, cache);
+
+   VkResult vk_result = pipeline_stage_init_nir(p_stage_vs, pipeline, cache);
+   if (vk_result != VK_SUCCESS)
+      return vk_result;
+
    nir_shader *vs_nir = p_stage_vs->nir;
 
    const nir_shader_compiler_options *options =
@@ -2378,7 +2394,7 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
 
    if (p_stage == NULL) {
       ralloc_free(nir);
-      return false;
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
    p_stage->pipeline = pipeline;
@@ -2393,14 +2409,14 @@ pipeline_add_multiview_gs(struct v3dv_pipeline *pipeline,
 
    pipeline->has_gs = true;
    pipeline->stages[BROADCOM_SHADER_GEOMETRY] = p_stage;
-   pipeline->active_stages |= MESA_SHADER_GEOMETRY;
+   pipeline->active_stages |= VK_SHADER_STAGE_GEOMETRY_BIT;
 
    pipeline->stages[BROADCOM_SHADER_GEOMETRY_BIN] =
       pipeline_stage_create_binning(p_stage, pAllocator);
    if (pipeline->stages[BROADCOM_SHADER_GEOMETRY_BIN] == NULL)
-      return false;
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
 
-   return true;
+   return VK_SUCCESS;
 }
 
 static void
@@ -2530,18 +2546,21 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
          p_atomic_inc_return(&physical_device->next_program_id);
 
       pipeline->stages[BROADCOM_SHADER_FRAGMENT] = p_stage;
-      pipeline->active_stages |= MESA_SHADER_FRAGMENT;
+      pipeline->active_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
    }
 
    /* If multiview is enabled, we inject a custom passthrough geometry shader
     * to broadcast draw calls to the appropriate views.
     */
+   VkResult vk_result;
+
    const uint32_t view_mask = pipeline->multiview_info.view_mask;
    assert(!view_mask ||
           (!pipeline->has_gs && !pipeline->stages[BROADCOM_SHADER_GEOMETRY]));
    if (view_mask) {
-      if (!pipeline_add_multiview_gs(pipeline, cache, pAllocator))
-         return VK_ERROR_OUT_OF_HOST_MEMORY;
+      vk_result = pipeline_add_multiview_gs(pipeline, cache, pAllocator);
+      if (vk_result != VK_SUCCESS)
+         return vk_result;
    }
 
    /* First we try to get the variants from the pipeline cache (unless we are
@@ -2603,12 +2622,21 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
    p_stage_fs->feedback.flags |=
       VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
-   if (!p_stage_vs->nir)
-      p_stage_vs->nir = pipeline_stage_get_nir(p_stage_vs, pipeline, cache);
-   if (p_stage_gs && !p_stage_gs->nir)
-      p_stage_gs->nir = pipeline_stage_get_nir(p_stage_gs, pipeline, cache);
-   if (!p_stage_fs->nir)
-      p_stage_fs->nir = pipeline_stage_get_nir(p_stage_fs, pipeline, cache);
+   if (!p_stage_vs->nir) {
+      vk_result = pipeline_stage_init_nir(p_stage_vs, pipeline, cache);
+      if (vk_result != VK_SUCCESS)
+         return vk_result;
+   }
+   if (p_stage_gs && !p_stage_gs->nir) {
+      vk_result = pipeline_stage_init_nir(p_stage_gs, pipeline, cache);
+      if (vk_result != VK_SUCCESS)
+         return vk_result;
+   }
+   if (!p_stage_fs->nir) {
+      vk_result = pipeline_stage_init_nir(p_stage_fs, pipeline, cache);
+      if (vk_result != VK_SUCCESS)
+         return vk_result;
+   }
 
    /* Linking + pipeline lowerings */
    if (p_stage_gs) {
@@ -2630,7 +2658,6 @@ pipeline_compile_graphics(struct v3dv_pipeline *pipeline,
    lower_vs_io(p_stage_vs->nir);
 
    /* Compiling to vir */
-   VkResult vk_result;
 
    /* We should have got all the variants or no variants from the cache */
    assert(!pipeline->shared_data->variants[BROADCOM_SHADER_FRAGMENT]);
@@ -2689,7 +2716,7 @@ compute_vpm_config(struct v3dv_pipeline *pipeline)
    struct v3dv_shader_variant *vs_variant =
       pipeline->shared_data->variants[BROADCOM_SHADER_VERTEX];
    struct v3dv_shader_variant *vs_bin_variant =
-      pipeline->shared_data->variants[BROADCOM_SHADER_VERTEX];
+      pipeline->shared_data->variants[BROADCOM_SHADER_VERTEX_BIN];
    struct v3d_vs_prog_data *vs = vs_variant->prog_data.vs;
    struct v3d_vs_prog_data *vs_bin =vs_bin_variant->prog_data.vs;
 
@@ -3256,14 +3283,13 @@ pipeline_compile_compute(struct v3dv_pipeline *pipeline,
    p_stage->feedback.flags |= VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT;
 
    /* If not found on cache, compile it */
-   p_stage->nir = pipeline_stage_get_nir(p_stage, pipeline, cache);
-   assert(p_stage->nir);
+   VkResult result = pipeline_stage_init_nir(p_stage, pipeline, cache);
+   if (result != VK_SUCCESS)
+      return result;
 
    v3d_optimize_nir(NULL, p_stage->nir);
    pipeline_lower_nir(pipeline, p_stage, pipeline->layout);
    lower_compute(p_stage->nir);
-
-   VkResult result = VK_SUCCESS;
 
    struct v3d_key key;
    memset(&key, 0, sizeof(key));

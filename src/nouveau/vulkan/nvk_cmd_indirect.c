@@ -429,17 +429,15 @@ build_process_cs_cmd_seq(nir_builder *b, struct nvk_nir_push *p,
             nir_def *local_size =
                nir_imul(b, nir_imul(b, local_x, local_y), local_z);
 
-            nir_def *invoc = nir_imul_2x32_64(b, disp_size_x, disp_size_y);
-            invoc = nir_imul(b, invoc, nir_u2u64(b, disp_size_z));
-            invoc = nir_imul(b, invoc, nir_u2u64(b, local_size));
-
             /* Now emit commands */
             if (pdev->info.cls_compute >= AMPERE_COMPUTE_B)
-               nvk_nir_P_1INC(b, p, NVC7C0, CALL_MME_MACRO(NVK_MME_ADD_CS_INVOCATIONS), 2);
+               nvk_nir_P_1INC(b, p, NVC7C0, CALL_MME_MACRO(NVK_MME_ADD_CS_INVOCATIONS), 4);
             else
-               nvk_nir_P_1INC(b, p, NV9097, CALL_MME_MACRO(NVK_MME_ADD_CS_INVOCATIONS), 2);
-            nvk_nir_push_dw(b, p, nir_unpack_64_2x32_split_y(b, invoc));
-            nvk_nir_push_dw(b, p, nir_unpack_64_2x32_split_x(b, invoc));
+               nvk_nir_P_1INC(b, p, NV9097, CALL_MME_MACRO(NVK_MME_ADD_CS_INVOCATIONS), 4);
+            nvk_nir_push_dw(b, p, disp_size_x);
+            nvk_nir_push_dw(b, p, disp_size_y);
+            nvk_nir_push_dw(b, p, disp_size_z);
+            nvk_nir_push_dw(b, p, local_size);
 
             nvk_nir_P_1INC(b, p, NVA0C0, SEND_PCAS_A, 1);
             nvk_nir_push_dw(b, p, nir_u2u32(b, nir_ushr_imm(b, qmd_addr, 8)));

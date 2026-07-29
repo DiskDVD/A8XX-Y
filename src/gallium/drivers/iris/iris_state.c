@@ -1471,9 +1471,6 @@ iris_init_render_context(struct iris_batch *batch)
       INTEL_SAMPLE_POS_2X(pat._2xSample);
       INTEL_SAMPLE_POS_4X(pat._4xSample);
       INTEL_SAMPLE_POS_8X(pat._8xSample);
-#if GFX_VER >= 9
-      INTEL_SAMPLE_POS_16X(pat._16xSample);
-#endif
    }
 
    /* Use the legacy AA line coverage computation. */
@@ -2287,7 +2284,7 @@ get_line_width(const struct pipe_rasterizer_state *state)
    if (!state->multisample && !state->line_smooth)
       line_width = roundf(state->line_width);
 
-   if (!state->multisample && state->line_smooth && line_width < 1.5f) {
+   if (!state->multisample && line_width < 1.5f) {
       /* For 1 pixel line thickness or less, the general anti-aliasing
        * algorithm gives up, and a garbage line is generated.  Setting a
        * Line Width of 0.0 specifies the rasterization of the "thinnest"
@@ -3670,10 +3667,10 @@ iris_set_sample_mask(struct pipe_context *ctx, unsigned sample_mask)
 {
    struct iris_context *ice = (struct iris_context *) ctx;
 
-   /* We only support 16x MSAA, so we have 16 bits of sample maks.
+   /* We only support up to 8x MSAA, so we have 8 bits of sample mask.
     * st/mesa may pass us 0xffffffff though, meaning "enable all samples".
     */
-   ice->state.sample_mask = sample_mask & 0xffff;
+   ice->state.sample_mask = sample_mask & 0xff;
    ice->state.dirty |= IRIS_DIRTY_SAMPLE_MASK;
 }
 
@@ -3831,11 +3828,6 @@ iris_set_framebuffer_state(struct pipe_context *ctx,
 
    if (cso->samples != samples) {
       ice->state.dirty |= IRIS_DIRTY_MULTISAMPLE;
-
-      /* We need to toggle 3DSTATE_PS::32 Pixel Dispatch Enable */
-      if (GFX_VER >= 9 && GFX_VER < 30 &&
-          (cso->samples == 16 || samples == 16))
-         ice->state.stage_dirty |= IRIS_STAGE_DIRTY_FS;
 
       /* We may need to emit blend state for Wa_14018912822. */
       if ((cso->samples > 1) != (samples > 1) &&

@@ -21,6 +21,10 @@
 # source file, output name, defines
 bvh_shaders = [
   [
+    'id_prefix_sum.comp',
+    'id_prefix_sum',
+  ],
+  [
     'lbvh_generate_ir.comp',
     'lbvh_generate_ir',
   ],
@@ -37,6 +41,10 @@ bvh_shaders = [
     'morton',
   ],
   [
+    'pair_triangles.comp',
+    'pair_triangles',
+  ],
+  [
     'ploc_internal.comp',
     'ploc_internal',
   ],
@@ -51,6 +59,7 @@ vk_bvh_include_dir = dir_source_root + '/src/vulkan/runtime/bvh'
 
 vk_bvh_includes = files(
   'leaf.h',
+  'pair_triangles.h',
   'vk_bvh_defines.h',
   'vk_bvh_helpers.h',
   'vk_debug.h',

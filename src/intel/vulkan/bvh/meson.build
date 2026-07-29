@@ -8,6 +8,7 @@ bvh_shaders = [
   'header.comp',
   'copy.comp',
   'update.comp',
+  'pair_triangles.comp',
 ]
 
 # A mapping: [filename version, GFX_VERx10 define version]

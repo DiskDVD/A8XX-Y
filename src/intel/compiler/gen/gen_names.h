@@ -76,6 +76,10 @@ unsigned gen_lsc_cache_ctrl_from_string(const struct intel_device_info *devinfo,
                                         enum lsc_opcode op,
                                         const char *str, int size, bool *valid);
 
+unsigned gen_sampler_msg_type_from_string(const struct intel_device_info *devinfo,
+                                          const char *str, int size,
+                                          bool *valid);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

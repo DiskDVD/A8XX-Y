@@ -559,7 +559,10 @@ panvk_GetPhysicalDeviceQueueFamilyProperties2(
    const VkQueueFamilyProperties qfamily_props[PANVK_QUEUE_FAMILY_COUNT] = {
       [PANVK_QUEUE_FAMILY_GPU] = {
          .queueFlags =
-            VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+            VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT |
+            (physical_device->vk.supported_features.sparseBinding
+                ? VK_QUEUE_SPARSE_BINDING_BIT
+                : 0),
          /* On v10+ we can support up to 127 queues but this causes timeout on
             some CTS tests */
          .queueCount = arch >= 10 ? 2 : 1,

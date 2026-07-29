@@ -144,37 +144,6 @@ void panfrost_resource_screen_destroy(struct pipe_screen *screen);
 
 void panfrost_resource_context_init(struct pipe_context *pctx);
 
-/* Blitting */
-
-enum panfrost_blitter_op /* bitmask */
-{
-   PAN_SAVE_TEXTURES = 1,
-   PAN_SAVE_FRAMEBUFFER = 2,
-   PAN_SAVE_FRAGMENT_STATE = 4,
-   PAN_SAVE_FRAGMENT_CONSTANT = 8,
-   PAN_DISABLE_RENDER_COND = 16,
-};
-
-enum {
-   PAN_RENDER_BLIT =
-      PAN_SAVE_TEXTURES | PAN_SAVE_FRAMEBUFFER | PAN_SAVE_FRAGMENT_STATE,
-   PAN_RENDER_BLIT_COND = PAN_SAVE_TEXTURES | PAN_SAVE_FRAMEBUFFER |
-                          PAN_SAVE_FRAGMENT_STATE | PAN_DISABLE_RENDER_COND,
-   PAN_RENDER_BASE = PAN_SAVE_FRAMEBUFFER | PAN_SAVE_FRAGMENT_STATE,
-   PAN_RENDER_COND =
-      PAN_SAVE_FRAMEBUFFER | PAN_SAVE_FRAGMENT_STATE | PAN_DISABLE_RENDER_COND,
-   PAN_RENDER_CLEAR = PAN_SAVE_FRAGMENT_STATE | PAN_SAVE_FRAGMENT_CONSTANT,
-};
-
-/* Callers should ensure that all AFBC/AFRC resources that will be used in the
- * blit operation are legalized before calling blitter operations, otherwise
- * we may trigger a recursive blit */
-void panfrost_blitter_save(struct panfrost_context *ctx,
-                           const enum panfrost_blitter_op blitter_op);
-
-void panfrost_blit(struct pipe_context *pipe,
-                   const struct pipe_blit_info *info);
-
 void panfrost_resource_set_damage_region(struct pipe_screen *screen,
                                          struct pipe_resource *res,
                                          unsigned int nrects,
@@ -247,8 +216,5 @@ void pan_legalize_format(struct panfrost_context *ctx,
                          bool discard);
 void pan_dump_resource(struct panfrost_context *ctx,
                        struct panfrost_resource *rsc);
-
-void panfrost_blit_no_afbc_legalization(struct pipe_context *pipe,
-                                        const struct pipe_blit_info *info);
 
 #endif /* PAN_RESOURCE_H */

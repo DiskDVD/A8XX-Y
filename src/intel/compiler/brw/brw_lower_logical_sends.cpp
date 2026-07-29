@@ -1060,6 +1060,7 @@ setup_lsc_surface_descriptors(const brw_builder &bld, brw_send_inst *send,
    send->src[SEND_SRC_DESC] = brw_imm_ud(0);
    send->src[SEND_SRC_EX_DESC] = brw_imm_ud(0);
 
+   enum lsc_opcode op = lsc_msg_desc_opcode(devinfo, desc);
    enum lsc_addr_surface_type surf_type = lsc_msg_desc_addr_type(devinfo, desc);
 
    ASSERTED const unsigned max_imm_bits = brw_max_immediate_offset_bits(surf_type);
@@ -1096,7 +1097,7 @@ setup_lsc_surface_descriptors(const brw_builder &bld, brw_send_inst *send,
        */
       if (base_offset) {
          ex_desc.surface_state.base_offset = base_offset;
-         gen_lsc_ex_desc_encode(devinfo, &ex_desc, &send->offset);
+         gen_lsc_ex_desc_encode(devinfo, op, &ex_desc, &send->offset);
          send->ex_desc_imm = true;
       }
       break;
@@ -1107,7 +1108,7 @@ setup_lsc_surface_descriptors(const brw_builder &bld, brw_send_inst *send,
          ex_desc.bti.index = surface.ud;
          ex_desc.bti.base_offset = base_offset;
          send->src[SEND_SRC_EX_DESC] =
-            brw_imm_ud(gen_lsc_ex_desc_encode(devinfo, &ex_desc, NULL));
+            brw_imm_ud(gen_lsc_ex_desc_encode(devinfo, op, &ex_desc, NULL));
       } else {
          assert(base_offset == 0);
          const brw_builder ubld = bld.uniform();
@@ -1119,7 +1120,7 @@ setup_lsc_surface_descriptors(const brw_builder &bld, brw_send_inst *send,
    case LSC_ADDR_SURFTYPE_FLAT:
       ex_desc.flat.base_offset = base_offset;
       send->src[SEND_SRC_EX_DESC] =
-         brw_imm_ud(gen_lsc_ex_desc_encode(devinfo, &ex_desc, NULL));
+         brw_imm_ud(gen_lsc_ex_desc_encode(devinfo, op, &ex_desc, NULL));
       break;
 
    default:
@@ -1200,10 +1201,10 @@ lower_lsc_memory_logical_send(const brw_builder &bld, brw_mem_inst *mem)
          payload2 = data0;
          ex_mlen = DIV_ROUND_UP(components, 8);
       } else {
-         brw_reg data[8];
+         brw_reg data[NIR_MAX_VEC_COMPONENTS];
          unsigned size = 0;
 
-         assert(components < 8);
+         assert(components < NIR_MAX_VEC_COMPONENTS);
 
          for (unsigned i = 0; i < components; i++)
             data[size++] = offset(data0, bld, i);

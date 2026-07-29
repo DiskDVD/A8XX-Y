@@ -596,20 +596,6 @@ ntr_setup_inputs(struct ntr_compile *c)
 
       decl = ntr_src_register(c, RC_FILE_INPUT, var->data.driver_location);
 
-      if (var->data.location == VARYING_SLOT_FACE) {
-         struct rc_dst_register temp = ntr_temp(c);
-         /* tgsi docs say that floating point FACE will be positive for
-          * frontface and negative for backface, but realistically
-          * GLSL-to-TGSI had been doing MOV_SAT to turn it into 0.0 vs 1.0.
-          * Copy that behavior, since some drivers (r300) have been doing a
-          * 0.0 vs 1.0 backface (and I don't think anybody has a non-1.0
-          * front face).
-          */
-         rc_sub_instruction(c, RC_OPCODE_MOV, &temp, RC_SATURATE_ZERO_ONE,
-                            &decl, NULL, NULL);
-         decl = ntr_src_from_dst(temp);
-      }
-
       for (unsigned i = 0; i < array_len; i++) {
          c->input_index_map[var->data.driver_location + i] = decl;
          ntr_set_src_index(c, &c->input_index_map[var->data.driver_location + i],

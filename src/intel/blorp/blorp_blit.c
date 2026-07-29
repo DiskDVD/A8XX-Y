@@ -2858,8 +2858,7 @@ blorp_blit_supports_compute(struct blorp_context *blorp,
              dst_aux_usage == ISL_AUX_USAGE_MCS ||
              dst_aux_usage == ISL_AUX_USAGE_NONE;
    } else if (blorp->isl_dev->info->ver >= 12) {
-      return dst_aux_usage == ISL_AUX_USAGE_FCV_CCS_E ||
-             dst_aux_usage == ISL_AUX_USAGE_CCS_E ||
+      return dst_aux_usage == ISL_AUX_USAGE_CCS_E ||
              dst_aux_usage == ISL_AUX_USAGE_NONE;
    } else if (blorp->isl_dev->info->ver >= 7) {
       return dst_aux_usage == ISL_AUX_USAGE_NONE;
@@ -2877,7 +2876,6 @@ blorp_blitter_supports_aux(const struct intel_device_info *devinfo,
    case ISL_AUX_USAGE_NONE:
       return true;
    case ISL_AUX_USAGE_CCS_E:
-   case ISL_AUX_USAGE_FCV_CCS_E:
    case ISL_AUX_USAGE_STC_CCS:
    case ISL_AUX_USAGE_ZCS:
       return devinfo->verx10 >= 125;

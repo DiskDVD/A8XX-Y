@@ -43,6 +43,8 @@ enum vk_acceleration_structure_build_step {
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_BUILD_LEAVES,
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_MORTON_GENERATE,
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_MORTON_SORT,
+   VK_ACCELERATION_STRUCTURE_BUILD_STEP_PAIR_TRIANGLES,
+   VK_ACCELERATION_STRUCTURE_BUILD_STEP_ID_PREFIX_SUM,
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_LBVH_MAIN,
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_LBVH_GENERATE_IR,
    VK_ACCELERATION_STRUCTURE_BUILD_STEP_PLOC_BUILD_INTERNAL,
@@ -103,6 +105,7 @@ struct vk_build_config {
    enum vk_internal_build_type internal_type;
    bool updateable;
    bool u64_keys;
+   bool late_pair_compression;
    uint32_t build_flags;
 };
 
@@ -117,7 +120,7 @@ struct vk_scratch_layout {
    uint32_t sort_buffer_offset[2];
    uint32_t sort_internal_offset;
 
-   uint32_t ploc_prefix_sum_partition_offset;
+   uint32_t prefix_sum_partition_offset;
    uint32_t lbvh_node_offset;
    uint32_t hploc_ranges_offset;
 
@@ -178,6 +181,9 @@ struct vk_acceleration_structure_build_ops {
 
    const uint32_t *leaf_spirv_override;
    size_t leaf_spirv_override_size;
+
+   const uint32_t *pair_triangles_spirv_override;
+   size_t pair_triangles_spirv_override_size;
 };
 
 typedef VkResult (*vk_build_stage_cb)(VkCommandBuffer commandBuffer, struct vk_device *device,
@@ -246,6 +252,22 @@ void vk_accel_struct_cmd_begin_debug_marker(VkCommandBuffer commandBuffer,
 
 void vk_accel_struct_cmd_end_debug_marker(VkCommandBuffer commandBuffer,
                                           struct vk_acceleration_structure_build_marker *marker);
+
+static inline uint32_t
+vk_ir_node_size(VkGeometryTypeKHR geometry_type, uint32_t build_flags)
+{
+   uint32_t size = 0;
+   if (geometry_type == VK_GEOMETRY_TYPE_TRIANGLES_KHR) {
+      size = sizeof(struct vk_ir_triangle_node);
+      if (build_flags & VK_BUILD_FLAG_HAS_QUADS)
+         size += sizeof(struct vk_ir_triangle_node_quad);
+   } else if (geometry_type == VK_GEOMETRY_TYPE_AABBS_KHR) {
+      size = sizeof(struct vk_ir_aabb_node);
+   } else {
+      size = sizeof(struct vk_ir_instance_node);
+   }
+   return size;
+}
 
 #ifdef __cplusplus
 }

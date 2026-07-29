@@ -3273,6 +3273,19 @@ vk_pipeline_compile_rt_shader(struct vk_device *device,
    return VK_SUCCESS;
 }
 
+static void
+vk_pipeline_stages_unref_shader(struct vk_device *device,
+                                struct vk_pipeline_stage *stages,
+                                uint32_t stage_count)
+{
+   for (uint32_t i = 0; i < stage_count; i++) {
+      if (stages[i].shader) {
+         vk_shader_unref(device, stages[i].shader);
+         stages[i].shader = NULL;
+      }
+   }
+}
+
 static VkResult
 vk_pipeline_compile_rt_shader_group(struct vk_device *device,
                                     struct vk_pipeline_cache *cache,
@@ -3286,15 +3299,9 @@ vk_pipeline_compile_rt_shader_group(struct vk_device *device,
 
    assert(stage_count > 1 && stage_count <= 3);
 
-   /* Unref all the shaders found in the cache, we're going to do a compile
-    * anyway.
+   /* Unref all the shaders to do cache lookup.
     */
-   for (uint32_t i = 0; i < stage_count; i++) {
-      if (stages[i].shader) {
-         vk_shader_unref(device, stages[i].shader);
-         stages[i].shader = NULL;
-      }
-   }
+   vk_pipeline_stages_unref_shader(device, stages, stage_count);
 
    if (cache != NULL) {
       *all_cache_hit = true;
@@ -3328,6 +3335,11 @@ vk_pipeline_compile_rt_shader_group(struct vk_device *device,
    if (pipeline_flags &
        VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR)
       return VK_PIPELINE_COMPILE_REQUIRED;
+
+   /* Unref all the shaders found in the cache, we're going to do a compile
+    * anyway.
+    */
+   vk_pipeline_stages_unref_shader(device, stages, stage_count);
 
    struct vk_shader_compile_info compile_info[3] = { 0 };
    for (uint32_t i = 0; i < stage_count; i++) {
@@ -4536,7 +4548,7 @@ vk_common_GetPipelineBinaryDataKHR(
    pPipelineBinaryKey->keySize = sizeof(binary->key);
    memcpy(pPipelineBinaryKey->key, binary->key, sizeof(binary->key));
 
-   if (*pPipelineBinaryDataSize == 0) {
+   if (pPipelineBinaryData == NULL) {
       *pPipelineBinaryDataSize = binary->size;
       return VK_SUCCESS;
    }

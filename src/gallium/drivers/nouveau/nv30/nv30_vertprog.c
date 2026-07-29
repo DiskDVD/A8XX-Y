@@ -224,7 +224,9 @@ static void *
 nv30_vp_state_create(struct pipe_context *pipe,
                      const struct pipe_shader_state *cso)
 {
+   struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_vertprog *vp = CALLOC_STRUCT(nv30_vertprog);
+
    if (!vp)
       return NULL;
 
@@ -237,6 +239,9 @@ nv30_vp_state_create(struct pipe_context *pipe,
    }
 
    tgsi_scan_shader(vp->pipe.tokens, &vp->info);
+
+   /* just pass-through to draw module */
+   vp->draw = draw_create_vertex_shader(nv30->draw, &vp->pipe);
    return vp;
 }
 
@@ -248,8 +253,8 @@ nv30_vp_state_delete(struct pipe_context *pipe, void *hwcso)
    if (vp->translated)
       nv30_vertprog_destroy(vp);
 
-   if (vp->draw)
-      draw_delete_vertex_shader(nv30_context(pipe)->draw, vp->draw);
+   /* just pass-through to draw module */
+   draw_delete_vertex_shader(nv30_context(pipe)->draw, vp->draw);
 
    FREE((void *)vp->pipe.tokens);
    FREE(vp);

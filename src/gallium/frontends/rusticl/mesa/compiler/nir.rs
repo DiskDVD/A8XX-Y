@@ -501,6 +501,10 @@ impl NirShader {
             (*var).data.location = loc.try_into().unwrap();
         }
     }
+
+    pub fn source_hash(&self) -> &[u8] {
+        &unsafe { self.nir.as_ref() }.info.source_blake3
+    }
 }
 
 impl Clone for NirShader {

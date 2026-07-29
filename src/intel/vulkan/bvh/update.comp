@@ -226,11 +226,8 @@ void main()
       BLOCK parent_raw = DEREF(INDEX(uint32_t, args.parent_child_map, current_block));
 
       BLOCK parent = get_parent_id(parent_raw);
-      REF(anv_internal_node) internal_node = REF(anv_internal_node)(BLOCK_OFFSET(parent));
-      /* Note: This is not a real field, it's unused byte padding, which is not
-       * required to be MBZ. We're just using it to store the child count.
-       */
-      uint32_t valid_child_count = uint32_t(DEREF(internal_node).child_count);
+      uint32_t valid_child_count =
+         uint32_t(DEREF(INDEX(uint8_t, args.parent_child_count_map, parent)));
       if (valid_child_count == 0)
          break;
 

@@ -1555,20 +1555,65 @@ v3d_register_allocate(struct v3d_compile *c)
                 if (ra_allocate(c->g))
                         break;
 
-                /* Failed allocation, try to spill */
-                int node = v3d_choose_spill_node(c);
-                if (node == -1)
-                        goto spill_fail;
+                /* On a failed allocation ra_allocate() (graph colouring)
+                 * dominates compile time, so avoid re-running it after every
+                 * single spill: spill a batch of victims before the next
+                 * re-solve, sized from how far peak register pressure is over
+                 * the thread's register budget.
+                 *
+                 *   - far over budget (excess > 2 * CAP): a full BULK_SPILL_CAP
+                 *     batch -- many spills are certainly needed, so many
+                 *     re-solves collapse into one;
+                 *   - otherwise: a small batch that grows with the excess
+                 *     (excess / 4 + 1) and shrinks to 1 as the fit is
+                 *     approached, so the final re-solve lands exactly. The /4
+                 *     slope keeps the near-fit batch small enough not to
+                 *     overshoot (a steeper slope re-inflates the spill count).
+                 *
+                 * ra_allocate() success stays the stop condition, so per-shader
+                 * over-spill is bounded. Capping the batch (rather than letting
+                 * it grow unbounded with the excess) also keeps each strategy's
+                 * spill/fill totals close to the one-at-a-time baseline, so the
+                 * compile-strategy selection is not perturbed and instruction
+                 * count stays neutral.
+                 *
+                 * The budget is the number of registers a temp can be allocated
+                 * to: PHYS_COUNT >> thread_index physical registers, plus the
+                 * accumulators where they exist (pre-v71).
+                 */
+                const uint32_t BULK_SPILL_CAP = 16;
+                uint32_t budget = (PHYS_COUNT >> c->thread_index) +
+                                  (c->devinfo->has_accumulators ? ACC_COUNT : 0);
+                uint32_t pressure = vir_get_max_temps(c);
+                uint32_t excess = pressure > budget ? pressure - budget : 0;
+                uint32_t batch;
+                if (excess > 2 * BULK_SPILL_CAP)        /* far over budget: full bulk */
+                        batch = BULK_SPILL_CAP;
+                else
+                        batch = excess / 4 + 1;
+                assert(batch > 0);
 
-                uint32_t temp = node_to_temp(c, node);
-                enum temp_spill_type spill_type =
-                        get_spill_type_for_temp(c, temp);
-                if (spill_type != SPILL_TYPE_TMU || tmu_spilling_allowed(c)) {
+                for (uint32_t k = 0; k < batch; k++) {
+                        int node = v3d_choose_spill_node(c);
+                        if (node == -1) {
+                                if (k > 0)
+                                        break;
+                                goto spill_fail;
+                        }
+
+                        uint32_t temp = node_to_temp(c, node);
+                        enum temp_spill_type spill_type =
+                                get_spill_type_for_temp(c, temp);
+                        if (spill_type == SPILL_TYPE_TMU &&
+                            !tmu_spilling_allowed(c)) {
+                                if (k > 0)
+                                        break;
+                                goto spill_fail;
+                        }
+
                         v3d_spill_reg(c, acc_nodes, implicit_rf_nodes, temp);
                         if (c->spills + c->fills > c->max_tmu_spills)
                                 goto spill_fail;
-                } else {
-                        goto spill_fail;
                 }
         }
 

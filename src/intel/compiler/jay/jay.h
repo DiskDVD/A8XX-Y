@@ -15,7 +15,7 @@ struct nir_shader_compiler_options;
 struct jay_shader_bin {
    const uint32_t *kernel;
    uint32_t size;
-   struct genisa_stats stats;
+   struct genisa_stats stats[3];
 };
 
 struct jay_shader_bin *jay_compile(const struct intel_device_info *devinfo,

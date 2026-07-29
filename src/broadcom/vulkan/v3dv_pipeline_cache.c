@@ -33,9 +33,6 @@ static const bool debug_cache = false;
 static const bool dump_stats = false;
 static const bool dump_stats_on_destroy = false;
 
-/* Shared for nir/variants */
-#define V3DV_MAX_PIPELINE_CACHE_ENTRIES 4096
-
 static uint32_t
 blake3_hash_func(const void *blake3)
 {
@@ -82,6 +79,15 @@ pipeline_cache_unlock(struct v3dv_pipeline_cache *cache)
       mtx_unlock(&cache->mutex);
 }
 
+static bool
+pipeline_cache_is_full(const struct v3dv_pipeline_cache *cache,
+                       uint32_t entry_count)
+{
+   const uint32_t max_entries =
+      cache->device->instance->pipeline_cache_max_entries;
+   return max_entries > 0 && entry_count >= max_entries;
+}
+
 void
 v3dv_pipeline_cache_upload_nir(struct v3dv_pipeline *pipeline,
                                struct v3dv_pipeline_cache *cache,
@@ -91,7 +97,7 @@ v3dv_pipeline_cache_upload_nir(struct v3dv_pipeline *pipeline,
    if (!cache || !cache->nir_cache)
       return;
 
-   if (cache->nir_stats.count > V3DV_MAX_PIPELINE_CACHE_ENTRIES)
+   if (pipeline_cache_is_full(cache, cache->nir_stats.count))
       return;
 
    pipeline_cache_lock(cache);
@@ -434,7 +440,7 @@ pipeline_cache_upload_shared_data(struct v3dv_pipeline_cache *cache,
    if (!cache || !cache->cache)
       return;
 
-   if (cache->stats.count > V3DV_MAX_PIPELINE_CACHE_ENTRIES)
+   if (pipeline_cache_is_full(cache, cache->stats.count))
       return;
 
    pipeline_cache_lock(cache);

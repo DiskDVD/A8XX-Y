@@ -180,16 +180,6 @@ sim_syncobj_query(struct util_sync_provider *p,
 }
 
 static int
-timeout_to_poll_timeout(int64_t timeout)
-{
-   const int64_t ns_per_ms = 1000000;
-   const int64_t ms = (timeout + ns_per_ms - 1) / ns_per_ms;
-   if (!ms && timeout)
-      return -1;
-   return ms <= INT_MAX ? ms : -1;
-}
-
-static int
 sim_syncobj_wait(struct util_sync_provider *p,
                  uint32_t *handles,
                  unsigned num_handles,
@@ -199,7 +189,7 @@ sim_syncobj_wait(struct util_sync_provider *p,
 {
    struct sim_sync_provider *sim = (struct sim_sync_provider *)p;
 
-   const int poll_timeout = timeout_to_poll_timeout(timeout_nsec);
+   const int poll_timeout = vn_timeout_to_poll_timeout(timeout_nsec);
    const bool wait_all = !!(flags & DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL);
 
    /* TODO poll all fds at the same time */

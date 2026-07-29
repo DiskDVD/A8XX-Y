@@ -329,8 +329,6 @@ spec@arb_sample_shading@samplemask 8@sample mask_in_one,Fail
 spec@arb_shader_image_load_store@max-size,Crash
 spec@arb_shader_image_load_store@max-size@image2DMS max size test/8x16384x8x1,Fail
 spec@arb_shader_image_load_store@max-size@image3D max size test/8x8x16384x1,Fail
-spec@arb_shader_storage_buffer_object@max-ssbo-size@fs,Crash
-spec@arb_shader_storage_buffer_object@max-ssbo-size@vs,Crash
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 spec@arb_shading_language_packing@execution@built-in-functions@fs-packhalf2x16,Fail
@@ -361,12 +359,9 @@ spec@khr_texture_compression_astc@sliced-3d-miptree-gl srgb-fp@sRGB decode full 
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp@sRGB decode full precision,Fail
 
-api@clgetcommandqueueinfo,Fail
 api@clgetdeviceinfo,Fail
 api@clgetextensionfunctionaddressforplatform,Fail
-api@clgetkernelarginfo,Fail
 api@cllinkprogram,Fail
-api@clsetkernelarg,Fail
 api@clsetkernelarg@Input checks,Fail
 api@clsetkernelarg@Set kernel argument for array,Fail
 api@clsetkernelarg@Set kernel argument for buffer,Fail
@@ -4134,5 +4129,6 @@ program@execute@vstore@vstorea_half-float-private@vector storea_half private off
 program@execute@vstore@vstorea_half-float-private@vector storea_half private offset float8,Fail
 
 # Nightly run expectations update
+api@clsetkernelarg@Trigger CL_INVALID_ARG_SIZE if arg_size is zero and the argument is declared with the __local qualifier,Fail
 spec@arb_tessellation_shader@execution@variable-indexing@tcs-output-array-dvec4-index-wr,Crash
-
+vulkan@shaders@cmat-uniform-ctor,Fail

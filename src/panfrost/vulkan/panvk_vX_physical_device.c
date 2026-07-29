@@ -39,7 +39,6 @@ panvk_per_arch(get_physical_device_extensions)(
    const struct panvk_instance *instance,
    struct vk_device_extension_table *ext)
 {
-   bool has_vk1_1 = PAN_ARCH >= 10;
    bool has_vk1_2 = PAN_ARCH >= 10;
    bool has_gralloc = vk_android_get_ugralloc() != NULL;
 
@@ -53,6 +52,7 @@ panvk_per_arch(get_physical_device_extensions)(
          device->kmod.dev->props.gpu_can_query_timestamp,
       .KHR_compute_shader_derivatives = PAN_ARCH >= 9,
       .KHR_copy_commands2 = true,
+      .KHR_copy_memory_indirect = PAN_ARCH >= 10,
       .KHR_create_renderpass2 = true,
       .KHR_dedicated_allocation = true,
       .KHR_descriptor_update_template = true,
@@ -81,11 +81,11 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_maintenance1 = true,
       .KHR_maintenance2 = true,
       .KHR_maintenance3 = true,
-      .KHR_maintenance4 = has_vk1_1,
-      .KHR_maintenance5 = has_vk1_1,
-      .KHR_maintenance6 = has_vk1_1,
-      .KHR_maintenance7 = has_vk1_1,
-      .KHR_maintenance8 = has_vk1_1,
+      .KHR_maintenance4 = true,
+      .KHR_maintenance5 = true,
+      .KHR_maintenance6 = PAN_ARCH >= 10,
+      .KHR_maintenance7 = true,
+      .KHR_maintenance8 = true,
       .KHR_maintenance9 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
@@ -102,17 +102,17 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_shader_draw_parameters = true,
       .KHR_shader_expect_assume = true,
       .KHR_shader_float_controls = true,
-      .KHR_shader_float_controls2 = has_vk1_1,
+      .KHR_shader_float_controls2 = true,
       .KHR_shader_float16_int8 = true,
       .KHR_shader_fma = true,
       .KHR_shader_integer_dot_product = true,
-      .KHR_shader_maximal_reconvergence = has_vk1_1,
+      .KHR_shader_maximal_reconvergence = PAN_ARCH >= 9,
       .KHR_shader_non_semantic_info = true,
       .KHR_shader_quad_control = has_vk1_2,
       .KHR_shader_relaxed_extended_instruction = true,
-      .KHR_shader_subgroup_extended_types = has_vk1_1,
+      .KHR_shader_subgroup_extended_types = true,
       .KHR_shader_subgroup_rotate = true,
-      .KHR_shader_subgroup_uniform_control_flow = has_vk1_1,
+      .KHR_shader_subgroup_uniform_control_flow = PAN_ARCH >= 9,
       .KHR_shader_terminate_invocation = true,
       .KHR_shader_untyped_pointers = PAN_ARCH >= 9,
       .KHR_spirv_1_4 = PAN_ARCH >= 10,
@@ -214,7 +214,7 @@ panvk_per_arch(get_physical_device_extensions)(
       .EXT_shader_subgroup_vote = true,
       .EXT_shader_tile_image = PAN_ARCH >= 9,
       .EXT_shader_uniform_buffer_unsized_array = true,
-      .EXT_subgroup_size_control = has_vk1_1,
+      .EXT_subgroup_size_control = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .EXT_swapchain_maintenance1 = true,
 #endif
@@ -239,9 +239,9 @@ panvk_per_arch(get_physical_device_extensions)(
 
       .VALVE_mutable_descriptor_type = PAN_ARCH >= 9,
 
-      .ARM_shader_core_builtins = PAN_ARCH >= 9,
-      .ARM_shader_core_properties = has_vk1_1,
-      .ARM_scheduling_controls = PAN_ARCH >= 10,
+      .ARM_shader_core_builtins = true,
+      .ARM_shader_core_properties = true,
+      .ARM_scheduling_controls = true,
       .ARM_rasterization_order_attachment_access = PAN_ARCH >= 10,
    };
 }
@@ -567,6 +567,9 @@ panvk_per_arch(get_physical_device_features)(
       /* VK_EXT_color_write_enable */
       .colorWriteEnable = true,
 
+      /* VK_KHR_copy_memory_indirect */
+      .indirectMemoryCopy = PAN_ARCH >= 10,
+
       /* VK_EXT_conditional_rendering */
       .conditionalRendering = PAN_ARCH >= 10,
       .inheritedConditionalRendering = PAN_ARCH >= 10,
@@ -736,10 +739,10 @@ panvk_per_arch(get_physical_device_features)(
       .deviceMemoryReport = true,
 
       /* VK_ARM_shader_core_builtins */
-      .shaderCoreBuiltins = PAN_ARCH >= 9,
+      .shaderCoreBuiltins = true,
 
       /* VK_ARM_scheduling_controls */
-      .schedulingControls = PAN_ARCH >= 10,
+      .schedulingControls = true,
 
 #ifdef PANVK_USE_WSI_PLATFORM
       /* KHR_swapchain_maintenance1 */
@@ -773,7 +776,7 @@ get_api_version()
    if (PAN_ARCH >= 10)
       return VK_MAKE_API_VERSION(0, 1, 4, VK_HEADER_VERSION);
 
-   return VK_MAKE_API_VERSION(0, 1, 0, VK_HEADER_VERSION);
+   return VK_MAKE_API_VERSION(0, 1, 1, VK_HEADER_VERSION);
 }
 
 static VkConformanceVersion
@@ -1292,6 +1295,9 @@ panvk_per_arch(get_physical_device_properties)(
       /* VK_ARM_scheduling_controls */
       .schedulingControlsFlags =
          VK_PHYSICAL_DEVICE_SCHEDULING_CONTROLS_SHADER_CORE_COUNT_ARM,
+
+      /* VK_KHR_copy_memory_indirect */
+      .supportedQueues = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
    };
 
    snprintf(properties->deviceName, sizeof(properties->deviceName), "%s",

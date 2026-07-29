@@ -1144,7 +1144,8 @@ write_buffer_descriptor_addr(const struct tu_device *device,
       return;
 
    enum fdl_ssbo_emulation_mode ssbo_emulation_mode =
-      device->physical_device->enable_ssbo_emulation ? FDL_SSBO_EMULATION_ENABLED : FDL_SSBO_EMULATION_DISABLED;
+      device->physical_device->compiler_options.enable_ssbo_emulation ?
+      FDL_SSBO_EMULATION_ENABLED : FDL_SSBO_EMULATION_DISABLED;
 
    uint64_t va = buffer_info->address;
    uint32_t range = buffer_info->range;
@@ -1311,7 +1312,7 @@ tu_GetDescriptorEXT(
       break;
    case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-      if (device->physical_device->enable_texel_buffer_emulation) {
+      if (device->physical_device->compiler_options.enable_texel_buffer_emulation) {
          write_emulated_texel_buffer_descriptor_addr<CHIP>(
             dest, pDescriptorInfo->data.pUniformTexelBuffer);
       } else {
@@ -1447,7 +1448,7 @@ tu_update_descriptor_sets(const struct tu_device *device,
             break;
          case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
          case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-            if (device->physical_device->enable_texel_buffer_emulation) {
+            if (device->physical_device->compiler_options.enable_texel_buffer_emulation) {
                write_emulated_texel_buffer_descriptor<CHIP>(
                   ptr, writeset->pTexelBufferView[j]);
             } else {
@@ -1804,7 +1805,7 @@ tu_update_descriptor_set_with_template(
             break;
          case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
          case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-            if (device->physical_device->enable_texel_buffer_emulation) {
+            if (device->physical_device->compiler_options.enable_texel_buffer_emulation) {
                write_emulated_texel_buffer_descriptor<CHIP>(
                   ptr, *(VkBufferView *) src);
             } else {

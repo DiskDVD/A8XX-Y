@@ -147,7 +147,20 @@ hash_instr(const void *data)
    hash = HASH(hash, alu->op);
    hash = HASH(hash, alu->def.bit_size);
 
-   for (unsigned i = 0; i < nir_op_infos[alu->op].num_inputs; i++)
+   unsigned i = 0;
+   if (nir_op_infos[alu->op].algebraic_properties & NIR_OP_IS_2SRC_COMMUTATIVE) {
+      uint32_t src0_hash = hash_alu_src(hash, &alu->src[0],
+                                        alu->def.num_components,
+                                        instr->pass_flags);
+      uint32_t src1_hash = hash_alu_src(hash, &alu->src[1],
+                                        alu->def.num_components,
+                                        instr->pass_flags);
+
+      hash = src0_hash * src1_hash;
+      i = 2;
+   }
+
+   for (; i < nir_op_infos[alu->op].num_inputs; i++)
       hash = hash_alu_src(hash, &alu->src[i],
                           alu->def.num_components,
                           instr->pass_flags);
@@ -172,6 +185,15 @@ alu_srcs_equal(const nir_alu_src *src1, const nir_alu_src *src2,
       return false;
 
    return srcs_equal(&src1->src, &src2->src);
+}
+
+static bool
+alu_srcs_match_swapped(const nir_alu_instr *alu1, const nir_alu_instr *alu2,
+                       uint32_t max_vec)
+{
+   return (nir_op_infos[alu1->op].algebraic_properties & NIR_OP_IS_2SRC_COMMUTATIVE) &&
+          alu_srcs_equal(&alu1->src[0], &alu2->src[1], max_vec) &&
+          alu_srcs_equal(&alu1->src[1], &alu2->src[0], max_vec);
 }
 
 static bool
@@ -263,7 +285,11 @@ instrs_equal(const void *data1, const void *data2)
    if (alu1->def.bit_size != alu2->def.bit_size)
       return false;
 
-   for (unsigned i = 0; i < nir_op_infos[alu1->op].num_inputs; i++) {
+   unsigned i = 0;
+   if (alu_srcs_match_swapped(alu1, alu2, instr1->pass_flags))
+      i = 2;
+
+   for (; i < nir_op_infos[alu1->op].num_inputs; i++) {
       if (!alu_srcs_equal(&alu1->src[i], &alu2->src[i], instr1->pass_flags))
          return false;
    }
@@ -539,6 +565,9 @@ instr_try_combine_phi(struct set *instr_set, nir_phi_instr *phi1, nir_phi_instr 
    nir_def_rewrite_uses_with_alu_src(&b, &phi1->def, replace_phi1);
    nir_def_rewrite_uses_with_alu_src(&b, &phi2->def, replace_phi2);
 
+   nir_instr_remove(&phi1->instr);
+   nir_instr_remove(&phi2->instr);
+
    return &new_phi->instr;
 }
 
@@ -571,17 +600,22 @@ instr_try_combine_alu(struct set *instr_set, nir_alu_instr *alu1, nir_alu_instr 
    new_alu->no_signed_wrap = alu1->no_signed_wrap && alu2->no_signed_wrap;
    new_alu->no_unsigned_wrap = alu1->no_unsigned_wrap && alu2->no_unsigned_wrap;
 
+   bool srcs_swapped = alu_srcs_match_swapped(alu1, alu2, alu1->instr.pass_flags);
+
    for (unsigned i = 0; i < nir_op_infos[alu1->op].num_inputs; i++) {
+      unsigned alu2_src_idx = srcs_swapped && i < 2 ? 1 - i : i;
+      const nir_alu_src *alu2_src = &alu2->src[alu2_src_idx];
+
       /* handle constant merging case */
-      if (alu1->src[i].src.ssa != alu2->src[i].src.ssa) {
+      if (alu1->src[i].src.ssa != alu2_src->src.ssa) {
          nir_const_value *c1 = nir_src_as_const_value(alu1->src[i].src);
-         nir_const_value *c2 = nir_src_as_const_value(alu2->src[i].src);
+         nir_const_value *c2 = nir_src_as_const_value(alu2_src->src);
          assert(c1 && c2);
          nir_const_value value[NIR_MAX_VEC_COMPONENTS];
          unsigned bit_size = alu1->src[i].src.ssa->bit_size;
 
          for (unsigned j = 0; j < total_components; j++) {
-            value[j].u64 = j < alu1_components ? c1[alu1->src[i].swizzle[j]].u64 : c2[alu2->src[i].swizzle[j - alu1_components]].u64;
+            value[j].u64 = j < alu1_components ? c1[alu1->src[i].swizzle[j]].u64 : c2[alu2_src->swizzle[j - alu1_components]].u64;
          }
          nir_def *def = nir_build_imm(&b, total_components, bit_size, value);
 
@@ -598,7 +632,7 @@ instr_try_combine_alu(struct set *instr_set, nir_alu_instr *alu1, nir_alu_instr 
 
       for (unsigned j = 0; j < alu2_components; j++) {
          new_alu->src[i].swizzle[j + alu1_components] =
-            alu2->src[i].swizzle[j];
+            alu2_src->swizzle[j];
       }
    }
 

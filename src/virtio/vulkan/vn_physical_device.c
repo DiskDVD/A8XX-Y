@@ -539,13 +539,6 @@ vn_physical_device_sanitize_properties(struct vn_physical_device *physical_dev)
       if (instance->renderer->info.vk_mesa_venus_protocol_spec_version < 3)
          ver = MIN2(VK_API_VERSION_1_3, ver);
 
-      /* Clamp to 1.2 if we disabled VK_KHR_synchronization2 since it
-       * is required for 1.3.
-       * See vn_physical_device_get_passthrough_extensions()
-       */
-      if (!physical_dev->base.vk.supported_extensions.KHR_synchronization2)
-         ver = MIN2(VK_API_VERSION_1_2, ver);
-
       props->apiVersion = ver;
    }
 
@@ -1065,47 +1058,12 @@ static void
 vn_physical_device_init_external_fence_handles(
    struct vn_physical_device *physical_dev)
 {
-   /* The current code manipulates the host-side VkFence directly.
-    * vkWaitForFences is translated to repeated vkGetFenceStatus.
-    *
-    * External fence is not possible currently.  Instead, we cheat by
-    * translating vkGetFenceFdKHR to an empty renderer submission for the
-    * out fence, along with a venus protocol command to fix renderer side
-    * fence payload.
-    *
-    * We would like to create a vn_renderer_sync from a host-side VkFence,
-    * similar to how a vn_renderer_bo is created from a host-side
-    * VkDeviceMemory.  That would require kernel support and tons of works on
-    * the host side.  If we had that, and we kept both the vn_renderer_sync
-    * and the host-side VkFence in sync, we would have the freedom to use
-    * either of them depending on the occasions, and support external fences
-    * and idle waiting.
-    */
-   if (physical_dev->renderer_extensions.KHR_external_fence_fd) {
-      struct vn_ring *ring = physical_dev->instance->ring.ring;
-      const VkPhysicalDeviceExternalFenceInfo info = {
-         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FENCE_INFO,
-         .handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT,
-      };
-      VkExternalFenceProperties props = {
-         .sType = VK_STRUCTURE_TYPE_EXTERNAL_FENCE_PROPERTIES,
-      };
-      vn_call_vkGetPhysicalDeviceExternalFenceProperties(
-         ring, vn_physical_device_to_handle(physical_dev), &info, &props);
-
-      physical_dev->renderer_sync_fd.fence_exportable =
-         props.externalFenceFeatures &
-         VK_EXTERNAL_FENCE_FEATURE_EXPORTABLE_BIT;
-   }
-
    physical_dev->external_fence_handles = 0;
 
    if (physical_dev->instance->renderer->info.has_external_sync) {
 #if !DETECT_OS_WINDOWS
-      if (physical_dev->renderer_sync_fd.fence_exportable) {
-         physical_dev->external_fence_handles =
-            VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT;
-      }
+      physical_dev->external_fence_handles =
+         VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT;
 #endif
    }
 }
@@ -1116,48 +1074,31 @@ vn_physical_device_init_external_semaphore_handles(
 {
    /* The current code manipulates the host-side VkSemaphore directly.  It
     * works very well for binary semaphores because there is no CPU operation.
-    * But for timeline semaphores, the situation is similar to that of fences.
-    * vkWaitSemaphores is translated to repeated vkGetSemaphoreCounterValue.
     *
-    * External semaphore is not possible currently.  Instead, we cheat when
-    * the semaphore is binary and the handle type is sync file. We do an empty
-    * renderer submission for the out fence, along with a venus protocol
-    * command to fix renderer side semaphore payload.
+    * Timeline semaphore is implemented on top of both renderer side device
+    * object and driver side vn_renderer_sync. Each semaphore encapsulates
+    * 1 cpu sync and vn_device::queue_count gpu syncs to ensure monotonicity
+    * of the sync timeline while supporting wait-before-signal.
+    * - device wait: forward the semaphore object to renderer side
+    * - device signal: forward the semaphore object to renderer side, and then
+    *                  submit the queue sync to signal the same timeline point
+    * - host query: query each of the driver side syncs and return the max
+    * - host wait: for each timeline semaphore, wait for any of the driver
+    *              side syncs to reach the point
+    * - host signal: forward the semaphore object to renderer side and signal
+    *                driver side cpu sync (order doesn't matter)
     *
-    * We would like to create a vn_renderer_sync from a host-side VkSemaphore,
-    * similar to how a vn_renderer_bo is created from a host-side
-    * VkDeviceMemory.  The reasoning is the same as that for fences.
-    * Additionally, we would like the sync file exported from the
-    * vn_renderer_sync to carry the necessary information to identify the
-    * host-side VkSemaphore.  That would allow the consumers to wait on the
-    * host side rather than the guest side.
+    * SYNC_FD semaphore is implemented on top of driver side vn_renderer_sync.
+    * If such semaphore isn't exported but waited, currently we resolve the
+    * wait on the driver side.
     */
-   if (physical_dev->renderer_extensions.KHR_external_semaphore_fd) {
-      struct vn_ring *ring = physical_dev->instance->ring.ring;
-      const VkPhysicalDeviceExternalSemaphoreInfo info = {
-         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_SEMAPHORE_INFO,
-         .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
-      };
-      VkExternalSemaphoreProperties props = {
-         .sType = VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES,
-      };
-      vn_call_vkGetPhysicalDeviceExternalSemaphoreProperties(
-         ring, vn_physical_device_to_handle(physical_dev), &info, &props);
-
-      physical_dev->renderer_sync_fd.semaphore_exportable =
-         props.externalSemaphoreFeatures &
-         VK_EXTERNAL_SEMAPHORE_FEATURE_EXPORTABLE_BIT;
-   }
-
    physical_dev->external_binary_semaphore_handles = 0;
    physical_dev->external_timeline_semaphore_handles = 0;
 
    if (physical_dev->instance->renderer->info.has_external_sync) {
 #if !DETECT_OS_WINDOWS
-      if (physical_dev->renderer_sync_fd.semaphore_exportable) {
-         physical_dev->external_binary_semaphore_handles =
-            VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
-      }
+      physical_dev->external_binary_semaphore_handles =
+         VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT;
 #endif
    }
 }
@@ -1185,16 +1126,7 @@ vn_physical_device_get_native_extensions(
        renderer_exts->EXT_image_drm_format_modifier &&
        renderer_exts->EXT_queue_family_foreign) {
       exts->ANDROID_external_memory_android_hardware_buffer = true;
-
-      /* For wsi, we require renderer:
-       * - fence sync fd export for QueueSignalReleaseImageANDROID to export a
-       *   sync fd.
-       *
-       * TODO: relax these requirements by:
-       * - not creating external fence but exporting sync fd directly
-       */
-      if (physical_dev->renderer_sync_fd.fence_exportable)
-         exts->ANDROID_native_buffer = true;
+      exts->ANDROID_native_buffer = true;
    }
 #else  /* VK_USE_PLATFORM_ANDROID_KHR */
    if (physical_dev->external_memory.renderer_handle_type) {

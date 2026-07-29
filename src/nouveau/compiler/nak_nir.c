@@ -237,7 +237,7 @@ nak_optimize_nir(nir_shader *nir, const struct nak_compiler *nak)
          LOOP_OPT_NOT_IDEMPOTENT(nir, nir_opt_loop_unroll);
       }
       LOOP_OPT(nir, nir_opt_remove_phis);
-      LOOP_OPT_NOT_IDEMPOTENT(nir, nir_opt_gcm, false);
+      LOOP_OPT_NOT_IDEMPOTENT(nir, nir_opt_gcm, false, true);
       LOOP_OPT(nir, nir_opt_undef);
    } while (progress);
    OPT(nir, nir_lower_undef_to_zero, NULL);

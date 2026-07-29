@@ -2712,6 +2712,7 @@ update_prims_generated_query(struct panvk_cmd_buffer *cmdbuf,
       cs_load32_to(b, value, addr, 0);
       cs_add_imm32(b, value, value, prims_generated);
       cs_store32(b, value, addr, 0);
+      cs_flush_stores(b);
    }
 }
 

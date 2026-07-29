@@ -79,6 +79,12 @@ gen_inst_num_sources(const struct intel_device_info *devinfo,
 }
 
 bool
+gen_inst_is_send(const gen_inst *inst)
+{
+   return gen_inst_format(inst->opcode) == GEN_FORMAT_SEND;
+}
+
+bool
 gen_has_uip(gen_opcode op)
 {
    return gen_opcode_has_prop(op, GEN_OPCODE_PROP_HAS_UIP);
@@ -189,8 +195,17 @@ gen_lsc_desc_decode(const struct intel_device_info *devinfo, uint32_t raw_desc)
    gen_lsc_desc desc = {};
 
    desc.op = (enum lsc_opcode)GET_BITS(raw_desc, 5, 0);
-   desc.addr_size = (enum lsc_addr_size)GET_BITS(raw_desc, 8, 7);
    desc.addr_type = (enum lsc_addr_surface_type)GET_BITS(raw_desc, 30, 29);
+
+   if (lsc_opcode_is_2d_block(desc.op)) {
+      desc.data_size = (enum lsc_data_size)GET_BITS(raw_desc, 11, 9);
+      desc.cache_ctrl = GET_BITS(raw_desc, 19, 16);
+      desc.vnni = GET_BITS(raw_desc, 7, 7);
+      desc.transpose = GET_BITS(raw_desc, 15, 15);
+      return desc;
+   }
+
+   desc.addr_size = (enum lsc_addr_size)GET_BITS(raw_desc, 8, 7);
 
    if (desc.op == LSC_OP_FENCE) {
       desc.fence.scope = (enum lsc_fence_scope)GET_BITS(raw_desc, 11, 9);
@@ -198,7 +213,6 @@ gen_lsc_desc_decode(const struct intel_device_info *devinfo, uint32_t raw_desc)
       desc.fence.route_to_lsc = GET_BITS(raw_desc, 18, 18);
       return desc;
    }
-
    desc.data_size = (enum lsc_data_size)GET_BITS(raw_desc, 11, 9);
    desc.cache_ctrl = devinfo->ver >= 20 ? GET_BITS(raw_desc, 19, 16) :
                                           GET_BITS(raw_desc, 19, 17);
@@ -221,8 +235,21 @@ gen_lsc_desc_encode(const struct intel_device_info *devinfo,
 
    uint32_t raw_desc =
       SET_BITS(desc->op, 5, 0) |
-      SET_BITS(desc->addr_size, 8, 7) |
       SET_BITS(desc->addr_type, 30, 29);
+
+   if (lsc_opcode_is_2d_block(desc->op)) {
+      assert(devinfo->ver >= 20);
+      assert(desc->addr_size == 0);
+      assert(!desc->vnni || desc->op == LSC_OP_LOAD_2D_BLOCK);
+      assert(!desc->transpose || desc->op == LSC_OP_LOAD_2D_BLOCK);
+      raw_desc |= SET_BITS(desc->vnni, 7, 7) |
+                  SET_BITS(desc->data_size, 11, 9) |
+                  SET_BITS(desc->transpose, 15, 15) |
+                  SET_BITS(desc->cache_ctrl, 19, 16);
+      return raw_desc;
+   }
+
+   raw_desc |= SET_BITS(desc->addr_size, 8, 7);
 
    if (desc->op == LSC_OP_FENCE) {
       raw_desc |= SET_BITS(desc->fence.scope, 11, 9) |
@@ -362,6 +389,7 @@ lsc_ss_base_offset_from_imm_extra(uint32_t imm_extra)
 
 gen_lsc_ex_desc
 gen_lsc_ex_desc_decode(const struct intel_device_info *devinfo,
+                       enum lsc_opcode op,
                        enum lsc_addr_surface_type addr_type,
                        uint32_t raw_ex_desc,
                        uint32_t raw_ex_desc_imm_extra)
@@ -370,6 +398,16 @@ gen_lsc_ex_desc_decode(const struct intel_device_info *devinfo,
 
    gen_lsc_ex_desc ex_desc = {};
    ex_desc.addr_type = addr_type;
+
+   if (lsc_opcode_is_2d_block(op)) {
+      assert(devinfo->ver >= 20);
+      assert(addr_type == LSC_ADDR_SURFTYPE_FLAT);
+      ex_desc.block2d.x_off =
+         (int)util_sign_extend(GET_BITS(raw_ex_desc, 21, 12), 10);
+      ex_desc.block2d.y_off =
+         (int)util_sign_extend(GET_BITS(raw_ex_desc, 31, 22), 10);
+      return ex_desc;
+   }
 
    switch (addr_type) {
    case LSC_ADDR_SURFTYPE_FLAT:
@@ -400,6 +438,7 @@ gen_lsc_ex_desc_decode(const struct intel_device_info *devinfo,
 
 uint32_t
 gen_lsc_ex_desc_encode(const struct intel_device_info *devinfo,
+                       enum lsc_opcode op,
                        const gen_lsc_ex_desc *ex_desc,
                        uint32_t *ex_desc_imm_extra_out)
 {
@@ -407,6 +446,15 @@ gen_lsc_ex_desc_encode(const struct intel_device_info *devinfo,
 
    uint32_t ex_desc_imm_extra = 0;
    uint32_t result = 0;
+
+   if (lsc_opcode_is_2d_block(op)) {
+      assert(devinfo->ver >= 20);
+      assert(ex_desc->addr_type == LSC_ADDR_SURFTYPE_FLAT);
+      if (ex_desc_imm_extra_out)
+         *ex_desc_imm_extra_out = ex_desc_imm_extra;
+      return (uint32_t)util_bitpack_sint(ex_desc->block2d.x_off, 12, 21) |
+             (uint32_t)util_bitpack_sint(ex_desc->block2d.y_off, 22, 31);
+   }
 
    switch (ex_desc->addr_type) {
    case LSC_ADDR_SURFTYPE_FLAT:

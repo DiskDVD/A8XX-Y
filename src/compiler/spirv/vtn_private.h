@@ -279,6 +279,8 @@ enum vtn_base_type {
    vtn_base_type_function,
    vtn_base_type_event,
    vtn_base_type_cooperative_matrix,
+   vtn_base_type_tensor_layout,
+   vtn_base_type_tensor_view,
    vtn_base_type_buffer,
 };
 
@@ -396,6 +398,24 @@ struct vtn_type {
          struct glsl_cmat_description desc;
          struct vtn_type *component_type;
       };
+
+      /* Members for tensor layout */
+      struct {
+         /* for structures, the vtn_type for each member */
+         struct vtn_type **tensor_layout_members;
+
+         nir_tensor_clamp_mode tensor_layout_clamp_mode;
+      };
+
+      /* Members for tensor view */
+      struct {
+         /* for structures, the vtn_type for each member */
+         struct vtn_type **tensor_view_members;
+
+         bool tensor_view_has_dims;
+         uint8_t tensor_view_permutations[NIR_TENSOR_VIEW_MAX_PERMUTATIONS];
+      };
+
    };
 };
 
@@ -658,6 +678,7 @@ struct vtn_builder {
 
    /* Information on the origin of the SPIR-V */
    enum vtn_generator generator_id;
+   const char *source_file;
    SpvSourceLanguage source_lang;
 
    struct spirv_capabilities supported_capabilities;
@@ -828,6 +849,7 @@ vtn_constant_uint(struct vtn_builder *b, uint32_t value_id)
                "Expected id %u to be an integer constant", value_id);
 
    switch (glsl_get_bit_size(val->type->type)) {
+   case 1:  return val->constant->values[0].b;
    case 8:  return val->constant->values[0].u8;
    case 16: return val->constant->values[0].u16;
    case 32: return val->constant->values[0].u32;
@@ -1097,7 +1119,10 @@ struct vtn_ssa_value *vtn_cooperative_matrix_insert(struct vtn_builder *b, struc
                                                     const uint32_t *indices, unsigned num_indices);
 nir_deref_instr *vtn_create_cmat_temporary(struct vtn_builder *b,
                                            const struct glsl_type *t, const char *name);
-
+void vtn_handle_tensor_layout_type(struct vtn_builder *b, struct vtn_value *val,
+                                   SpvOp opcode, const uint32_t *w, unsigned count);
+void vtn_handle_tensor_layout_instruction(struct vtn_builder *b, SpvOp opcode,
+                                          const uint32_t *w, unsigned count);
 mesa_shader_stage vtn_stage_for_execution_model(SpvExecutionModel model);
 
 static inline bool
@@ -1113,4 +1138,14 @@ vtn_value_is_non_uniform(struct vtn_builder *b, struct vtn_value *value)
    return false;
 }
 
+nir_constant *vtn_null_constant(struct vtn_builder *b, struct vtn_type *type);
+struct vtn_ssa_value *vtn_composite_extract(struct vtn_builder *b, struct vtn_ssa_value *src,
+                                            const uint32_t *indices, unsigned num_indices);
+struct vtn_ssa_value *vtn_composite_insert(struct vtn_builder *b, struct vtn_ssa_value *src,
+                                           struct vtn_type *src_type, struct vtn_ssa_value *insert,
+                                           const uint32_t *indices, unsigned num_indices);
+struct vtn_ssa_value *vtn_composite_copy_logical(struct vtn_builder *b, struct vtn_ssa_value *src,
+                                                 struct vtn_type* dest_type);
+nir_def *vtn_vector_construct(struct vtn_builder *b, unsigned num_components,
+                              unsigned num_srcs, nir_def **srcs);
 #endif /* _VTN_PRIVATE_H_ */

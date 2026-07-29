@@ -343,6 +343,10 @@ tu_lrz_begin_resumed_renderpass(struct tu_cmd_buffer *cmd)
    uint32_t a = VK_ATTACHMENT_UNUSED;
    for (uint32_t subpass_idx = 0; subpass_idx < cmd->state.pass->subpass_count; subpass_idx++) {
       const struct tu_subpass *subpass = &cmd->state.pass->subpasses[subpass_idx];
+
+      if (subpass->custom_resolve)
+         continue;
+
       a = subpass->depth_stencil_attachment.attachment;
 
       if (a != VK_ATTACHMENT_UNUSED && cmd->state.attachments[a]->image->lrz_layout.lrz_total_size) {
@@ -379,6 +383,10 @@ tu_lrz_begin_renderpass(struct tu_cmd_buffer *cmd)
    uint32_t prev_depth_a = VK_ATTACHMENT_UNUSED;
    for (uint32_t subpass_idx = 0; subpass_idx < cmd->state.pass->subpass_count; subpass_idx++) {
       const struct tu_subpass *subpass = &cmd->state.pass->subpasses[subpass_idx];
+
+      if (subpass->custom_resolve)
+         continue;
+
       uint32_t a = subpass->depth_stencil_attachment.attachment;
 
       if (a != VK_ATTACHMENT_UNUSED && cmd->state.attachments[a]->image->lrz_layout.lrz_total_size) {
@@ -411,6 +419,16 @@ tu_lrz_begin_renderpass(struct tu_cmd_buffer *cmd)
       return;
    }
 
+   for (uint32_t subpass_idx = 0; subpass_idx < pass->subpass_count; subpass_idx++) {
+      const struct tu_subpass *subpass = &pass->subpasses[subpass_idx];
+      uint32_t a = subpass->depth_stencil_attachment.attachment;
+
+      if (subpass->custom_resolve && a != VK_ATTACHMENT_UNUSED) {
+         struct tu_image *image = cmd->state.attachments[a]->image;
+         tu_disable_lrz<CHIP>(cmd, &cmd->cs, image);
+      }
+   }
+
     /* Track LRZ valid state */
    tu_lrz_begin_resumed_renderpass<CHIP>(cmd);
 
@@ -439,7 +457,14 @@ void
 tu_lrz_begin_secondary_cmdbuf(struct tu_cmd_buffer *cmd)
 {
    memset(&cmd->state.lrz, 0, sizeof(cmd->state.lrz));
+
    uint32_t a = cmd->state.subpass->depth_stencil_attachment.attachment;
+
+   if (cmd->state.subpass->custom_resolve) {
+      cmd->state.lrz.valid = a == VK_ATTACHMENT_UNUSED;
+      return;
+   }
+
    if (a != VK_ATTACHMENT_UNUSED) {
       const struct tu_render_pass_attachment *att = &cmd->state.pass->attachments[a];
       tu_lrz_init_secondary(cmd, att);

@@ -970,6 +970,9 @@ typedef struct bi_block {
    bool unconditional_jumps;
    bool loop_header;
 
+   /* whether this is a loop exit point that needs branch reconvergence */
+   bool needs_reconvergence_on_exit;
+
    /* Per 32-bit word live masks for the block indexed by node */
    uint8_t *live_in;
    uint8_t *live_out;

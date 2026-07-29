@@ -183,9 +183,9 @@ radv_shader_object_init_graphics(struct radv_shader_object *shader_obj, struct r
    gfx_state.vs.has_prolog = true;
    gfx_state.ps.has_epilog = true;
    gfx_state.dynamic_rasterization_samples = true;
-   gfx_state.unknown_rast_prim = true;
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
+   gfx_state.rs.polygon_mode_unknown = true;
    gfx_state.ps.exports_mrtz_via_epilog = true;
 
    for (uint32_t i = 0; i < MAX_RTS; i++)
@@ -447,9 +447,9 @@ radv_shader_object_create_linked(VkDevice _device, uint32_t createInfoCount, con
    gfx_state.vs.has_prolog = true;
    gfx_state.ps.has_epilog = true;
    gfx_state.dynamic_rasterization_samples = true;
-   gfx_state.unknown_rast_prim = true;
    gfx_state.dynamic_provoking_vtx_mode = true;
    gfx_state.dynamic_line_rast_mode = true;
+   gfx_state.rs.polygon_mode_unknown = true;
    gfx_state.ps.exports_mrtz_via_epilog = true;
 
    for (uint32_t i = 0; i < MAX_RTS; i++)

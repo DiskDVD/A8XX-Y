@@ -372,6 +372,8 @@ etna_init_screen_caps(struct etna_screen *screen)
 
    caps->max_texture_anisotropy = 16.0f;
    caps->max_texture_lod_bias = util_last_bit(screen->specs.max_texture_size);
+
+   caps->device_type = PIPE_DEVICE_TYPE_INTEGRATED_GPU;
 }
 
 static bool

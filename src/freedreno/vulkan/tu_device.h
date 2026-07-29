@@ -152,8 +152,14 @@ struct tu_physical_device
    /* Whether performance counter selector registers can be written by userspace CSes. */
    bool is_perf_cntr_selectable;
 
-   bool enable_texel_buffer_emulation;
-   bool enable_ssbo_emulation;
+   struct {
+      bool enable_texel_buffer_emulation : 1;
+      bool enable_ssbo_emulation : 1;
+      bool allow_oob_indirect_ubo_loads : 1;
+      bool no_multi_pos : 1;
+      bool compute_round_robin : 1;
+      uint32_t padding : 27;
+   } compiler_options;
 
    struct {
       uint32_t non_lazy_type_count;
@@ -489,6 +495,9 @@ struct tu_device
 
    uint32_t vis_stream_count;
    uint32_t vis_stream_size;
+
+   /* Monotonically increasing counter assigned to each tu_image at creation. */
+   uint64_t next_image_id;
 };
 VK_DEFINE_HANDLE_CASTS(tu_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
 

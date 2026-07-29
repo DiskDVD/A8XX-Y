@@ -634,13 +634,14 @@ spec@glsl-1.10@execution@variable-indexing@fs-input-array-float-index-rd,Fail
 spec@glsl-1.10@execution@variable-indexing@fs-input-array-vec2-index-rd,Fail
 
 # uprev Piglit in Mesa
-shaders@glsl-vs-texturematrix-1,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 3: Expected blue pixel in center,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 4: Expected blue pixel in center,Fail
 spec@!opengl 1.1@push-pop-color-material,Fail
 spec@ext_framebuffer_object@fbo-readpixels-depth-formats,Fail
+spec@glsl-1.10@execution@built-in-functions@fs-notequal-ivec2-ivec2,Fail
 spec@glsl-1.10@execution@built-in-functions@vs-sign-vec4,Fail
-spec@nv_half_float@attribs-half-float,Fail
+spec@glsl-1.10@execution@glsl-fs-functions-samplers,Fail
+spec@glsl-1.20@execution@built-in-functions@fs-matrixcompmult-mat4x2-mat4x2,Fail
 
 # Nightly run expectations update
 KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_int_depth_component,Fail
@@ -823,7 +824,6 @@ spec@ext_texture_array@copyteximage 1d_array,Crash
 spec@ext_texture_array@copyteximage 1d_array samples=2,Crash
 spec@ext_texture_array@copyteximage 1d_array samples=4,Crash
 spec@ext_texture_swizzle@depth_texture_mode_and_swizzle,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-selection-bool-bvec4-bvec4,Fail
 spec@glsl-1.10@execution@samplers@glsl-fs-shadow1d,Fail
 spec@glsl-1.10@execution@samplers@glsl-fs-shadow1d-04,Fail
 spec@glsl-1.10@execution@samplers@glsl-fs-shadow1d-bias,Fail

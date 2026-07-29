@@ -189,12 +189,6 @@ struct gen_ranges {
 };
 
 inline bool
-gen_inst_is_send(const gen_inst *inst)
-{
-   return gen_inst_format(inst->opcode) == GEN_FORMAT_SEND;
-}
-
-inline bool
 gen_inst_is_split_send(const intel_device_info *devinfo, const gen_inst *inst)
 {
    switch (inst->opcode) {

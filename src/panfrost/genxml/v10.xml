@@ -927,6 +927,12 @@
     <value name="PRIMITIVE_SIZE" value="60"/>
   </enum>
 
+  <enum name="FULLSCREEN SR">
+    <value name="TILER_CTX" value="40"/>
+    <value name="SCISSOR_BOX" value="42"/>
+    <value name="TILER_FLAGS" value="56"/>
+  </enum>
+
   <enum name="FRAGMENT SR">
     <value name="FBD_POINTER" value="40"/>
     <value name="BBOX_MIN" value="42"/>
@@ -2107,10 +2113,8 @@
   <struct name="Vertex Array" size="3">
     <field name="Packet" size="1" start="0:0" type="bool"/>
 
-    <!-- Written by hardware in packet mode -->
+    <!-- Written by hardware in RUN_IDVS malloc mode -->
     <field name="Pointer" size="58" start="0:6" type="address" modifier="shr(6)"/>
-
-    <!-- Written by hardware, leave zero -->
     <field name="Vertex packet stride" size="16" start="2:0" type="uint"/>
     <field name="Vertex attribute stride" size="16" start="2:16" type="uint"/>
   </struct>

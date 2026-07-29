@@ -89,6 +89,12 @@ bi_emit_jump(bi_builder *b, nir_jump_instr *instr)
    switch (instr->type) {
    case nir_jump_break:
       branch->branch_target = b->shader->break_block;
+
+      /* We need branch reconvergence in the break block of a loop unless
+       * the loop is warp-invariant.
+       * TODO: check for warp-invariance
+       */
+      b->shader->current_block->needs_reconvergence_on_exit = true;
       break;
    case nir_jump_continue:
       branch->branch_target = b->shader->continue_block;
@@ -2041,7 +2047,7 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
       bi_mov_i32_to(b, dst, bi_vertex_id(b));
       break;
 
-   case nir_intrinsic_load_raw_vertex_id_pan:
+   case nir_intrinsic_load_raw_vertex_id:
       assert(!b->shader->malloc_idvs);
       bi_mov_i32_to(b, dst, bi_vertex_id(b));
       break;
@@ -4337,7 +4343,8 @@ bi_dump_shader(bi_context *ctx, struct util_dynarray *binary,
               ctx->nir->info.name ?: "<unnamed>", path);
    }
 
-   fclose(dump_stream);
+   if (dump_stream)
+      fclose(dump_stream);
 }
 
 static bi_context *

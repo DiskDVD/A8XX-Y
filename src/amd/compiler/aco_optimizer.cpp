@@ -764,9 +764,17 @@ alu_opt_info_is_valid(opt_ctx& ctx, alu_opt_info& info)
          info.opcode = aco_opcode::s_pack_lh_b32_b16;
       } else if (info.operands[0].extract[0].offset() == 2 &&
                  info.operands[1].extract[0].offset() == 0) {
-         if (ctx.program->gfx_level < GFX11) /* TODO try shifting constant */
+         if (ctx.program->gfx_level >= GFX11) {
+            info.opcode = aco_opcode::s_pack_hl_b32_b16;
+         } else if (info.operands[1].op.isConstant()) {
+            /* No s_pack_hl before GFX11, but a constant operand can be shifted
+             * into the high half in order to use s_pack_hh instead.
+             */
+            info.operands[1].op = Operand::c32(info.operands[1].op.constantValue() << 16);
+            info.opcode = aco_opcode::s_pack_hh_b32_b16;
+         } else {
             return false;
-         info.opcode = aco_opcode::s_pack_hl_b32_b16;
+         }
       }
       info.operands[0].extract[0] = SubdwordSel::dword;
       info.operands[1].extract[0] = SubdwordSel::dword;

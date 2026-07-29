@@ -1250,7 +1250,7 @@ pub(super) fn convert_spirv_to_nir(
     dev: &'static Device,
 ) -> Result<SPIRVToNirResult, &'static CStr> {
     let cache = dev.screen().shader_cache();
-    let key = build.hash_key(cache.as_ref(), name, spec_constants);
+    let key = build.hash_key(cache.as_ref(), name, spec_constants, &dev.lib_clc);
     let spirv_info = build.kernel_info(name).unwrap();
 
     match cache

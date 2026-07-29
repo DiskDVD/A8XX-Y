@@ -103,20 +103,32 @@ to_gen_operand(
       R = gen_imm_ud(jay_as_uint(d));
    } else if (jay_is_null(d)) {
       R = gen_null();
-   } else if (d.file == UGPR || d.file == UACCUM) {
-      grf += (reg / jay_ugpr_per_grf(f->shader));
-      offset_B = (reg % jay_ugpr_per_grf(f->shader)) * 4;
-
+   } else if (d.file == UGPR || (d.file == ACCUM && I->uniform)) {
       if (d.file == UGPR) {
+         grf += (reg / jay_ugpr_per_grf(f->shader));
+         offset_B = (reg % jay_ugpr_per_grf(f->shader)) * 4;
          R = gen_grf(grf, 0);
       } else {
-         R = gen_accumulator(grf);
+         R = gen_accumulator(reg / 2);
       }
       R = gen_retype(gen_restride(R, 0, 1, 0), GEN_TYPE_UD);
 
       /* Handle 3-src restrictions and vectorized uniform code. */
-      if (is_dest || jay_num_values(d) >= 4) {
-         R = gen_restride(R, 8, 8, 1);
+      if (is_dest || jay_num_values(d) > jay_type_vector_length(type)) {
+         R = gen_restride(R, 2, 2, 1);
+      }
+
+      /* Handle SIMD split of vectorized uniform code. The mov case comes up
+       * from the SEL_ACTIVE lowering for 64-bit code.
+       */
+      if (jay_num_values(d) > jay_type_vector_length(type) &&
+          (I->uniform || I->op == JAY_OPCODE_MOV)) {
+         unsigned simd_width = jay_simd_width_physical(f->shader, I);
+         uint32_t type_bits = jay_type_size_bits(type);
+         unsigned stride_bits = type_bits;
+
+         R = gen_byte_offset(devinfo, R,
+                             simd_offs * simd_width * stride_bits / 8);
       }
 
       /* Some operations have special restrictions on the destination stride,
@@ -188,7 +200,7 @@ to_gen_operand(
       if (simd_width == 1) {
          R = gen_restride(R, 0, 1, 0);
       }
-   } else if (jay_is_flag(d)) {
+   } else if (d.file == FLAG) {
       /* Explicit flags act like UGPRs. As sources they broadcast to all lanes,
        * so we may ignore the SIMD offset. As destinations, they are written by
        * SIMD1 instructions and are never SIMD split.
@@ -199,6 +211,8 @@ to_gen_operand(
       R = gen_flag(offs_B / 2);
    } else if (d.file == J_ADDRESS) {
       R = gen_address(d.reg);
+   } else if (d.file == J_ARF && jay_base_index(d) == GEN_ARF_STATE) {
+      R = gen_arf(GEN_ARF_STATE, d.reg * 4);
    } else if (d.file == J_ARF) {
       R = gen_arf(jay_base_index(d), 0);
    } else {
@@ -247,6 +261,7 @@ static const struct {
    OP(ADD, ADD, 2),
    OP(AND, AND, 2),
    OP(AND_U32_U16, AND, 2),
+   OP(AND_S32_SN, AND, 2),
    OP(ASR, ASR, 2),
    OP(AVG, AVG, 2),
    OP(BFE, BFE, 3),
@@ -465,8 +480,9 @@ emit(struct jay_codegen *jc,
 
    case JAY_OPCODE_QUAD_SWIZZLE:
       /* Quad swizzle can get split down to SIMD4 even on Xe2 where we don't
-       * have NibCtrl.  Fortunately, it's NoMask so it doesn't matter.
+       * have NibCtrl, but those cases use NoMask so it doesn't matter.
        */
+      assert(gen->chan_offset == 0 || gen->no_mask);
       gen->chan_offset = 0;
       gen->src[0] = quad_swizzle(jc->devinfo, gen->src[0], I);
       break;
@@ -549,7 +565,7 @@ emit(struct jay_codegen *jc,
       break;
 
    case JAY_OPCODE_LANE_ID_8:
-      gen->src[0] = gen_imm_uv(0x76543210);
+      gen->src[0] = gen_imm_uv(0x76543210 + 0x11111111 * jay_lane_id_8_base(I));
       break;
 
    case JAY_OPCODE_ZIP_UGPR16:
@@ -691,7 +707,7 @@ emit(struct jay_codegen *jc,
 
    static_assert(GEN_OP_ILLEGAL == 0);
    if (!gen->opcode) {
-      jay_print_inst(stderr, (jay_inst *) I);
+      jay_print_inst(stderr, NULL, (jay_inst *) I, NULL);
       UNREACHABLE("Unhandled opcode");
    }
 }

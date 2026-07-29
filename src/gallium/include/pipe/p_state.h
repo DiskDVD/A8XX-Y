@@ -1145,6 +1145,12 @@ struct pipe_ml_operation
          bool depthwise;
 
          /**
+          * Quantized activation clamp range for fused activations.
+          */
+         int activation_min;
+         int activation_max;
+
+         /**
           * Whether this convolution has fused ReLU activation.
           */
          bool relu;

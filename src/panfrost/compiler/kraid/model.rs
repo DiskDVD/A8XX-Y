@@ -20,6 +20,12 @@ pub struct FAUModel {
     user_fau_page_words: u16,
     pub small_constants: SmallConstantTable,
     special_fn: Box<dyn Fn(SpecialFAU) -> Option<FAURef> + Send + Sync>,
+
+    /// Instructions before v14 require all the FAU entries to have the
+    /// same FAU RAM index, we can access two distinct 32-bit words but
+    /// they need to be "aligned" to the same 64-bit address.
+    /// This limit has been lifted from v14
+    pub single_fau_ram_index: bool,
 }
 
 impl FAUModel {
@@ -90,6 +96,7 @@ impl ValhallModel {
             special_fn: Box::new(move |special| {
                 ValhallModel::special_fau(special, arch)
             }),
+            single_fau_ram_index: arch < 14,
         };
         ValhallModel { arch, fau }
     }

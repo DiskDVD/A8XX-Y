@@ -31,18 +31,25 @@ bi_use_kraid(nir_shader *nir, uint64_t gpu_id)
  * unsupported and ints are lowered with nir_lower_int64.  Certain 8-bit and
  * 16-bit instructions, however, are lowered here.
  */
+struct lower_bit_size_opts {
+   bool use_kraid;
+   uint64_t gpu_id;
+};
 static unsigned
 bi_lower_bit_size(const nir_instr *instr, void *data)
 {
+   const struct lower_bit_size_opts *opts = data;
    switch (instr->type) {
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
-      uint64_t gpu_id = *((uint64_t *)data);
-
       switch (alu->op) {
       case nir_op_fexp2:
       case nir_op_flog2:
       case nir_op_fpow:
+         // Kraid can handle 32-bit fexp/flog/fpow
+         if (opts->use_kraid)
+            return 0;
+         FALLTHROUGH;
       case nir_op_fsin:
       case nir_op_fcos:
       case nir_op_bit_count:
@@ -56,7 +63,7 @@ bi_lower_bit_size(const nir_instr *instr, void *data)
       case nir_op_frexp_sig:
       case nir_op_frexp_exp:
          /* On v11+, FROUND.v2s16 is gone */
-         if (pan_arch(gpu_id) < 11)
+         if (pan_arch(opts->gpu_id) < 11)
             return 0;
          return (nir_src_bit_size(alu->src[0].src) == 32) ? 0 : 32;
       case nir_op_iadd:
@@ -68,7 +75,7 @@ bi_lower_bit_size(const nir_instr *instr, void *data)
       case nir_op_ineg:
       case nir_op_iabs:
          /* On v11+, IABS.v4s8, IADD.v4s8 and ISUB.v4s8 are gone */
-         if (pan_arch(gpu_id) < 11)
+         if (pan_arch(opts->gpu_id) < 11)
             return 0;
 
          return (nir_src_bit_size(alu->src[0].src) == 8) ? 16 : 0;
@@ -140,6 +147,9 @@ bi_vectorize_filter(const nir_instr *instr, const void *data)
    case nir_op_pack_uvec2_to_uint:
    case nir_op_pack_uvec4_to_uint:
       return 0;
+   case nir_op_fexp2:
+   case nir_op_flog2:
+   case nir_op_fpow:
    case nir_op_frcp:
    case nir_op_frsq:
    case nir_op_ishl:
@@ -184,6 +194,8 @@ mem_vectorize_cb(unsigned align_mul, unsigned align_offset, unsigned bit_size,
                  nir_intrinsic_instr *low, nir_intrinsic_instr *high,
                  void *data)
 {
+   uint64_t gpu_id = *(uint64_t *)data;
+
    if (hole_size > 0)
       return false;
 
@@ -194,8 +206,17 @@ mem_vectorize_cb(unsigned align_mul, unsigned align_offset, unsigned bit_size,
    const unsigned bytes = num_components * (bit_size / 8);
    const unsigned max_bytes = 128u / 8u; /* LOAD.i128 */
 
+   if (bytes > max_bytes)
+      return false;
+
+   /* Valhall+ (v9+) supports unaligned load/store, so we don't need the
+    * combined access to be naturally aligned.
+    */
+   if (pan_arch(gpu_id) >= 9)
+      return true;
+
    const unsigned combined_align = nir_combined_align(align_mul, align_offset);
-   return bytes <= combined_align && bytes <= max_bytes;
+   return bytes <= combined_align;
 }
 
 static void
@@ -277,37 +298,12 @@ bi_optimize_loop(nir_shader *nir, uint64_t gpu_id, bool allow_copies)
 
 static void
 bi_optimize_late(nir_shader *nir, uint64_t gpu_id,
-                nir_variable_mode robust_modes,
                 const struct pan_shader_info *info)
 {
    NIR_PASS(_, nir, nir_opt_shrink_stores, false /* shrink_image_store */);
    bi_optimize_loop(nir, gpu_id, false /* allow_copies */);
 
    NIR_PASS(_, nir, nir_opt_shrink_vectors, false);
-
-   /* Why aren't we vectorizing nir_var_shader_temp?
-    * Basically, the current RA doesn't know rematerialization and is still
-    * learning spills, if we vectorize temp stores it might create long-lived
-    * COLLECTs that make the RA fall off the bicycle and create very scary spills.
-    * (spills that are just other temp STORE/LOADs).
-    *
-    * Really hope that a Metroid boss hears my prayer and saves the day soon!
-    * test case: dEQP-VK.subgroups.ballot_broadcast.compute.subgroupbroadcast_u8vec3
-    * TODO: Fix RA and re-enable temp vectorization.
-    */
-   nir_load_store_vectorize_options vectorize_opts = {
-      .modes = nir_var_mem_global |
-               nir_var_mem_shared |
-               nir_var_mem_ubo /* | nir_var_mem_temp */,
-      .callback = mem_vectorize_cb,
-      .robust_modes = robust_modes,
-   };
-
-   /* Only allow vectorization of SSBOs when no robustness2 is configured */
-   if (!(robust_modes & nir_var_mem_ssbo))
-      vectorize_opts.modes |= nir_var_mem_ssbo;
-
-   NIR_PASS(_, nir, nir_opt_load_store_vectorize, &vectorize_opts);
 
    NIR_PASS(_, nir, pan_nir_fuse_io_cvt, gpu_id, &info->varyings.formats);
 
@@ -327,7 +323,11 @@ bi_optimize_late(nir_shader *nir, uint64_t gpu_id,
    NIR_PASS(_, nir, nir_lower_int64);
 
    /* Algebraic can materialize instructions with a bit_size that we need to lower */
-   NIR_PASS(_, nir, nir_lower_bit_size, bi_lower_bit_size, &gpu_id);
+   NIR_PASS(_, nir, nir_lower_bit_size, bi_lower_bit_size,
+            &(struct lower_bit_size_opts) {
+               .use_kraid = bi_use_kraid(nir, gpu_id),
+               .gpu_id = gpu_id,
+            });
 
    /* We need to cleanup after each iteration of late algebraic
     * optimizations, since otherwise NIR can produce weird edge cases
@@ -801,9 +801,15 @@ mem_access_size_align_cb(nir_intrinsic_op intrin, uint8_t bytes,
    }
 
    /* All loads must be aligned up to the next power of two of their byte
-    * size. If we have insufficient alignment, split into smaller loads. */
+    * size. If we have insufficient alignment, split into smaller loads.
+    *
+    * Valhall+ (v9+) supports unaligned global/shared accesses, so we don't
+    * split them for alignment there.
+    */
    unsigned required_align = util_next_power_of_two(bytes);
-   if (align < required_align) {
+   if (pan_arch(gpu_id) >= 9) {
+      required_align = MIN2(align, required_align);
+   } else if (align < required_align) {
       bytes = align;
       required_align = bytes;
    }
@@ -963,6 +969,31 @@ bifrost_postprocess_nir(nir_shader *nir,
    NIR_PASS(_, nir, pan_nir_lower_tex, gpu_id);
    NIR_PASS(_, nir, pan_nir_lower_image, gpu_id);
 
+   /* Why aren't we vectorizing nir_var_shader_temp?
+    * Basically, the current RA doesn't know rematerialization and is still
+    * learning spills, if we vectorize temp stores it might create long-lived
+    * COLLECTs that make the RA fall off the bicycle and create very scary spills.
+    * (spills that are just other temp STORE/LOADs).
+    *
+    * Really hope that a Metroid boss hears my prayer and saves the day soon!
+    * test case: dEQP-VK.subgroups.ballot_broadcast.compute.subgroupbroadcast_u8vec3
+    * TODO: Fix RA and re-enable temp vectorization.
+    */
+   nir_load_store_vectorize_options vectorize_opts = {
+      .modes = nir_var_mem_global |
+               nir_var_mem_shared |
+               nir_var_mem_ubo /* | nir_var_mem_temp */,
+      .callback = mem_vectorize_cb,
+      .cb_data = (void *)&gpu_id,
+      .robust_modes = inputs->robust_modes,
+   };
+
+   /* Only allow vectorization of SSBOs when no robustness2 is configured */
+   if (!(inputs->robust_modes & nir_var_mem_ssbo))
+      vectorize_opts.modes |= nir_var_mem_ssbo;
+
+   NIR_PASS(_, nir, nir_opt_load_store_vectorize, &vectorize_opts);
+
    /* Our OpenCL compiler (src/panfrost/clc/pan_compile.c) has a very weird and
     * suboptimal optimization pipeline that results in a lot of unoptimized
     * memcpys and sparse scratch space.  That code is still being used for
@@ -1015,6 +1046,10 @@ bifrost_postprocess_nir(nir_shader *nir,
       .cb_data = (void *) &gpu_id,
    };
    NIR_PASS(_, nir, nir_lower_mem_access_bit_sizes, &mem_size_options);
+
+   /* The divergent scratch lowering must come after mem access bit lowering */
+   nir_divergence_analysis(nir);
+   NIR_PASS(_, nir, pan_nir_lower_divergent_scratch, gpu_arch);
 
    if (bi_use_kraid(nir, gpu_id))
       NIR_PASS(_, nir, pan_nir_lower_mem_to_global);
@@ -1084,7 +1119,11 @@ bifrost_postprocess_nir(nir_shader *nir,
    NIR_PASS(_, nir, nir_lower_alu); /* Lower [iu]mul_high */
 
    /* Lower bit sizes and vector widths */
-   NIR_PASS(_, nir, nir_lower_bit_size, bi_lower_bit_size, (void *) &gpu_id);
+   NIR_PASS(_, nir, nir_lower_bit_size, bi_lower_bit_size,
+            &(struct lower_bit_size_opts) {
+               .use_kraid = bi_use_kraid(nir, gpu_id),
+               .gpu_id = gpu_id,
+            });
    NIR_PASS(_, nir, nir_lower_alu_width, bi_vectorize_filter, &gpu_id);
    NIR_PASS(_, nir, nir_lower_load_const_to_scalar);
    NIR_PASS(_, nir, nir_lower_phis_to_scalar, bi_vectorize_filter, &gpu_id);
@@ -1274,7 +1313,7 @@ bifrost_compile_shader_nir(nir_shader *nir,
 
    bifrost_init_debug_options();
 
-   bi_optimize_late(nir, inputs->gpu_id, inputs->robust_modes, info);
+   bi_optimize_late(nir, inputs->gpu_id, info);
 
    /* Lower constants to scalar but then immediately fold so we get minimum-
     * width vectors instead of scalars

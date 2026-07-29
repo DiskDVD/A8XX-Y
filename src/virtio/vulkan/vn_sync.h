@@ -17,6 +17,15 @@ enum vn_sync_type {
    /* device object */
    VN_SYNC_TYPE_DEVICE_ONLY,
 
+   /* renderer sync object */
+   VN_SYNC_TYPE_SYNC,
+
+   /* renderer sync objects
+    * - cpu sync x 1
+    * - gpu sync x vn_device::queue_count
+    */
+   VN_SYNC_TYPE_TIMELINE_SYNC,
+
    /* payload is an imported sync file */
    VN_SYNC_TYPE_IMPORTED_SYNC_FD,
 };
@@ -24,20 +33,16 @@ enum vn_sync_type {
 struct vn_sync_payload {
    enum vn_sync_type type;
 
-   /* If type is VN_SYNC_TYPE_IMPORTED_SYNC_FD, fd is a sync file. */
-   int fd;
-};
+   union {
+      /* If type is VN_SYNC_TYPE_SYNC, sync is non-NULL. */
+      struct vn_renderer_sync *sync;
 
-/* For external fences and external semaphores submitted to be signaled. The
- * Vulkan spec guarantees those external syncs are on permanent payload.
- */
-struct vn_sync_payload_external {
-   /* ring_idx of the last queue submission */
-   uint32_t ring_idx;
-   /* valid when NO_ASYNC_QUEUE_SUBMIT perf option is not used */
-   bool ring_seqno_valid;
-   /* ring seqno of the last queue submission */
-   uint32_t ring_seqno;
+      /* If type is VN_SYNC_TYPE_TIMELINE_SYNC, syncs are non-NULL. */
+      struct vn_renderer_sync **syncs;
+
+      /* If type is VN_SYNC_TYPE_IMPORTED_SYNC_FD, fd is a sync file. */
+      int fd;
+   };
 };
 
 struct vn_fence {
@@ -47,12 +52,6 @@ struct vn_fence {
 
    struct vn_sync_payload permanent;
    struct vn_sync_payload temporary;
-
-   uint64_t signal_counter;
-   struct vn_sync_feedback feedback;
-
-   bool is_external;
-   struct vn_sync_payload_external external_payload;
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_fence,
                                base.vk,
@@ -63,6 +62,7 @@ struct vn_semaphore {
    struct vn_object_base base;
 
    VkSemaphoreType type;
+   bool sync_fd_export;
 
    struct vn_sync_payload *payload;
 
@@ -70,9 +70,6 @@ struct vn_semaphore {
    struct vn_sync_payload temporary;
 
    struct vn_sync_feedback feedback;
-
-   bool is_external;
-   struct vn_sync_payload_external external_payload;
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_semaphore,
                                base.vk,
@@ -101,13 +98,14 @@ vn_semaphore_is_timeline(VkSemaphore sem_handle)
 }
 
 static inline bool
-vn_semaphore_is_imported(VkSemaphore sem_handle)
+vn_semaphore_is_sync_fd(VkSemaphore sem_handle)
 {
    struct vn_semaphore *sem = vn_semaphore_from_handle(sem_handle);
-   return sem->payload->type == VN_SYNC_TYPE_IMPORTED_SYNC_FD;
+   return sem->payload->type == VN_SYNC_TYPE_IMPORTED_SYNC_FD ||
+          (sem->payload->type == VN_SYNC_TYPE_SYNC && sem->sync_fd_export);
 }
 
 bool
-vn_semaphore_wait_imported(VkDevice dev_handle, VkSemaphore sem_handle);
+vn_semaphore_wait_sync_fd(VkDevice dev_handle, VkSemaphore sem_handle);
 
 #endif /* VN_SYNC_H */

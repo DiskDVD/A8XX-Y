@@ -1002,8 +1002,7 @@ static void build_lighting( struct tnl_program *p )
              * negation makes the back-face specular term positive again.
              */
             unsigned swiz_xywz[] = {0, 1, 3, 2};
-            nir_def *dots =
-               nir_fneg(p->b, nir_swizzle(p->b, old_dots, swiz_xywz, 4));
+            dots = nir_fneg(p->b, nir_swizzle(p->b, old_dots, swiz_xywz, 4));
 
             if (att) {
                /* light is attenuated by distance */

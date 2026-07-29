@@ -49,6 +49,22 @@ info on what was updated.
 Workarounds
 ===========
 
+KK_WORKAROUND_15
+----------------
+| macOS version: 27.0 beta (26A5353q)
+| Metal ticket: Not reported
+| Metal ticket status:
+| CTS test failure: ``dEQP-VK.robustness.robustness2.bind.notemplate.rgba32*i.unroll.volatile.storage_buffer*.readonly.no_fmt_qual.len_16.samples_1.1d.comp``
+| Comments:
+
+Volatile and coherent device accesses are miscompiled by the MSL compiler.
+Dropping coherent qualifier is enough to work around the compiler bug, and
+having volatile only seems to be guarantee enough. This bug is only present
+in macOS 27 with KK_WORKAROUND_6 disabled.
+
+| Log:
+| 2026-07-14: Workaround implemented
+
 KK_WORKAROUND_14
 ----------------
 | macOS version: 26.5, 27.0 beta 1

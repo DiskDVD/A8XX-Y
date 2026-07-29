@@ -5775,6 +5775,9 @@ tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
 
    for (unsigned i = 0; i < cmd->state.pass->subpass_count; i++) {
       const struct tu_subpass *subpass = &cmd->state.pass->subpasses[i];
+      if (subpass->custom_resolve)
+         cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
+
       for (unsigned j = 0; j < subpass->resolve_count; j++) {
          uint32_t a = subpass->resolve_attachments[j].attachment;
          if (a == VK_ATTACHMENT_UNUSED)
@@ -5784,8 +5787,6 @@ tu_choose_gmem_layout(struct tu_cmd_buffer *cmd)
                subpass->depth_stencil_attachment.attachment :
                subpass->color_attachments[j].attachment;
          if (tu_attachment_store_mismatched_mutability(cmd, a, gmem_a))
-            cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
-         if (subpass->custom_resolve)
             cmd->state.gmem_layout = TU_GMEM_LAYOUT_AVOID_CCU;
       }
    }
@@ -6149,16 +6150,18 @@ void
 tu_blit_subsampled_apron(struct tu_cmd_buffer *cmd,
                          struct tu_cs *cs,
                          const struct tu_image_view *iview,
+                         bool store,
+                         bool store_stencil,
                          unsigned layer,
                          const VkRect2D *dst_coord,
                          const tu_rect2d_float *src_coord,
                          unsigned count)
 {
    if (iview->image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-      blit_subsampled_apron<CHIP>(cmd, cs, iview, VK_FORMAT_D32_SFLOAT, layer,
-                                  dst_coord, src_coord, count);
-      blit_subsampled_apron<CHIP>(cmd, cs, iview, VK_FORMAT_S8_UINT, layer,
-                                  dst_coord, src_coord, count);
+      if (store)
+         blit_subsampled_apron<CHIP>(cmd, cs, iview, VK_FORMAT_D32_SFLOAT, layer, dst_coord, src_coord, count);
+      if (store_stencil)
+         blit_subsampled_apron<CHIP>(cmd, cs, iview, VK_FORMAT_S8_UINT, layer, dst_coord, src_coord, count);
    } else {
       blit_subsampled_apron<CHIP>(cmd, cs, iview, iview->vk.format, layer,
                                   dst_coord, src_coord, count);

@@ -18,6 +18,7 @@
 #include "util/u_string.h"
 #include "util/u_debug.h"
 #include "util/u_printf.h"
+#include "util/memstream.h"
 #include "util/mesa-blake3.h"
 #include "util/bfloat.h"
 #include "util/float8.h"
@@ -58,6 +59,8 @@ static const struct spirv_capabilities implemented_capabilities = {
    .CooperativeMatrixConversionsNV = true,
    .CooperativeMatrixReductionsNV = true,
    .CooperativeMatrixPerElementOperationsNV = true,
+   .CooperativeMatrixTensorAddressingNV = true,
+   .CooperativeMatrixBlockLoadsNV = true,
    .CoreBuiltinsARM = true,
    .CullDistance = true,
    .DemoteToHelperInvocation = true,
@@ -191,6 +194,7 @@ static const struct spirv_capabilities implemented_capabilities = {
    .SubgroupBufferBlockIOINTEL = true,
    .SubgroupShuffleINTEL = true,
    .SubgroupVoteKHR = true,
+   .TensorAddressingNV = true,
    .Tessellation = true,
    .TessellationPointSize = true,
    .TextureBlockMatchQCOM = true,
@@ -454,6 +458,8 @@ vtn_base_type_to_string(enum vtn_base_type t)
    CASE(function);
    CASE(event);
    CASE(cooperative_matrix);
+   CASE(tensor_layout);
+   CASE(tensor_view);
    CASE(buffer);
    }
 #undef CASE
@@ -1303,6 +1309,34 @@ vtn_types_compatible(struct vtn_builder *b,
       }
       return true;
 
+   case vtn_base_type_tensor_layout:
+      if (t1->length != t2->length)
+         return false;
+
+      if (t1->tensor_layout_clamp_mode != t2->tensor_layout_clamp_mode)
+         return false;
+
+      for (unsigned i = 0; i < t1->length; i++) {
+         if (!vtn_types_compatible(b, t1->tensor_layout_members[i], t2->tensor_layout_members[i]))
+            return false;
+      }
+      return true;
+   case vtn_base_type_tensor_view:
+      if (t1->length != t2->length)
+         return false;
+
+      if (t1->tensor_view_has_dims != t2->tensor_view_has_dims)
+         return false;
+
+      for (unsigned p = 0; p < NIR_TENSOR_VIEW_MAX_PERMUTATIONS; p++)
+         if (t1->tensor_view_permutations[p] != t2->tensor_view_permutations[p])
+            return false;
+
+      for (unsigned i = 0; i < t1->length; i++) {
+         if (!vtn_types_compatible(b, t1->tensor_view_members[i], t2->tensor_view_members[i]))
+            return false;
+      }
+      return true;
    case vtn_base_type_accel_struct:
    case vtn_base_type_ray_query:
       return true;
@@ -1359,6 +1393,18 @@ vtn_type_copy(struct vtn_builder *b, struct vtn_type *src)
       dest->offsets = vtn_alloc_array(b, unsigned, src->length);
       memcpy(dest->offsets, src->offsets,
              src->length * sizeof(src->offsets[0]));
+      break;
+
+   case vtn_base_type_tensor_layout:
+      dest->tensor_layout_members = vtn_alloc_array(b, struct vtn_type *, src->length);
+      memcpy(dest->tensor_layout_members, src->tensor_layout_members,
+             src->length * sizeof(src->tensor_layout_members[0]));
+      break;
+
+   case vtn_base_type_tensor_view:
+      dest->tensor_view_members = vtn_alloc_array(b, struct vtn_type *, src->length);
+      memcpy(dest->tensor_view_members, src->tensor_view_members,
+             src->length * sizeof(src->tensor_view_members[0]));
       break;
 
    case vtn_base_type_function:
@@ -2468,6 +2514,11 @@ vtn_handle_type(struct vtn_builder *b, SpvOp opcode,
       break;
    }
 
+   case SpvOpTypeTensorLayoutNV:
+   case SpvOpTypeTensorViewNV:
+      vtn_handle_tensor_layout_type(b, val, opcode, w, count);
+      break;
+
    case SpvOpTypeCooperativeMatrixKHR:
       vtn_handle_cooperative_type(b, val, opcode, w, count);
       break;
@@ -2518,7 +2569,7 @@ vtn_handle_type(struct vtn_builder *b, SpvOp opcode,
    }
 }
 
-static nir_constant *
+nir_constant *
 vtn_null_constant(struct vtn_builder *b, struct vtn_type *type)
 {
    nir_constant *c = rzalloc(b, nir_constant);
@@ -5127,7 +5178,7 @@ vtn_vector_shuffle(struct vtn_builder *b, unsigned num_components,
 /*
  * Concatentates a number of vectors/scalars together to produce a vector
  */
-static nir_def *
+nir_def *
 vtn_vector_construct(struct vtn_builder *b, unsigned num_components,
                      unsigned num_srcs, nir_def **srcs)
 {
@@ -5166,7 +5217,7 @@ vtn_vector_construct(struct vtn_builder *b, unsigned num_components,
 /*
  * Creates a copy of `src`, reinterpreting it as `dest_type`.
  */
-static struct vtn_ssa_value *
+struct vtn_ssa_value *
 vtn_composite_copy_logical(struct vtn_builder *b, struct vtn_ssa_value *src, struct vtn_type* dest_type)
 {
    assert(!src->is_variable);
@@ -5192,7 +5243,7 @@ vtn_composite_copy_logical(struct vtn_builder *b, struct vtn_ssa_value *src, str
    return dest;
 }
 
-static struct vtn_ssa_value *
+struct vtn_ssa_value *
 vtn_composite_insert(struct vtn_builder *b, struct vtn_ssa_value *src,
                      struct vtn_type *src_type, struct vtn_ssa_value *insert,
                      const uint32_t *indices, unsigned num_indices)
@@ -5235,7 +5286,7 @@ vtn_composite_insert(struct vtn_builder *b, struct vtn_ssa_value *src,
    return dest;
 }
 
-static struct vtn_ssa_value *
+struct vtn_ssa_value *
 vtn_composite_extract(struct vtn_builder *b, struct vtn_ssa_value *src,
                       const uint32_t *indices, unsigned num_indices)
 {
@@ -5791,6 +5842,8 @@ vtn_handle_debug_text(struct vtn_builder *b, SpvOp opcode,
 
       vtn_info("Parsing SPIR-V from %s %u source file %s", lang, version, file);
 
+      if (!b->source_file)
+         b->source_file = file;
       b->source_lang = w[1];
       break;
    }
@@ -6369,6 +6422,8 @@ vtn_handle_variable_or_type_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpTypeCooperativeMatrixKHR:
    case SpvOpTypeUntypedPointerKHR:
    case SpvOpTypeBufferEXT:
+   case SpvOpTypeTensorLayoutNV:
+   case SpvOpTypeTensorViewNV:
       vtn_handle_type(b, opcode, w, count);
       break;
 
@@ -7438,6 +7493,19 @@ vtn_handle_body_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpFinishWritingNodePayloadAMDX:
       break;
 
+   case SpvOpCreateTensorLayoutNV:
+   case SpvOpTensorLayoutSetBlockSizeNV:
+   case SpvOpTensorLayoutSetDimensionNV:
+   case SpvOpTensorLayoutSetStrideNV:
+   case SpvOpTensorLayoutSliceNV:
+   case SpvOpTensorLayoutSetClampValueNV:
+   case SpvOpCreateTensorViewNV:
+   case SpvOpTensorViewSetDimensionNV:
+   case SpvOpTensorViewSetStrideNV:
+   case SpvOpTensorViewSetClipNV:
+      vtn_handle_tensor_layout_instruction(b, opcode, w, count);
+      break;
+
    case SpvOpCooperativeMatrixLoadKHR:
    case SpvOpCooperativeMatrixStoreKHR:
    case SpvOpCooperativeMatrixLengthKHR:
@@ -7446,6 +7514,8 @@ vtn_handle_body_instruction(struct vtn_builder *b, SpvOp opcode,
    case SpvOpCooperativeMatrixTransposeNV:
    case SpvOpCooperativeMatrixReduceNV:
    case SpvOpCooperativeMatrixPerElementOpNV:
+   case SpvOpCooperativeMatrixLoadTensorNV:
+   case SpvOpCooperativeMatrixStoreTensorNV:
       vtn_handle_cooperative_instruction(b, opcode, w, count);
       break;
 
@@ -7712,6 +7782,46 @@ can_remove(nir_variable *var, void *data)
    return !_mesa_set_search(vars_used_indirectly, var);
 }
 
+static void
+create_shader_name(struct vtn_builder *b)
+{
+   struct nir_spirv_specialization *spec = b->specialization;
+   char *stream_data = NULL;
+   size_t stream_size = 0;
+   struct u_memstream mem;
+   if (spec && u_memstream_open(&mem, &stream_data, &stream_size)) {
+      FILE *const stream = u_memstream_get(&mem);
+      for (unsigned i = 0; i < spec->num_entries; i++) {
+         struct nir_spirv_specialization_entry *entry = &spec->entries[i];
+         fprintf(stream, "spec[%u] =", entry->id);
+         for (unsigned j = 0; j < entry->size;) {
+            if (entry->size - j >= 4) {
+               uint32_t v;
+               memcpy(&v, entry->data + j, 4);
+               fprintf(stream, " 0x%.8"PRIx32, v);
+               j += 4;
+            } else if (entry->size - j >= 2) {
+               uint16_t v;
+               memcpy(&v, entry->data + j, 2);
+               fprintf(stream, " 0x%.4"PRIx16, v);
+               j += 2;
+            } else {
+               fprintf(stream, " 0x%"PRIx8, entry->data[j]);
+               j++;
+            }
+         }
+         fprintf(stream, "\n");
+      }
+      fputc(0, stream);
+      u_memstream_close(&mem);
+
+      b->shader->info.spec = ralloc_strdup(b->shader, stream_data);
+      free(stream_data);
+   }
+
+   b->shader->info.name = ralloc_strdup(b->shader, b->source_file);
+}
+
 nir_shader *
 spirv_to_nir(const uint32_t *words, size_t word_count,
              struct nir_spirv_specialization *spec,
@@ -7923,6 +8033,8 @@ spirv_to_nir(const uint32_t *words, size_t word_count,
          }
       }
    } while (progress);
+
+   create_shader_name(b);
 
    if (!options->create_library) {
       vtn_assert(b->entry_point->value_type == vtn_value_type_function);

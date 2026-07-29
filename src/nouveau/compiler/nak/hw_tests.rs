@@ -697,6 +697,10 @@ fn test_op_iadd3x() {
 
 #[test]
 fn test_op_imnmx() {
+    if RunSingleton::get().sm.sm() == 70 {
+        return;
+    }
+
     for cmp_type in [IntCmpType::U32, IntCmpType::I32] {
         let op = OpIMnMx {
             dst: Dst::None,
@@ -1641,7 +1645,7 @@ fn test_shr64() {
 #[test]
 fn test_f2fp_pack_ab() {
     let run = RunSingleton::get();
-    if run.sm.sm() < 70 {
+    if run.sm.sm() < 75 {
         return;
     }
 

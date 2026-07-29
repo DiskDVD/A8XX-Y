@@ -5,22 +5,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "genxml/cs_builder.h"
-#include "genxml/decode.h"
-
 #include "panvk_buffer.h"
-#include "panvk_cmd_buffer.h"
+#include "panvk_device.h"
 #include "panvk_device_memory.h"
+#include "panvk_image.h"
 #include "panvk_macros.h"
-#include "panvk_queue.h"
-#include "panvk_utrace.h"
 #include "pan_layout.h"
 
-#include "util/bitscan.h"
 #include "vk_drm_syncobj.h"
 #include "vk_log.h"
+#include "vk_queue.h"
 
-struct panvk_bind_queue_submit_sync_ops {
+struct panvk_async_bind_sync_ops {
    struct pan_kmod_sync_op *all;
    size_t all_count;
 
@@ -34,8 +30,8 @@ struct panvk_bind_queue_submit_sync_ops {
 };
 
 static void
-panvk_bind_queue_submit_sync_ops_init(
-   struct panvk_bind_queue_submit_sync_ops *sync_ops,
+panvk_async_bind_sync_ops_init(
+   struct panvk_async_bind_sync_ops *sync_ops,
    const struct vk_queue_submit *vk_submit,
    const struct pan_kmod_sync_op *extra_signal)
 {
@@ -85,19 +81,20 @@ panvk_bind_queue_submit_sync_ops_init(
 }
 
 static void
-panvk_bind_queue_submit_sync_ops_cleanup(
-   struct panvk_bind_queue_submit_sync_ops *sync_ops)
+panvk_async_bind_sync_ops_cleanup(
+   struct panvk_async_bind_sync_ops *sync_ops)
 {
    if (sync_ops->all != sync_ops->small_storage)
       free(sync_ops->all);
 }
 
-struct panvk_bind_queue_submit {
-   struct panvk_bind_queue *queue;
+struct panvk_async_bind {
+   struct panvk_device *device;
+   uint32_t syncobj_handle;
 
    bool force_sync;
 
-   struct panvk_bind_queue_submit_sync_ops sync_ops;
+   struct panvk_async_bind_sync_ops sync_ops;
    struct pan_kmod_vm_op storage[16];
    struct pan_kmod_vm_op pending_op;
 
@@ -105,27 +102,25 @@ struct panvk_bind_queue_submit {
 };
 
 static void
-panvk_bind_queue_submit_init(struct panvk_bind_queue_submit *submit,
-                             struct vk_queue *vk_queue,
+panvk_async_bind_init(struct panvk_async_bind *submit,
+                             struct panvk_device *device,
+                             uint32_t syncobj_handle,
                              struct vk_queue_submit *vk_submit)
 {
-   struct panvk_bind_queue *queue =
-      container_of(vk_queue, struct panvk_bind_queue, vk);
-   struct panvk_device *device = to_panvk_device(queue->vk.base.device);
-
    const bool force_sync = PANVK_DEBUG(SYNC);
 
-   *submit = (struct panvk_bind_queue_submit){
-      .queue = queue,
+   *submit = (struct panvk_async_bind){
+      .device = device,
+      .syncobj_handle = syncobj_handle,
       .force_sync = force_sync,
    };
 
    struct pan_kmod_sync_op syncobj_signal = {
-      .handle = queue->syncobj_handle,
+      .handle = syncobj_handle,
       .point = 0,
    };
 
-   panvk_bind_queue_submit_sync_ops_init(&submit->sync_ops, vk_submit,
+   panvk_async_bind_sync_ops_init(&submit->sync_ops, vk_submit,
                                          force_sync ? &syncobj_signal : NULL);
 
    pan_kmod_vm_multi_op_init(&submit->ctx, device->kmod.vm,
@@ -145,17 +140,15 @@ panvk_bind_queue_submit_init(struct panvk_bind_queue_submit *submit,
 }
 
 static void
-panvk_bind_queue_submit_cleanup(struct panvk_bind_queue_submit *submit)
+panvk_async_bind_cleanup(struct panvk_async_bind *submit)
 {
-   panvk_bind_queue_submit_sync_ops_cleanup(&submit->sync_ops);
+   panvk_async_bind_sync_ops_cleanup(&submit->sync_ops);
 }
 
 static int
-panvk_bind_queue_submit_process_signals(struct panvk_bind_queue_submit *submit)
+panvk_async_bind_process_signals(struct panvk_async_bind *submit)
 {
-   struct panvk_bind_queue *queue = submit->queue;
-   struct panvk_device *device =
-      to_panvk_device(queue->vk.base.device);
+   struct panvk_device *device = submit->device;
    struct pan_kmod_vm_multi_op_ctx *ctx = &submit->ctx;
 
    submit->pending_op.signal.array = submit->sync_ops.signals;
@@ -182,11 +175,11 @@ panvk_bind_queue_submit_process_signals(struct panvk_bind_queue_submit *submit)
 
    if (submit->force_sync) {
       ASSERTED int ret = drmSyncobjWait(device->drm_fd,
-                               &queue->syncobj_handle, 1, INT64_MAX,
+                               &submit->syncobj_handle, 1, INT64_MAX,
                                DRM_SYNCOBJ_WAIT_FLAGS_WAIT_ALL, NULL);
       assert(!ret);
 
-      drmSyncobjReset(device->drm_fd, &queue->syncobj_handle, 1);
+      drmSyncobjReset(device->drm_fd, &submit->syncobj_handle, 1);
    }
 
    return 0;
@@ -229,8 +222,8 @@ can_merge_map_ops(struct pan_kmod_vm_op a, struct pan_kmod_vm_op b,
 }
 
 static int
-panvk_bind_queue_submit_sparse_memory_bind(
-   struct panvk_bind_queue_submit *submit,
+panvk_async_bind_sparse_memory_bind(
+   struct panvk_async_bind *submit,
    VkDeviceAddress resource_va, const VkSparseMemoryBind *in)
 {
    VK_FROM_HANDLE(panvk_device_memory, mem, in->memory);
@@ -329,7 +322,7 @@ image_to_mem_bind(const struct panvk_image *image,
 }
 
 static int
-panvk_bind_queue_submit_do(struct panvk_bind_queue_submit *submit,
+panvk_async_bind_do(struct panvk_async_bind *submit,
                            const struct vk_queue_submit *vk_submit)
 {
    int ret;
@@ -342,7 +335,7 @@ panvk_bind_queue_submit_do(struct panvk_bind_queue_submit *submit,
       for (uint32_t j = 0; j < vk_submit->buffer_binds[i].bindCount; j++) {
          const VkSparseMemoryBind *mbind = &vk_submit->buffer_binds[i].pBinds[j];
 
-         ret = panvk_bind_queue_submit_sparse_memory_bind(submit, resource_va,
+         ret = panvk_async_bind_sparse_memory_bind(submit, resource_va,
                                                           mbind);
          if (ret)
             return ret;
@@ -359,7 +352,7 @@ panvk_bind_queue_submit_do(struct panvk_bind_queue_submit *submit,
          const VkSparseMemoryBind *mbind =
             &vk_submit->image_opaque_binds[i].pBinds[j];
 
-         ret = panvk_bind_queue_submit_sparse_memory_bind(submit, resource_va,
+         ret = panvk_async_bind_sparse_memory_bind(submit, resource_va,
                                                           mbind);
          if (ret)
             return ret;
@@ -401,7 +394,7 @@ panvk_bind_queue_submit_do(struct panvk_bind_queue_submit *submit,
                     bind.offset.x < max.x; bind.offset.x += sblock.extent.width) {
                   VkSparseMemoryBind mbind = image_to_mem_bind(image, &bind);
 
-                  ret = panvk_bind_queue_submit_sparse_memory_bind(
+                  ret = panvk_async_bind_sparse_memory_bind(
                      submit, image->sparse.device_address, &mbind);
                   if (ret)
                      return ret;
@@ -412,79 +405,24 @@ panvk_bind_queue_submit_do(struct panvk_bind_queue_submit *submit,
       }
    }
 
-   return panvk_bind_queue_submit_process_signals(submit);
+   return panvk_async_bind_process_signals(submit);
 }
 
 VkResult
-panvk_per_arch(bind_queue_submit)(struct vk_queue *vk_queue,
-                                  struct vk_queue_submit *vk_submit)
+panvk_queue_vm_bind(struct vk_queue *vk_queue,
+                    struct vk_queue_submit *vk_submit, uint32_t syncobj_handle)
 {
-   struct panvk_bind_queue_submit submit;
+   struct panvk_device *device = to_panvk_device(vk_queue->base.device);
+   struct panvk_async_bind submit;
    VkResult result = VK_SUCCESS;
 
-   if (vk_queue_is_lost(vk_queue))
-      return VK_ERROR_DEVICE_LOST;
+   panvk_async_bind_init(&submit, device, syncobj_handle, vk_submit);
 
-   panvk_bind_queue_submit_init(&submit, vk_queue, vk_submit);
-
-   int ret = panvk_bind_queue_submit_do(&submit, vk_submit);
+   int ret = panvk_async_bind_do(&submit, vk_submit);
    if (ret)
       result = vk_queue_set_lost(vk_queue, "GROUP_SUBMIT: %m");
 
-   panvk_bind_queue_submit_cleanup(&submit);
+   panvk_async_bind_cleanup(&submit);
 
    return result;
-}
-
-VkResult
-panvk_per_arch(create_bind_queue)(struct panvk_device *dev,
-                                  const VkDeviceQueueCreateInfo *create_info,
-                                  uint32_t queue_idx,
-                                  struct vk_queue **out_queue)
-{
-   struct panvk_bind_queue *queue = vk_zalloc(
-      &dev->vk.alloc, sizeof(*queue), 8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (!queue)
-      return panvk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   VkResult result =
-      vk_queue_init(&queue->vk, &dev->vk, create_info, queue_idx);
-   if (result != VK_SUCCESS)
-      goto err_free_queue;
-
-   int ret = drmSyncobjCreate(dev->drm_fd, 0, &queue->syncobj_handle);
-   if (ret) {
-      result = panvk_errorf(dev, VK_ERROR_INITIALIZATION_FAILED,
-                            "Failed to create our internal sync object");
-      goto err_finish_queue;
-   }
-
-   queue->vk.driver_submit = panvk_per_arch(bind_queue_submit);
-   *out_queue = &queue->vk;
-   return VK_SUCCESS;
-
-err_finish_queue:
-   vk_queue_finish(&queue->vk);
-
-err_free_queue:
-   vk_free(&dev->vk.alloc, queue);
-   return result;
-}
-
-void
-panvk_per_arch(destroy_bind_queue)(struct vk_queue *vk_queue)
-{
-   struct panvk_bind_queue *queue =
-      container_of(vk_queue, struct panvk_bind_queue, vk);
-   struct panvk_device *dev = to_panvk_device(queue->vk.base.device);
-
-   drmSyncobjDestroy(dev->drm_fd, queue->syncobj_handle);
-   vk_queue_finish(&queue->vk);
-   vk_free(&dev->vk.alloc, queue);
-}
-
-VkResult
-panvk_per_arch(bind_queue_check_status)(struct vk_queue *vk_queue)
-{
-   return VK_SUCCESS;
 }

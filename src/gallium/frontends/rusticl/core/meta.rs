@@ -1,7 +1,10 @@
 use std::{collections::HashMap, ffi::CString, sync::Arc};
 
 use mesa_rust_util::properties::Properties;
-use rusticl_kernels::RUSTICL_BUILTIN_KERNELS_SPV;
+use rusticl_kernels::{
+    RUSTICL_BUILTIN_KERNELS_SPV32, RUSTICL_BUILTIN_KERNELS_SPV32_ULONG,
+    RUSTICL_BUILTIN_KERNELS_SPV64, RUSTICL_BUILTIN_KERNELS_SPV64_ULONG,
+};
 use rusticl_opencl_gen::*;
 
 use crate::{
@@ -17,28 +20,54 @@ use crate::{
 };
 
 pub struct Meta {
-    kernels: HashMap<CString, Arc<Kernel>>,
+    kernels32: HashMap<CString, Arc<Kernel>>,
+    kernels64: HashMap<CString, Arc<Kernel>>,
 }
 
 impl Meta {
     pub fn new(devs: &'static [Device]) -> Self {
-        let spirv = RUSTICL_BUILTIN_KERNELS_SPV;
-        let devs = devs.iter().collect::<Vec<_>>();
-        let ctx = Context::new(devs.clone(), Properties::default(), None);
-        let prog = Program::from_spirv(ctx, spirv);
-        let options = CompileOptions::new(c"", -1).unwrap();
-        prog.build(devs, options, None).unwrap();
-        let build = prog.build_info();
+        let ctx = Context::new(devs.iter().collect(), Properties::default(), None);
+        let mut kernels64 = HashMap::new();
+        let mut kernels32 = HashMap::new();
 
-        let mut kernels = HashMap::new();
-        for kernel in build.kernels() {
-            kernels.insert(
-                kernel.to_owned(),
-                Kernel::new(kernel.to_owned(), Arc::clone(&prog), &build),
-            );
+        for (bits, kernels) in [(32, &mut kernels32), (64, &mut kernels64)] {
+            for long in [true, false] {
+                let spirv = match (bits, long) {
+                    (32, false) => RUSTICL_BUILTIN_KERNELS_SPV32,
+                    (32, true) => RUSTICL_BUILTIN_KERNELS_SPV32_ULONG,
+                    (64, false) => RUSTICL_BUILTIN_KERNELS_SPV64,
+                    (64, true) => RUSTICL_BUILTIN_KERNELS_SPV64_ULONG,
+                    (_, _) => unreachable!(),
+                };
+
+                let devs = devs
+                    .iter()
+                    .filter(|dev| dev.address_bits() == bits)
+                    .filter(|dev| !long || dev.int64_supported())
+                    .collect::<Vec<_>>();
+
+                if devs.is_empty() {
+                    continue;
+                }
+
+                let prog = Program::from_spirv_with_devs(devs.clone(), Arc::clone(&ctx), spirv);
+                let options = CompileOptions::new(c"", -1).unwrap();
+                prog.build(devs, options, None).unwrap();
+                let build = prog.build_info();
+
+                for kernel in build.kernels() {
+                    kernels.insert(
+                        kernel.to_owned(),
+                        Kernel::new(kernel.to_owned(), Arc::clone(&prog), &build),
+                    );
+                }
+            }
         }
 
-        Meta { kernels: kernels }
+        Meta {
+            kernels32: kernels32,
+            kernels64: kernels64,
+        }
     }
 
     fn run_clear_buffer(
@@ -54,8 +83,18 @@ impl Meta {
             return Err(CL_INVALID_VALUE);
         }
 
+        if len > 64 && !dev.int64_supported() {
+            return Err(CL_INVALID_VALUE);
+        }
+
         let kernel_name = CString::new(format!("clear_buffer{len}")).unwrap();
-        let kernel = self.kernels.get(&kernel_name).unwrap();
+        let kernels = if dev.address_bits() == 32 {
+            &self.kernels32
+        } else {
+            &self.kernels64
+        };
+
+        let kernel = kernels.get(&kernel_name).unwrap();
         kernel.launch_with_args(
             dev,
             3,

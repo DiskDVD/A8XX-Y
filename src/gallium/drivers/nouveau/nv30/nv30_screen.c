@@ -102,6 +102,9 @@ nv30_init_screen_caps(struct nv30_screen *screen)
    caps->max_texture_cube_levels = 13;
    caps->glsl_feature_level =
    caps->glsl_feature_level_compatibility = 120;
+   caps->device_type = dev->info.type == NV_DEVICE_TYPE_DIS
+      ? PIPE_DEVICE_TYPE_DISCRETE_GPU
+      : PIPE_DEVICE_TYPE_INTEGRATED_GPU;
    caps->endianness = PIPE_ENDIAN_LITTLE;
    caps->constant_buffer_offset_alignment = 16;
    caps->min_map_buffer_alignment = NOUVEAU_MIN_BUFFER_MAP_ALIGN;

@@ -15,6 +15,7 @@
 
 #include "panvk_cmd_precomp.h"
 #include "libpan.h"
+#include "libpan_copy.h"
 #include "libpan_dgc.h"
 
 static bool
@@ -778,3 +779,76 @@ panvk_per_arch(cmd_meta_resolve_attachments)(struct panvk_cmd_buffer *cmdbuf)
    vk_meta_resolve_rendering(&cmdbuf->vk, &dev->meta, &render_info);
    meta_gfx_end(cmdbuf, &save);
 }
+
+#if PAN_ARCH >= 10
+
+#define COPY_MEM_INDIRECT_MAX_WG 16
+#define COPY_MEM_INDIRECT_WG_BYTES                                            \
+   (PANLIB_COPY_MEM_INDIRECT_WG_SIZE * PANLIB_COPY_MEM_INDIRECT_CHUNK_SIZE)
+
+/* Turn the 64-bit byte size at size_addr into a workgroup count in
+ * JOB_SIZE_X, capped at COPY_MEM_INDIRECT_MAX_WG. Pre-v13 archs have no CS
+ * shift instructions, so the count is only approximated with
+ * min(size, cap). The result is never too small, the kernel loops when the
+ * dispatch does not cover the whole size.
+ */
+static void
+emit_copy_mem_indirect_wg_count(struct panvk_cmd_buffer *cmdbuf,
+                                uint64_t size_addr)
+{
+   struct cs_builder *b = panvk_get_cs_builder(cmdbuf, PANVK_SUBQUEUE_COMPUTE);
+
+   cs_update_compute_ctx(b) {
+      cs_move64_to(b, cs_scratch_reg64(b, 0), size_addr);
+      cs_load_to(b, cs_scratch_reg_tuple(b, 2, 2), cs_scratch_reg64(b, 0),
+                 BITFIELD_MASK(2), 0);
+      cs_flush_loads(b);
+#if PAN_ARCH >= 13
+      /* wg_count = DIV_ROUND_UP(size, COPY_MEM_INDIRECT_WG_BYTES) */
+      cs_add_imm64(b, cs_scratch_reg64(b, 2), cs_scratch_reg64(b, 2),
+                   COPY_MEM_INDIRECT_WG_BYTES - 1);
+      cs_rshift_imm_u64(b, cs_scratch_reg64(b, 2), cs_scratch_reg64(b, 2),
+                        util_logbase2(COPY_MEM_INDIRECT_WG_BYTES));
+#endif
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_X),
+                   COPY_MEM_INDIRECT_MAX_WG);
+      cs_umin32(b, cs_scratch_reg32(b, 2), cs_scratch_reg32(b, 2),
+                cs_sr_reg32(b, COMPUTE, JOB_SIZE_X));
+      /* Keep the cap if the size exceeds 32 bits. */
+      cs_if(b, MALI_CS_CONDITION_EQUAL, cs_scratch_reg32(b, 3)) {
+         cs_move_reg32(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_X),
+                       cs_scratch_reg32(b, 2));
+      }
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Y), 1);
+      cs_move32_to(b, cs_sr_reg32(b, COMPUTE, JOB_SIZE_Z), 1);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(CmdCopyMemoryIndirectKHR)(
+   VkCommandBuffer commandBuffer,
+   const VkCopyMemoryIndirectInfoKHR *pCopyMemoryIndirectInfo)
+{
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   struct panvk_precomp_ctx ctx = panvk_per_arch(precomp_cs)(cmdbuf);
+
+   for (uint32_t i = 0; i < pCopyMemoryIndirectInfo->copyCount; i++) {
+      uint64_t cmd_addr = pCopyMemoryIndirectInfo->copyAddressRange.address +
+                          i * pCopyMemoryIndirectInfo->copyAddressRange.stride;
+
+      emit_copy_mem_indirect_wg_count(
+         cmdbuf, cmd_addr + offsetof(VkCopyMemoryIndirectCommandKHR, size));
+      panlib_copy_mem_indirect(&ctx, panlib_dynamic_csf(),
+                               PANLIB_BARRIER_CSF_SYNC, cmd_addr);
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+panvk_per_arch(CmdCopyMemoryToImageIndirectKHR)(
+   VkCommandBuffer commandBuffer,
+   const VkCopyMemoryToImageIndirectInfoKHR *pCopyMemoryToImageIndirectInfo)
+{
+   assert(!"indirectMemoryToImageCopy is not supported");
+}
+
+#endif /* PAN_ARCH >= 10 */

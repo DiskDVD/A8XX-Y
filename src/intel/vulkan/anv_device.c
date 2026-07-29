@@ -1602,8 +1602,8 @@ done:
    pthread_mutex_unlock(&device->vma_mutex);
 
    if (addr == 0 && client_address) {
-      mesa_logi("Virtual address allocation failed, "
-                "consider running with ANV_DEBUG=no-alloc-oversubscription");
+      mesa_logi("Virtual address allocation failed, consider running with "
+                "anv_enable_alloc_oversubscription=false");
    }
 
    assert(addr == intel_48b_address(addr));

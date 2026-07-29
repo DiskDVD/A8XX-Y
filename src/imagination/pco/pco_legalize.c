@@ -164,7 +164,12 @@ static inline bool xfer_op_mods(pco_instr *dest, pco_instr *src)
 static bool legalize_fence(pco_instr *instr)
 {
    pco_builder b =
-      pco_builder_create(instr->parent_func, pco_cursor_before_instr(instr));
+      pco_builder_create(instr->parent_func, pco_cursor_after_instr(instr));
+
+   if (pco_is_last_instr(instr)) {
+      pco_nop(&b);
+      b.cursor = pco_cursor_after_instr(instr);
+   }
 
    pco_flush_p0(&b);
    pco_br_next(&b, .exec_cnd = PCO_EXEC_CND_E1_Z1);

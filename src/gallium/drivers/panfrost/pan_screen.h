@@ -15,6 +15,7 @@
 #include "util/disk_cache.h"
 #include "util/log.h"
 #include "util/set.h"
+#include "util/u_blitter.h"
 #include "util/u_dynarray.h"
 
 #include "pan_device.h"
@@ -30,6 +31,7 @@ struct panfrost_batch;
 struct panfrost_context;
 struct panfrost_resource;
 struct panfrost_compiled_shader;
+struct panfrost_uncompiled_shader;
 struct pan_fb_info;
 struct pan_blend_state;
 
@@ -109,6 +111,12 @@ struct panfrost_vtable {
    /* construct a render target blend descriptor */
    uint64_t (*get_conv_desc)(enum pipe_format fmt, unsigned rt,
                              unsigned force_size, bool dithered);
+
+   /* Run a fullscreen draw call (for blits) */
+   void (*draw_fullscreen)(struct panfrost_context *ctx,
+                           struct panfrost_uncompiled_shader *vs,
+                           enum blitter_attrib_type type,
+                           const struct blitter_attrib *attrib);
 };
 
 struct panfrost_screen {

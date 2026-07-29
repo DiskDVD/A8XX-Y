@@ -537,9 +537,9 @@
     <field name="Subslice Hashing Table Enable Mask" dword="1" bits="21:21" type="bool" />
     <field name="Slice Hashing Table Enable Mask" dword="1" bits="22:22" type="bool" />
     <field name="DX10 OGL Border Mode for YCRCB Mask" dword="1" bits="26:26" type="bool" />
-    <field name="Fast Clear Optimization Enable" dword="3" bits="10:10" type="bool" />
+    <field name="Fast Clear Optimization Enable" dword="3" bits="10:10" type="mbz" />
     <field name="RCC RHWO Optimization Disable" dword="3" bits="15:15" type="bool" />
-    <field name="Fast Clear Optimization Enable Mask" dword="3" bits="26:26" type="bool" />
+    <field name="Fast Clear Optimization Enable Mask" dword="3" bits="26:26" type="mbz" />
     <field name="RCC RHWO Optimization Disable Mask" dword="3" bits="31:31" type="bool" />
   </instruction>
   <instruction name="3DSTATE_BINDING_TABLE_POINTERS_DS" bias="2" length="2" engine="render">

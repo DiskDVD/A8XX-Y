@@ -64,6 +64,12 @@ begin_debug_marker(VkCommandBuffer commandBuffer,
    case VK_ACCELERATION_STRUCTURE_BUILD_STEP_PLOC_BUILD_INTERNAL:
       trace_intel_begin_as_ploc_build_internal(&cmd_buffer->trace);
       break;
+   case VK_ACCELERATION_STRUCTURE_BUILD_STEP_PAIR_TRIANGLES:
+      trace_intel_begin_as_pair_triangles(&cmd_buffer->trace);
+      break;
+   case VK_ACCELERATION_STRUCTURE_BUILD_STEP_ID_PREFIX_SUM:
+      trace_intel_begin_as_id_prefix_sum(&cmd_buffer->trace);
+      break;
    default:
       UNREACHABLE("Invalid build step");
    }
@@ -98,6 +104,12 @@ end_debug_marker(VkCommandBuffer commandBuffer,
       break;
    case VK_ACCELERATION_STRUCTURE_BUILD_STEP_PLOC_BUILD_INTERNAL:
       trace_intel_end_as_ploc_build_internal(&cmd_buffer->trace);
+      break;
+   case VK_ACCELERATION_STRUCTURE_BUILD_STEP_PAIR_TRIANGLES:
+      trace_intel_end_as_pair_triangles(&cmd_buffer->trace);
+      break;
+   case VK_ACCELERATION_STRUCTURE_BUILD_STEP_ID_PREFIX_SUM:
+      trace_intel_end_as_id_prefix_sum(&cmd_buffer->trace);
       break;
    default:
       UNREACHABLE("Invalid build step");
@@ -203,19 +215,7 @@ debug_record_as_to_bvh_dump(struct anv_cmd_buffer *cmd_buffer,
 
    if (INTEL_DEBUG(DEBUG_BVH_BLAS_IR_AS) &&
        geometry_type != VK_GEOMETRY_TYPE_INSTANCES_KHR) {
-      uint64_t leaf_total_size;
-
-      switch (geometry_type) {
-      case VK_GEOMETRY_TYPE_TRIANGLES_KHR:
-         leaf_total_size = sizeof(struct vk_ir_triangle_node) * leaf_count;
-         break;
-      case VK_GEOMETRY_TYPE_AABBS_KHR:
-         leaf_total_size = sizeof(struct vk_ir_aabb_node) * leaf_count;
-         break;
-      default:
-         UNREACHABLE("invalid geometry type");
-      }
-
+      uint64_t leaf_total_size = vk_ir_node_size(geometry_type, 0) * leaf_count;
       add_bvh_dump(cmd_buffer, intermediate_as_addr, internal_node_total_size +
                    leaf_total_size, geometry_type, BVH_IR_AS);
    }
@@ -243,6 +243,7 @@ debug_record_as_to_bvh_dump(struct anv_cmd_buffer *cmd_buffer,
 #define HEADER_SPV_PATH STRINGIFY(bvh/genX(header).spv.h)
 #define COPY_SPV_PATH STRINGIFY(bvh/genX(copy).spv.h)
 #define UPDATE_SPV_PATH STRINGIFY(bvh/genX(update).spv.h)
+#define PAIR_TRIANGLES_SPV_PATH STRINGIFY(bvh/genX(pair_triangles).spv.h)
 
 static const uint32_t encode_spv[] = {
 #include ENCODE_SPV_PATH
@@ -258,6 +259,10 @@ static const uint32_t copy_spv[] = {
 
 static const uint32_t update_spv[] = {
 #include UPDATE_SPV_PATH
+};
+
+static const uint32_t pair_triangles_spv[] = {
+#include PAIR_TRIANGLES_SPV_PATH
 };
 
 static void
@@ -315,6 +320,10 @@ get_bvh_layout(const struct vk_acceleration_structure_build_state *state,
       uint64_t leaf_block_offset_size = leaf_count * sizeof(uint32_t);
       layout->leaf_block_map_offset = offset;
       offset += leaf_block_offset_size;
+
+      uint64_t parent_child_count_map_size = internal_count * sizeof(uint8_t);
+      layout->parent_child_count_map_offset = offset;
+      offset += parent_child_count_map_size;
    }
 
    layout->size = align64(offset, 64);
@@ -345,6 +354,9 @@ anv_get_build_config(VkDevice _device, struct vk_acceleration_structure_build_st
         device->physical->instance->drirc.debug.write_lookup_maps_unconditionally)) {
       state->config.build_flags |= ANV_BUILD_FLAG_WRITE_LOOKUP_MAPS_FOR_UPDATE;
    }
+
+   VkGeometryTypeKHR geometry_type = vk_get_as_geometry_type(state->build_info);
+   state->config.late_pair_compression = geometry_type == VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 }
 
 static void
@@ -465,6 +477,9 @@ anv_encode_as(VkCommandBuffer commandBuffer, struct vk_device *vk_device, struct
          .leaf_block_offset_map = bvh_layout.leaf_block_map_offset != 0 ?
                                   (vk_acceleration_structure_get_va(dst) +
                                    bvh_layout.leaf_block_map_offset) : 0,
+         .parent_child_count_map = bvh_layout.parent_child_count_map_offset != 0 ?
+                                   (vk_acceleration_structure_get_va(dst) +
+                                    bvh_layout.parent_child_count_map_offset) : 0,
       };
       anv_bvh_build_set_args(commandBuffer, &args, sizeof(args));
 
@@ -644,7 +659,8 @@ anv_update_as(VkCommandBuffer commandBuffer, struct vk_device *vk_device,
       anv_get_update_scratch_layout(device, state, &update_layout);
 
       assert(bvh_layout.parent_child_map_offset != 0 &&
-             bvh_layout.leaf_block_map_offset != 0);
+             bvh_layout.leaf_block_map_offset != 0 &&
+             bvh_layout.parent_child_count_map_offset != 0);
 
       struct update_args update_consts = {
          .internal_ready_count = state->build_info->scratchData.deviceAddress +
@@ -656,6 +672,8 @@ anv_update_as(VkCommandBuffer commandBuffer, struct vk_device *vk_device,
                              bvh_layout.parent_child_map_offset,
          .leaf_block_offset_map = vk_acceleration_structure_get_va(dst) +
                                   bvh_layout.leaf_block_map_offset,
+         .parent_child_count_map = vk_acceleration_structure_get_va(dst) +
+                                    bvh_layout.parent_child_count_map_offset,
          .output_bvh = vk_acceleration_structure_get_va(dst) + bvh_layout.bvh_offset,
          .output_bvh_offset = bvh_layout.bvh_offset,
       };
@@ -735,6 +753,8 @@ static const struct vk_acceleration_structure_build_ops anv_build_ops = {
    .get_update_scratch_size = anv_get_update_scratch_size,
    .init_update_scratch = anv_init_update_scratch,
    .encode = anv_encode,
+   .pair_triangles_spirv_override = pair_triangles_spv,
+   .pair_triangles_spirv_override_size = sizeof(pair_triangles_spv),
 };
 
 static VkResult

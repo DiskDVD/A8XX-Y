@@ -115,28 +115,15 @@ fn filter_dst_types(
 }
 
 fn try_swizzle_with_copy(b: &mut impl SSABuilder, dst: Dst, src: Src) -> bool {
-    let dst_types = filter_dst_types(OpCopy::VARIANTS, &dst);
-    let swz = src.swizzle;
-    let mut op = Op::from(OpCopy {
-        dst,
-        dst_type: DataType::I8,
-        src,
-    });
-    for dst_type in dst_types {
-        // Borrow mutable
-        let Op::Copy(copy) = &mut op else {
-            unreachable!();
-        };
-        copy.dst_type = dst_type;
+    let DstRef::SSA(dst_vec) = &dst.dst_ref else {
+        return false;
+    };
+    let dst_type = DataType::i(dst_vec.bytes() * 8);
 
-        // Re-borrow shared
-        let Op::Copy(copy) = &op else {
-            unreachable!();
-        };
-        if b.model().op_src_supports_swizzle(&op, &copy.src, swz) {
-            b.push_op(op);
-            return true;
-        }
+    let op = OpCopy { dst, dst_type, src };
+    if op.src_supports_swizzle(&op.src, op.src.swizzle) {
+        b.push_op(op);
+        return true;
     }
     false
 }

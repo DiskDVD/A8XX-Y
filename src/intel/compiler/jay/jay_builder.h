@@ -57,7 +57,6 @@ jay_op_starts_block(enum jay_opcode op)
 {
    return op == JAY_OPCODE_PHI_DST ||
           op == JAY_OPCODE_PRELOAD ||
-          op == JAY_OPCODE_INIT_HELPERS ||
           op == JAY_OPCODE_ELSE;
 }
 
@@ -440,6 +439,7 @@ _jay_CMP(jay_builder *b,
    I->type = src_type;
    I->src[0] = src0;
    I->src[1] = src1;
+   I->uniform = jay_is_uniform(dst);
 
    /* Even if we want to write a 32-bit 0/~0 result, we still need to
     * register-allocate a flag, since the hardware will implicitly clobber one
@@ -488,6 +488,7 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
 
    I->dst = p.dst;
    I->type = p.type;
+   I->uniform = p.uniform;
 
    assert(I->type);
    info->type_0 = p.src_type[0] ? p.src_type[0] : I->type;
@@ -587,7 +588,6 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
    info->sfid = p.sfid;
    info->eot = p.eot;
    info->check_tdr = p.check_tdr;
-   info->uniform = p.uniform;
    info->bindless = p.bindless;
    info->pure = p.pure;
    info->skip_helpers = p.skip_helpers;
@@ -618,7 +618,10 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
       }
    }
 
-   assert(!info->uniform || jay_is_null(I->dst) || I->dst.file == UGPR);
+   if (p.uniform && b->shader->helpers_tracked) {
+      I->cond_flag = jay_alloc_def(b, FLAG, 1);
+   }
+
    jay_builder_insert(b, I);
    return I;
 }

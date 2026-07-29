@@ -978,6 +978,8 @@ void genX(CmdResetQueryPool)(
    }
 
    trace_intel_end_query_clear_cs(&cmd_buffer->trace, queryCount);
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_QUERY;
 }
 
 void genX(ResetQueryPool)(
@@ -1319,6 +1321,8 @@ void genX(CmdBeginQueryIndexedEXT)(
    default:
       UNREACHABLE("");
    }
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_QUERY;
 }
 
 void genX(CmdEndQueryIndexedEXT)(
@@ -1558,6 +1562,8 @@ void genX(CmdEndQueryIndexedEXT)(
       if (num_queries > 1)
          emit_zero_queries(cmd_buffer, &b, pool, query + 1, num_queries - 1);
    }
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_QUERY;
 }
 
 #define TIMESTAMP 0x2358
@@ -1574,9 +1580,17 @@ void genX(CmdWriteTimestamp2)(
 
    assert(pool->vk.query_type == VK_QUERY_TYPE_TIMESTAMP);
 
-   if (append_query_clear_flush(cmd_buffer, pool,
-                                "CmdWriteTimestamp flush query clears"))
-      genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
+   /* Anything bottom-of-pipe, request a post-sync */
+   if (stage != VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT)
+      cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_POST_SYNC_BIT;
+
+   append_query_clear_flush(cmd_buffer, pool,
+                            "CmdWriteTimestamp flush query clears");
+
+   /* Always flush, even for top-of-pipe there might be a barrier that needs
+    * executing before we take the timestamp.
+    */
+   genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
 
    struct mi_builder b;
    mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
@@ -1586,10 +1600,6 @@ void genX(CmdWriteTimestamp2)(
                    mi_reg64(TIMESTAMP));
       emit_query_mi_availability(&b, query_addr, true);
    } else {
-      /* Everything else is bottom-of-pipe */
-      cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_POST_SYNC_BIT;
-      genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
-
       bool cs_stall_needed =
          (GFX_VER == 9 && cmd_buffer->device->info->gt == 4);
 
@@ -1632,6 +1642,8 @@ void genX(CmdWriteTimestamp2)(
       if (num_queries > 1)
          emit_zero_queries(cmd_buffer, &b, pool, query + 1, num_queries - 1);
    }
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_QUERY;
 }
 
 #define MI_PREDICATE_SRC0    0x2400
@@ -2027,43 +2039,6 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
    trace_intel_end_query_copy_shader(&cmd_buffer->trace, query_count);
 }
 
-void genX(CmdCopyQueryPoolResults)(
-    VkCommandBuffer                             commandBuffer,
-    VkQueryPool                                 queryPool,
-    uint32_t                                    firstQuery,
-    uint32_t                                    queryCount,
-    VkBuffer                                    destBuffer,
-    VkDeviceSize                                destOffset,
-    VkDeviceSize                                destStride,
-    VkQueryResultFlags                          flags)
-{
-   ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
-   ANV_FROM_HANDLE(anv_query_pool, pool, queryPool);
-   ANV_FROM_HANDLE(anv_buffer, buffer, destBuffer);
-   struct anv_device *device = cmd_buffer->device;
-   const struct anv_physical_device *pdevice = device->physical;
-   const struct anv_instance *instance = pdevice->instance;
-
-   if (queryCount > instance->drirc.perf.query_copy_with_shader_threshold &&
-       anv_cmd_buffer_is_render_or_compute_queue(cmd_buffer)) {
-      copy_query_results_with_shader(cmd_buffer, pool,
-                                     anv_address_add(buffer->address,
-                                                     destOffset),
-                                     destStride,
-                                     firstQuery,
-                                     queryCount,
-                                     flags);
-   } else {
-      copy_query_results_with_cs(cmd_buffer, pool,
-                                 anv_address_add(buffer->address,
-                                                 destOffset),
-                                 destStride,
-                                 firstQuery,
-                                 queryCount,
-                                 flags);
-   }
-}
-
 void genX(CmdCopyQueryPoolResultsToMemoryKHR)(
     VkCommandBuffer                             commandBuffer,
     VkQueryPool                                 queryPool,
@@ -2097,6 +2072,8 @@ void genX(CmdCopyQueryPoolResultsToMemoryKHR)(
                                  queryCount,
                                  queryResultFlags);
    }
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_TRANSFER;
 }
 
 #if GFX_VERx10 >= 125 && ANV_SUPPORT_RT
@@ -2181,5 +2158,7 @@ genX(CmdWriteAccelerationStructuresPropertiesKHR)(
       mi_builder_set_write_check(&b1, (i == (accelerationStructureCount - 1)));
       emit_query_mi_availability(&b1, anv_query_address(pool, firstQuery + i), true);
    }
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_QUERY;
 }
 #endif /* GFX_VERx10 >= 125 && ANV_SUPPORT_RT */

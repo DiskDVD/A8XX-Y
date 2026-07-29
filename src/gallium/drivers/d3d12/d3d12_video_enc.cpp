@@ -1838,8 +1838,25 @@ bool d3d12_video_encoder_negotiate_requested_features_and_d3d12_driver_caps(stru
 
       /* Try fallback for multi-slice/tile not supported with single subregion mode */
       if ((capEncoderSupportData.ValidationFlags & D3D12_VIDEO_ENCODER_VALIDATION_FLAG_SUBREGION_LAYOUT_MODE_NOT_SUPPORTED) != 0) {
-         pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode = D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
-         debug_printf("[d3d12_video_encoder] WARNING: Requested slice/tile mode not supported by driver, will continue encoding with single subregion encoding.\n");
+         // First try FULL_FRAME as the natural single-subregion fallback for multi-slice/tile modes.
+         // If FULL_FRAME itself is not supported, fall back further to AUTO
+         if (d3d12_video_encoder_check_subregion_mode_support(
+               pD3D12Enc, D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME)) {
+            pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode =
+               D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_FULL_FRAME;
+            debug_printf("[d3d12_video_encoder] WARNING: Requested slice/tile mode not supported by driver, "
+                         "falling back to FULL_FRAME single subregion encoding.\n");
+         } else if (d3d12_video_encoder_check_subregion_mode_support(
+                     pD3D12Enc, D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_AUTO)) {
+            pD3D12Enc->m_currentEncodeConfig.m_encoderSliceConfigMode =
+               D3D12_VIDEO_ENCODER_FRAME_SUBREGION_LAYOUT_MODE_AUTO;
+            debug_printf("[d3d12_video_encoder] WARNING: Requested slice/tile mode not supported by driver, "
+                         " FULL_FRAME subregion mode not supported by driver either, "
+                         " falling back to AUTO subregion mode.\n");
+         } else {
+            debug_printf("[d3d12_video_encoder] WARNING: Neither FULL_FRAME nor AUTO subregion modes are "
+                         "supported, subregion mode fallback unavailable.\n");
+         }
       }
 
       ///
@@ -2506,7 +2523,6 @@ UINT d3d12_video_encoder_calculate_max_output_compressed_bitstream_size(
 
    const UINT MIN_BUFFER_SIZE = 256 * 1024; // 256KB minimum buffer size
    const UINT MAX_BUFFER_SIZE = 20 * 1024 * 1024; // Maximum buffer size of 20MB
-   const float EXPECTED_COMPRESSION_FACTOR = 2.0f; // Assume 50% of calculated size after compression of raw pixel sizes
 
    UINT alignedWidth = (uiWidth + 15) & ~15;
    UINT alignedHeight = (uiHeight + 15) & ~15;
@@ -2529,9 +2545,6 @@ UINT d3d12_video_encoder_calculate_max_output_compressed_bitstream_size(
          bufferSize = (((alignedHeight) * (alignedWidth) * 15) >> 3);
          break;
    }
-
-   // Apply EXPECTED_COMPRESSION_FACTOR constant (% of calculated size)
-   bufferSize = static_cast<UINT>(std::ceil(bufferSize / EXPECTED_COMPRESSION_FACTOR));
 
    // Clamp buffer size between minimum and maximum limits
    bufferSize = std::max(MIN_BUFFER_SIZE, std::min(bufferSize, MAX_BUFFER_SIZE));
@@ -4198,29 +4211,6 @@ d3d12_video_encoder_encode_bitstream_impl(struct pipe_video_codec *codec,
                      return;
                   }
                }
-               else if (pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].ppSubregionFenceValues[i] > 0)
-               {
-                  // The ID3D12Fence objects in pspSubregionFences are reused across frames, but the
-                  // d3d12_fence wrappers (pSubregionPipeFences) are recreated each frame via
-                  // d3d12_create_fence_raw which calls SetEventOnCompletion. When a fence was never
-                  // GPU-signaled (e.g. AUTO slice mode in prev frame produced fewer slices than allocated),
-                  // the previous SetEventOnCompletion registration remains orphaned inside the ID3D12Fence.
-                  // CloseHandle on the event handle (in destroy_fence) does NOT unregister it.
-                  // CPU-signal to (new_value - 1) to flush any stale registration without
-                  // satisfying the upcoming new one.
-                  // At this point, the previous frame is guaranteed to be completed since when
-                  // reusing current_metadata_slot, we only pick slots for frames that are already
-                  // fully completed signaled (i.e. completed) as per the logic in d3d12_video_encoder_begin_frame.
-                  hr = pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pspSubregionFences[i]->Signal(
-                     pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].ppSubregionFenceValues[i] - 1);
-                  if (FAILED(hr)) {
-                     debug_printf("ID3D12Fence::Signal failed with HR %x\n", (unsigned)hr);
-                     pD3D12Enc->m_inflightResourcesPool[d3d12_video_encoder_pool_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
-                     pD3D12Enc->m_spEncodedFrameMetadata[d3d12_video_encoder_metadata_current_index(pD3D12Enc)].encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
-                     assert(false);
-                     return;
-                  }
-               }
                pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].ppSubregionFences[i] = pD3D12Enc->m_spEncodedFrameMetadata[current_metadata_slot].pspSubregionFences[i].Get();
             }
 
@@ -5288,21 +5278,14 @@ d3d12_video_encoder_update_picparams_region_of_interest_qpmap(struct d3d12_video
 }
 
 int
-d3d12_video_encoder_fence_wait(struct pipe_video_codec *codec,
+d3d12_video_encoder_fence_wait([[maybe_unused]] struct pipe_video_codec *codec,
                                struct pipe_fence_handle *_fence,
                                uint64_t timeout)
 {
-   struct d3d12_video_encoder *pD3D12Enc = (struct d3d12_video_encoder *) codec;
-   assert(pD3D12Enc);
    struct d3d12_fence *fence = (struct d3d12_fence *) _fence;
    assert(fence);
 
    bool wait_res = d3d12_fence_finish(fence, timeout);
-   if (wait_res) {
-      // Opportunistically reset batches
-      for (uint32_t i = 0; i < pD3D12Enc->m_MaxQueueAsyncDepth; ++i)
-         d3d12_video_encoder_sync_completion(codec, i, 0);
-   }
 
    // Return semantics based on p_video_codec interface
    // ret == 0 -> Encode in progress

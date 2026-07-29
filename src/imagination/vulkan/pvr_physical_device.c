@@ -151,6 +151,7 @@ static void pvr_physical_device_get_supported_extensions(
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
+      .KHR_maintenance7 = true,
       .KHR_map_memory2 = true,
       .KHR_multiview = true,
       .KHR_pipeline_executable_properties = true,
@@ -178,6 +179,7 @@ static void pvr_physical_device_get_supported_extensions(
       .KHR_swapchain = PVR_USE_WSI_PLATFORM,
       .KHR_swapchain_maintenance1 = PVR_USE_WSI_PLATFORM,
       .KHR_swapchain_mutable_format = PVR_USE_WSI_PLATFORM,
+      .KHR_synchronization2 = true,
       .KHR_timeline_semaphore = true,
       .KHR_unified_image_layouts = true,
       .KHR_uniform_buffer_standard_layout = true,
@@ -221,6 +223,7 @@ static void pvr_physical_device_get_supported_extensions(
 #ifdef PVR_USE_WSI_PLATFORM
       .GOOGLE_display_timing = wsi_instance_supports_google_display_timing(&instance->vk, &instance->drirc.options),
 #endif
+      .IMG_filter_linear_2d = true,
    };
 }
 
@@ -353,6 +356,9 @@ static void pvr_physical_device_get_supported_features(
 
       /* Vulkan 1.4 / VK_KHR_maintenance5 */
       .maintenance5 = true,
+
+      /* VK_KHR_maintenance7 */
+      .maintenance7 = true,
 
       /* Vulkan 1.1 / VK_KHR_shader_draw_parameters */
       .shaderDrawParameters = true,
@@ -491,6 +497,9 @@ static void pvr_physical_device_get_supported_features(
 
       /* VK_KHR_present_wait2 */
       .presentWait2 = PVR_USE_WSI_PLATFORM,
+
+      /* Vulkan 1.3 / VK_KHR_synchronization2 */
+      .synchronization2 = true,
 
       /* Vulkan 1.4 / VK_EXT_vertex_attribute_divisor /
          VK_KHR_vertex_attribute_divisor */
@@ -951,6 +960,16 @@ static bool pvr_physical_device_get_properties(
 
       /* VK_KHR_line_rasterization */
       .lineSubPixelPrecisionBits = line_sub_pixel_precision_bits,
+
+      /* VK_KHR_maintenance7 */
+      .robustFragmentShadingRateAttachmentAccess = false,
+      .separateDepthStencilAttachmentAccess = false,
+      .maxDescriptorSetTotalUniformBuffersDynamic = PVR_MAX_DESCRIPTOR_SET_UNIFORM_DYNAMIC_BUFFERS,
+      .maxDescriptorSetTotalStorageBuffersDynamic = PVR_MAX_DESCRIPTOR_SET_STORAGE_DYNAMIC_BUFFERS,
+      .maxDescriptorSetTotalBuffersDynamic = PVR_MAX_DYNAMIC_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = PVR_MAX_DESCRIPTOR_SET_UNIFORM_DYNAMIC_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = PVR_MAX_DESCRIPTOR_SET_STORAGE_DYNAMIC_BUFFERS,
+      .maxDescriptorSetUpdateAfterBindTotalBuffersDynamic = PVR_MAX_DYNAMIC_BUFFERS,
    };
 
    if (strlen(pdevice->instance->drirc.debug.force_vk_devicename) > 0) {

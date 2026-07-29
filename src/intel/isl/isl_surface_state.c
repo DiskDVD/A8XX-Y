@@ -720,12 +720,19 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
 #if GFX_VER >= 7
    if (info->aux_usage != ISL_AUX_USAGE_NONE) {
       /* Check valid aux usages per-gen */
-      if (GFX_VER >= 12) {
+      if (GFX_VERx10 >= 125) {
+         assert(info->aux_usage == ISL_AUX_USAGE_MCS ||
+                info->aux_usage == ISL_AUX_USAGE_CCS_E ||
+                info->aux_usage == ISL_AUX_USAGE_MC ||
+                info->aux_usage == ISL_AUX_USAGE_ZCS ||
+                info->aux_usage == ISL_AUX_USAGE_HIZ_CCS_WT ||
+                info->aux_usage == ISL_AUX_USAGE_MCS_CCS ||
+                info->aux_usage == ISL_AUX_USAGE_STC_CCS);
+      } else if (GFX_VERx10 >= 120) {
          assert(info->aux_usage == ISL_AUX_USAGE_MCS ||
                 info->aux_usage == ISL_AUX_USAGE_CCS_E ||
                 info->aux_usage == ISL_AUX_USAGE_FCV_CCS_E ||
                 info->aux_usage == ISL_AUX_USAGE_MC ||
-                info->aux_usage == ISL_AUX_USAGE_ZCS ||
                 info->aux_usage == ISL_AUX_USAGE_HIZ_CCS_WT ||
                 info->aux_usage == ISL_AUX_USAGE_MCS_CCS ||
                 info->aux_usage == ISL_AUX_USAGE_STC_CCS);
@@ -754,7 +761,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
 
       if (isl_surf_usage_is_depth(info->surf->usage)) {
          assert(isl_aux_usage_has_hiz(info->aux_usage) ||
-                (GFX_VERx10 >= 125 && info->aux_usage == ISL_AUX_USAGE_ZCS));
+                info->aux_usage == ISL_AUX_USAGE_ZCS);
       }
 
       if (isl_surf_usage_is_stencil(info->surf->usage))

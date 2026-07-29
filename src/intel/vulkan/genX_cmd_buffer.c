@@ -2090,11 +2090,11 @@ genX(emit_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer,
     *
     * XXX - use WA framework with Wa_14026570320.
     */
-   if (cmd_buffer->state.compute.trace_rays_active &&
+   if (cmd_buffer->state.rt.trace_rays_active &&
        (bits & ANV_PIPE_STATE_CACHE_INVALIDATE_BIT)) {
       src_stages |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
       dst_stages |= VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-      cmd_buffer->state.compute.trace_rays_active = false;
+      cmd_buffer->state.rt.trace_rays_active = false;
    }
 
    if (can_use_resource_barrier(device->info, batch->engine_class,
@@ -2510,7 +2510,7 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
 
 static inline struct anv_state
 emit_dynamic_buffer_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
-                                        struct anv_cmd_pipeline_state *pipe_state,
+                                        struct anv_bind_point_state *bind_state,
                                         const struct anv_pipeline_binding *binding,
                                         const struct anv_descriptor *desc)
 {
@@ -2519,7 +2519,7 @@ emit_dynamic_buffer_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
 
    /* Compute the offset within the buffer */
    uint32_t dynamic_offset =
-      pipe_state->dynamic_offsets[
+      bind_state->dynamic_offsets[
          binding->set].offsets[binding->dynamic_offset_index];
    uint64_t offset = desc->offset + dynamic_offset;
    /* Clamp to the buffer size */
@@ -2558,7 +2558,7 @@ emit_dynamic_buffer_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
 
 static uint32_t
 emit_indirect_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
-                                             struct anv_cmd_pipeline_state *pipe_state,
+                                             struct anv_bind_point_state *bind_state,
                                              const struct anv_pipeline_binding *binding,
                                              const struct anv_descriptor *desc)
 {
@@ -2628,7 +2628,7 @@ emit_indirect_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
       surface_state =
-         emit_dynamic_buffer_binding_table_entry(cmd_buffer, pipe_state,
+         emit_dynamic_buffer_binding_table_entry(cmd_buffer, bind_state,
                                                  binding, desc);
       break;
 
@@ -2651,7 +2651,7 @@ emit_indirect_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
 
 static uint32_t
 emit_direct_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
-                                           struct anv_cmd_pipeline_state *pipe_state,
+                                           struct anv_bind_point_state *bind_state,
                                            const struct anv_descriptor_set *set,
                                            const struct anv_pipeline_binding *binding,
                                            const struct anv_descriptor *desc)
@@ -2678,7 +2678,7 @@ emit_direct_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
       struct anv_state state =
-         emit_dynamic_buffer_binding_table_entry(cmd_buffer, pipe_state,
+         emit_dynamic_buffer_binding_table_entry(cmd_buffer, bind_state,
                                                  binding, desc);
       desc_offset = state.offset;
       break;
@@ -2693,7 +2693,7 @@ emit_direct_descriptor_binding_table_entry(struct anv_cmd_buffer *cmd_buffer,
 
 static VkResult
 emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
-                   struct anv_cmd_pipeline_state *pipe_state,
+                   struct anv_bind_point_state *bind_state,
                    const struct anv_pipeline_bind_map *bind_map,
                    struct anv_push_descriptor_info push_desc_info,
                    struct anv_state *bt_state)
@@ -2748,12 +2748,12 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
           */
          assert(!cmd_buffer->device->info->has_lsc);
          if (bind_map->layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER) {
-            assert(pipe_state->descriptor_buffers[binding->index].state.alloc_size);
-            bt_map[s] = pipe_state->descriptor_buffers[binding->index].state.offset +
+            assert(bind_state->descriptor_buffers[binding->index].state.alloc_size);
+            bt_map[s] = bind_state->descriptor_buffers[binding->index].state.offset +
                         state_offset;
          } else {
             struct anv_descriptor_set *set =
-               pipe_state->descriptors[binding->index];
+               bind_state->descriptors[binding->index];
 
             /* If the shader doesn't access the set buffer, just put the null
              * surface.
@@ -2776,7 +2776,7 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
       default: {
          assert(binding->set < MAX_SETS);
          struct anv_descriptor_set *set =
-            pipe_state->descriptors[binding->set];
+            bind_state->descriptors[binding->set];
 
          if (binding->index >= set->descriptor_count) {
             /* From the Vulkan spec section entitled "DescriptorSet and
@@ -2821,13 +2821,13 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
          if (bind_map->layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_INDIRECT) {
             surface_state_offset =
                emit_indirect_descriptor_binding_table_entry(cmd_buffer,
-                                                            pipe_state,
+                                                            bind_state,
                                                             binding, desc);
          } else {
             assert(bind_map->layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_DIRECT ||
                    bind_map->layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER);
             surface_state_offset =
-               emit_direct_descriptor_binding_table_entry(cmd_buffer, pipe_state,
+               emit_direct_descriptor_binding_table_entry(cmd_buffer, bind_state,
                                                           set, binding, desc);
          }
 
@@ -2842,7 +2842,7 @@ emit_binding_table(struct anv_cmd_buffer *cmd_buffer,
 
 static VkResult
 emit_samplers(struct anv_cmd_buffer *cmd_buffer,
-              struct anv_cmd_pipeline_state *pipe_state,
+              struct anv_bind_point_state *bind_state,
               const struct anv_pipeline_bind_map *bind_map,
               struct anv_state *state)
 {
@@ -2861,7 +2861,7 @@ emit_samplers(struct anv_cmd_buffer *cmd_buffer,
       const struct anv_pipeline_binding *binding =
          &bind_map->sampler_to_descriptor[s];
       const struct anv_descriptor *desc =
-         &pipe_state->descriptors[binding->set]->descriptors[binding->index];
+         &bind_state->descriptors[binding->set]->descriptors[binding->index];
 
       if (desc->type != VK_DESCRIPTOR_TYPE_SAMPLER &&
           desc->type != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
@@ -2885,7 +2885,7 @@ emit_samplers(struct anv_cmd_buffer *cmd_buffer,
 
 uint32_t
 genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
-                                       struct anv_cmd_pipeline_state *pipe_state,
+                                       struct anv_bind_point_state *bind_state,
                                        const VkShaderStageFlags dirty,
                                        const struct anv_shader **shaders,
                                        uint32_t num_shaders)
@@ -2903,13 +2903,13 @@ genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
          continue;
 
       assert(stage < ARRAY_SIZE(cmd_buffer->state.samplers));
-      result = emit_samplers(cmd_buffer, pipe_state, &shaders[i]->bind_map,
+      result = emit_samplers(cmd_buffer, bind_state, &shaders[i]->bind_map,
                              &cmd_buffer->state.samplers[stage]);
       if (result != VK_SUCCESS)
          break;
 
       assert(stage < ARRAY_SIZE(cmd_buffer->state.binding_tables));
-      result = emit_binding_table(cmd_buffer, pipe_state,
+      result = emit_binding_table(cmd_buffer, bind_state,
                                   &shaders[i]->bind_map,
                                   shaders[i]->push_desc_info,
                                   &cmd_buffer->state.binding_tables[stage]);
@@ -2940,13 +2940,13 @@ genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
 
          mesa_shader_stage stage = shaders[i]->vk.stage;
 
-         result = emit_samplers(cmd_buffer, pipe_state, &shaders[i]->bind_map,
+         result = emit_samplers(cmd_buffer, bind_state, &shaders[i]->bind_map,
                                 &cmd_buffer->state.samplers[stage]);
          if (result != VK_SUCCESS) {
             anv_batch_set_error(&cmd_buffer->batch, result);
             return 0;
          }
-         result = emit_binding_table(cmd_buffer, pipe_state,
+         result = emit_binding_table(cmd_buffer, bind_state,
                                      &shaders[i]->bind_map,
                                      shaders[i]->push_desc_info,
                                      &cmd_buffer->state.binding_tables[stage]);
@@ -2966,7 +2966,11 @@ void
 genX(cmd_buffer_flush_indirect_cs_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
                                                    const struct anv_pipeline_bind_map *bind_map)
 {
-   struct anv_cmd_pipeline_state *pipe_state = &cmd_buffer->state.compute.base;
+   struct anv_bind_point_state *bind_state = anv_cmd_buffer_get_bind_point_state(
+      cmd_buffer, VK_PIPELINE_BIND_POINT_COMPUTE);
+   if (anv_batch_has_error(&cmd_buffer->batch))
+      return;
+
    /* Assume all descriptors are used */
    struct anv_push_descriptor_info push_desc_info = {
       .used_descriptors = 0xffffffff,
@@ -2974,14 +2978,14 @@ genX(cmd_buffer_flush_indirect_cs_descriptor_sets)(struct anv_cmd_buffer *cmd_bu
    };
 
    VkResult result = VK_SUCCESS;
-   result = emit_samplers(cmd_buffer, pipe_state, bind_map,
+   result = emit_samplers(cmd_buffer, bind_state, bind_map,
                           &cmd_buffer->state.samplers[MESA_SHADER_COMPUTE]);
    if (result != VK_SUCCESS) {
       anv_batch_set_error(&cmd_buffer->batch, result);
       return;
    }
 
-   result = emit_binding_table(cmd_buffer, pipe_state, bind_map, push_desc_info,
+   result = emit_binding_table(cmd_buffer, bind_state, bind_map, push_desc_info,
                                &cmd_buffer->state.binding_tables[MESA_SHADER_COMPUTE]);
    if (result != VK_SUCCESS) {
       result = anv_cmd_buffer_new_binding_table_block(cmd_buffer);
@@ -2995,14 +2999,14 @@ genX(cmd_buffer_flush_indirect_cs_descriptor_sets)(struct anv_cmd_buffer *cmd_bu
        */
       genX(cmd_buffer_emit_bt_pool_base_address)(cmd_buffer);
 
-      result = emit_samplers(cmd_buffer, pipe_state, bind_map,
+      result = emit_samplers(cmd_buffer, bind_state, bind_map,
                              &cmd_buffer->state.samplers[MESA_SHADER_COMPUTE]);
       if (result != VK_SUCCESS) {
          anv_batch_set_error(&cmd_buffer->batch, result);
          return;
       }
 
-      result = emit_binding_table(cmd_buffer, pipe_state,
+      result = emit_binding_table(cmd_buffer, bind_state,
                                   bind_map, push_desc_info,
                                   &cmd_buffer->state.binding_tables[MESA_SHADER_COMPUTE]);
       if (result != VK_SUCCESS) {
@@ -3124,7 +3128,7 @@ emit_pipe_control(struct anv_batch *batch,
        current_pipeline == GPGPU &&
        post_sync_op != NoWrite) {
       genX(batch_emit_pipe_control)(batch, devinfo, current_pipeline,
-                                    bits,
+                                    bits | ANV_PIPE_CS_STALL_BIT,
                                     "Wa_18040903259");
       bits = ANV_PIPE_CS_STALL_BIT;
    }
@@ -3346,15 +3350,15 @@ genX(cmd_buffer_set_preemption)(struct anv_cmd_buffer *cmd_buffer, bool value)
 
 ALWAYS_INLINE static void
 update_descriptor_set_surface_state(struct anv_cmd_buffer *cmd_buffer,
-                                    struct anv_cmd_pipeline_state *pipe_state,
+                                    struct anv_bind_point_state *bind_state,
                                     uint32_t set_idx)
 {
-   if (!pipe_state->descriptor_buffers[set_idx].bound)
+   if (!bind_state->descriptor_buffers[set_idx].bound)
       return;
 
    const struct anv_physical_device *device = cmd_buffer->device->physical;
    const int32_t buffer_index =
-      pipe_state->descriptor_buffers[set_idx].buffer_index;
+      bind_state->descriptor_buffers[set_idx].buffer_index;
    const struct anv_va_range *push_va_range =
       GFX_VERx10 >= 125 ?
       anv_physical_device_get_push_descriptor_buffer_pool_va(device) :
@@ -3364,13 +3368,13 @@ update_descriptor_set_surface_state(struct anv_cmd_buffer *cmd_buffer,
    const uint64_t descriptor_set_addr =
       (buffer_index == -1 ? va_range->addr :
        cmd_buffer->state.descriptor_buffers.address[buffer_index]) +
-      pipe_state->descriptor_buffers[set_idx].buffer_offset;
+      bind_state->descriptor_buffers[set_idx].buffer_offset;
    const uint64_t set_size =
       MIN2(va_range->size - (descriptor_set_addr - va_range->addr),
            anv_physical_device_bindless_heap_size(device, true));
 
-   if (descriptor_set_addr != pipe_state->descriptor_buffers[set_idx].address) {
-      pipe_state->descriptor_buffers[set_idx].address = descriptor_set_addr;
+   if (descriptor_set_addr != bind_state->descriptor_buffers[set_idx].address) {
+      bind_state->descriptor_buffers[set_idx].address = descriptor_set_addr;
 
       struct anv_state surface_state =
          anv_cmd_buffer_alloc_surface_states(cmd_buffer, 1);
@@ -3381,21 +3385,21 @@ update_descriptor_set_surface_state(struct anv_cmd_buffer *cmd_buffer,
          cmd_buffer->device, surface_state.map,
          format, ISL_SWIZZLE_IDENTITY,
          ISL_SURF_USAGE_CONSTANT_BUFFER_BIT,
-         anv_address_from_u64(pipe_state->descriptor_buffers[set_idx].address),
+         anv_address_from_u64(bind_state->descriptor_buffers[set_idx].address),
          set_size, 1);
 
-      pipe_state->descriptor_buffers[set_idx].state = surface_state;
+      bind_state->descriptor_buffers[set_idx].state = surface_state;
    }
 }
 
 ALWAYS_INLINE static uint32_t
 compute_descriptor_set_surface_offset(const struct anv_cmd_buffer *cmd_buffer,
-                                      const struct anv_cmd_pipeline_state *pipe_state,
+                                      const struct anv_bind_point_state *bind_state,
                                       const uint32_t set_idx)
 {
    const struct anv_physical_device *device = cmd_buffer->device->physical;
    const int32_t buffer_index =
-      pipe_state->descriptor_buffers[set_idx].buffer_index;
+      bind_state->descriptor_buffers[set_idx].buffer_index;
 
    if (intel_has_extended_bindless(&device->info)) {
       uint64_t buffer_address =
@@ -3404,7 +3408,7 @@ compute_descriptor_set_surface_offset(const struct anv_cmd_buffer *cmd_buffer,
          cmd_buffer->state.descriptor_buffers.address[buffer_index];
 
       return (buffer_address - anv_physical_device_get_dynamic_visible_pool_va(device)->addr) +
-              pipe_state->descriptor_buffers[set_idx].buffer_offset;
+              bind_state->descriptor_buffers[set_idx].buffer_offset;
    }
 
    /* Pre Gfx12.0, the push descriptor in EXT_descriptor_buffer mode is always
@@ -3413,35 +3417,35 @@ compute_descriptor_set_surface_offset(const struct anv_cmd_buffer *cmd_buffer,
     * relative to the device->va.internal_surface_state_pool.addr
     */
    if (buffer_index == -1)
-      return pipe_state->descriptor_buffers[set_idx].buffer_offset;
+      return bind_state->descriptor_buffers[set_idx].buffer_offset;
 
    const uint32_t descriptor_buffer_align =
       cmd_buffer->state.descriptor_buffers.surfaces_address % 4096;
 
    return (descriptor_buffer_align +
-           pipe_state->descriptor_buffers[set_idx].buffer_offset) << 6;
+           bind_state->descriptor_buffers[set_idx].buffer_offset) << 6;
 }
 
 ALWAYS_INLINE static uint32_t
 compute_descriptor_set_sampler_offset(const struct anv_cmd_buffer *cmd_buffer,
-                                      const struct anv_cmd_pipeline_state *pipe_state,
+                                      const struct anv_bind_point_state *bind_state,
                                       const uint32_t set_idx)
 {
    const struct anv_physical_device *device = cmd_buffer->device->physical;
    int32_t buffer_index =
-      pipe_state->descriptor_buffers[set_idx].buffer_index;
+      bind_state->descriptor_buffers[set_idx].buffer_index;
    uint64_t buffer_address =
       buffer_index == -1 ?
       anv_physical_device_get_push_descriptor_buffer_pool_va(device)->addr :
       cmd_buffer->state.descriptor_buffers.address[buffer_index];
 
    return (buffer_address - anv_physical_device_get_dynamic_state_pool_va(device)->addr) +
-      pipe_state->descriptor_buffers[set_idx].buffer_offset;
+      bind_state->descriptor_buffers[set_idx].buffer_offset;
 }
 
 void
 genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
-                               struct anv_cmd_pipeline_state *pipe_state,
+                               struct anv_bind_point_state *bind_state,
                                VkShaderStageFlags active_stages)
 {
    assert(cmd_buffer->state.pending_db_mode != ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
@@ -3462,7 +3466,7 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
    assert(cmd_buffer->state.current_db_mode !=
           ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN);
    struct anv_push_constants *push_constants =
-      &pipe_state->push_constants;
+      &bind_state->push_constants;
    if (cmd_buffer->state.current_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_HEAP) {
       /* TODO handle non 4k aligned offsets */
       push_constants->desc_surface_offsets[0] =
@@ -3473,17 +3477,17 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
          anv_physical_device_get_dynamic_state_pool_va(cmd_buffer->device->physical)->addr;
       cmd_buffer->state.push_constants_dirty |=
          (cmd_buffer->state.descriptor_buffers.offsets_dirty & active_stages);
-      pipe_state->push_constants_data_dirty = true;
+      bind_state->push_constants_state = ANV_STATE_NULL;
    } else if (cmd_buffer->state.current_db_mode == ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER &&
        (cmd_buffer->state.descriptor_buffers.dirty ||
         (active_stages & cmd_buffer->state.descriptor_buffers.offsets_dirty) != 0)) {
       for (uint32_t i = 0; i < ARRAY_SIZE(push_constants->desc_surface_offsets); i++) {
-         update_descriptor_set_surface_state(cmd_buffer, pipe_state, i);
+         update_descriptor_set_surface_state(cmd_buffer, bind_state, i);
 
          push_constants->desc_surface_offsets[i] =
-            compute_descriptor_set_surface_offset(cmd_buffer, pipe_state, i);
+            compute_descriptor_set_surface_offset(cmd_buffer, bind_state, i);
          push_constants->desc_sampler_offsets[i] =
-            compute_descriptor_set_sampler_offset(cmd_buffer, pipe_state, i);
+            compute_descriptor_set_sampler_offset(cmd_buffer, bind_state, i);
       }
 
 #if GFX_VERx10 < 125
@@ -3497,7 +3501,7 @@ genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
 
       cmd_buffer->state.push_constants_dirty |=
          (cmd_buffer->state.descriptor_buffers.offsets_dirty & active_stages);
-      pipe_state->push_constants_data_dirty = true;
+      bind_state->push_constants_state = ANV_STATE_NULL;
       cmd_buffer->state.descriptor_buffers.offsets_dirty &= ~active_stages;
    }
 
@@ -3951,7 +3955,6 @@ genX(BeginCommandBuffer)(
     * flag them dirty here to make sure they get emitted.
     */
    cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_ALL_GRAPHICS;
-   cmd_buffer->state.gfx.base.push_constants_data_dirty = true;
 
    if (cmd_buffer->usage_flags &
        VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) {
@@ -4432,8 +4435,8 @@ genX(CmdExecuteCommands)(
       if (!anv_address_is_null(secondary->state.btp))
          container->state.btp = secondary->state.btp;
 
-      container->state.compute.trace_rays_active |=
-         secondary->state.compute.trace_rays_active;
+      container->state.rt.trace_rays_active |=
+         secondary->state.rt.trace_rays_active;
 
       /* For each GFX instruction emitted in the secondary, mark it dirty in
        * the container, so it's reemited. Even though Vulkan spec says that
@@ -6275,6 +6278,13 @@ attachment_initial_layout(const VkRenderingAttachmentInfo *att)
    return att->imageLayout;
 }
 
+struct anv_attachment_clear {
+   union isl_color_value clear_color;
+   VkClearRect image_clear_rect;
+   bool clear : 1;
+   bool fast_clear : 1;
+};
+
 void genX(CmdBeginRendering)(
     VkCommandBuffer                             commandBuffer,
     const VkRenderingInfo*                      pRenderingInfo)
@@ -6531,10 +6541,13 @@ void genX(CmdBeginRendering)(
       }
    }
 
+   STACK_ARRAY(struct anv_attachment_clear, color_att_clears, gfx->color_att_count);
+
    /* Now deal with color attachments layout transitions */
    UNUSED bool render_target_change = false;
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
       struct anv_attachment *att = &gfx->color_att[i];
+      struct anv_attachment_clear *att_clear = &color_att_clears[i];
 
       if (pRenderingInfo->pColorAttachments[i].imageView == VK_NULL_HANDLE) {
          render_target_change |= att->iview != NULL;
@@ -6543,9 +6556,9 @@ void genX(CmdBeginRendering)(
          att->iview = NULL;
          att->layout = VK_IMAGE_LAYOUT_UNDEFINED;
          att->aux_usage = ISL_AUX_USAGE_NONE;
-         att->clear = false;
-         att->fast_clear = false;
          att->skip_srgb_decode = false;
+         att_clear->clear = false;
+         att_clear->fast_clear = false;
          continue;
       }
 
@@ -6590,30 +6603,30 @@ void genX(CmdBeginRendering)(
          att->resolve_layout = vk_att->resolveImageLayout;
       }
 
-      att->clear = false;
-      att->fast_clear = false;
+      att_clear->clear = false;
+      att_clear->fast_clear = false;
 
       if (vk_att->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR &&
           !(gfx->rendering_flags & VK_RENDERING_RESUMING_BIT)) {
-         att->clear = true;
-         att->clear_color =
+         att_clear->clear = true;
+         att_clear->clear_color =
             vk_to_isl_color_with_format(vk_att->clearValue.color,
                                         iview->planes[0].isl.format);
-         att->image_clear_rect = (VkClearRect) {
+         att_clear->image_clear_rect = (VkClearRect) {
             .rect = render_area,
             .baseArrayLayer = iview->vk.base_array_layer,
             .layerCount = layers,
          };
 
-         att->fast_clear = gfx->view_mask <= 1 &&
+         att_clear->fast_clear = gfx->view_mask <= 1 &&
             anv_can_fast_clear_color(cmd_buffer, iview->image,
                                      iview->vk.aspects,
                                      iview->vk.base_mip_level,
-                                     &att->image_clear_rect,
+                                     &att_clear->image_clear_rect,
                                      vk_att->imageLayout,
                                      iview->planes[0].isl.format,
                                      iview->planes[0].isl.swizzle,
-                                     att->clear_color);
+                                     att_clear->clear_color);
 
          if (vk_att->imageLayout != initial_layout) {
             assert(render_area.offset.x == 0 && render_area.offset.y == 0 &&
@@ -6629,7 +6642,7 @@ void genX(CmdBeginRendering)(
                                           initial_layout, vk_att->imageLayout,
                                           VK_QUEUE_FAMILY_IGNORED,
                                           VK_QUEUE_FAMILY_IGNORED,
-                                          att->fast_clear,
+                                          att_clear->fast_clear,
                                           false /* acquire_unmodified */);
                }
             } else {
@@ -6641,7 +6654,7 @@ void genX(CmdBeginRendering)(
                                        initial_layout, vk_att->imageLayout,
                                        VK_QUEUE_FAMILY_IGNORED,
                                        VK_QUEUE_FAMILY_IGNORED,
-                                       att->fast_clear,
+                                       att_clear->fast_clear,
                                        false /* acquire_unmodified */);
             }
          }
@@ -6662,7 +6675,9 @@ void genX(CmdBeginRendering)(
    /* Do fast clearing */
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
       struct anv_attachment *att = &gfx->color_att[i];
-      if (!att->fast_clear)
+      struct anv_attachment_clear *att_clear = &color_att_clears[i];
+
+      if (!att_clear->fast_clear)
          continue;
 
       if (att->iview->image->vk.samples == 1) {
@@ -6670,37 +6685,39 @@ void genX(CmdBeginRendering)(
                           att->iview->planes[0].isl.format,
                           att->iview->planes[0].isl.swizzle,
                           att->iview->vk.aspects, 0,
-                          att->image_clear_rect.baseArrayLayer,
-                          att->image_clear_rect.layerCount,
+                          att_clear->image_clear_rect.baseArrayLayer,
+                          att_clear->image_clear_rect.layerCount,
                           ISL_AUX_OP_FAST_CLEAR,
-                          &att->clear_color,
+                          &att_clear->clear_color,
                           false);
       } else {
          anv_image_mcs_op(cmd_buffer, att->iview->image,
                           att->iview->planes[0].isl.format,
                           att->iview->planes[0].isl.swizzle,
                           att->iview->vk.aspects,
-                          att->image_clear_rect.baseArrayLayer,
-                          att->image_clear_rect.layerCount,
+                          att_clear->image_clear_rect.baseArrayLayer,
+                          att_clear->image_clear_rect.layerCount,
                           ISL_AUX_OP_FAST_CLEAR,
-                          &att->clear_color,
+                          &att_clear->clear_color,
                           false);
       }
 #if GFX_VER < 20
       set_image_compressed_bit(cmd_buffer, att->iview->image,
                                att->iview->vk.aspects, 0,
-                               att->image_clear_rect.baseArrayLayer,
-                               att->image_clear_rect.layerCount, true);
+                               att_clear->image_clear_rect.baseArrayLayer,
+                               att_clear->image_clear_rect.layerCount, true);
       genX(set_fast_clear_state)(cmd_buffer, att->iview->image,
                                  att->iview->planes[0].isl.format,
                                  att->iview->planes[0].isl.swizzle,
-                                 att->clear_color);
+                                 att_clear->clear_color);
 #endif
    }
 
    /* Fill surfaces, load clear colors and do slow clears */
    for (uint32_t i = 0; i < gfx->color_att_count; i++) {
       struct anv_attachment *att = &gfx->color_att[i];
+      struct anv_attachment_clear *att_clear = &color_att_clears[i];
+
       if (att->iview == NULL) {
          isl_null_fill_state(&cmd_buffer->device->isl_dev,
                              att->surface_state.state.map,
@@ -6722,7 +6739,7 @@ void genX(CmdBeginRendering)(
                                    att->iview->vk.aspects,
                                    &isl_view,
                                    ISL_SURF_USAGE_RENDER_TARGET_BIT,
-                                   att->aux_usage, &att->clear_color,
+                                   att->aux_usage, &att_clear->clear_color,
                                    0, /* anv_image_view_state_flags */
                                    &att->surface_state);
 
@@ -6741,7 +6758,7 @@ void genX(CmdBeginRendering)(
          genX(cmd_buffer_load_clear_color)(cmd_buffer, surf_state, att->iview);
       }
 
-      if (att->clear && !att->fast_clear) {
+      if (att_clear->clear && !att_clear->fast_clear) {
          if (is_multiview) {
             u_foreach_bit(view, pRenderingInfo->viewMask) {
                anv_image_clear_color(cmd_buffer, att->iview->image,
@@ -6751,7 +6768,7 @@ void genX(CmdBeginRendering)(
                                      att->iview->planes[0].isl.swizzle,
                                      att->iview->vk.base_mip_level,
                                      att->iview->vk.base_array_layer + view, 1,
-                                     render_area, att->clear_color);
+                                     render_area, att_clear->clear_color);
             }
          } else {
             anv_image_clear_color(cmd_buffer, att->iview->image,
@@ -6760,12 +6777,14 @@ void genX(CmdBeginRendering)(
                                   att->iview->planes[0].isl.format,
                                   att->iview->planes[0].isl.swizzle,
                                   att->iview->vk.base_mip_level,
-                                  att->image_clear_rect.baseArrayLayer,
-                                  att->image_clear_rect.layerCount,
-                                  render_area, att->clear_color);
+                                  att_clear->image_clear_rect.baseArrayLayer,
+                                  att_clear->image_clear_rect.layerCount,
+                                  render_area, att_clear->clear_color);
          }
       }
    }
+
+   STACK_ARRAY_FINISH(color_att_clears);
 
    /****** We can now start emitting code to begin the render pass ******/
 

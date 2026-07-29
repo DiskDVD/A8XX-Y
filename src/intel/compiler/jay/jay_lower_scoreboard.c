@@ -17,41 +17,21 @@
 
 #define NUM_TOKENS (32)
 
-struct key {
-   unsigned base, width;
-};
-
-static inline struct key
-def_to_regdist_key(jay_function *func, jay_inst *I, jay_def x)
-{
-   if (x.file == GPR || x.file == UGPR) {
-      unsigned base = x.file == UGPR ? func->shader->num_regs[GPR] : 0;
-      return (struct key) { base + x.reg, jay_num_values(x) };
-   } else if (x.file == ACCUM || x.file == UACCUM) {
-      unsigned base =
-         func->shader->num_regs[GPR] + func->shader->num_regs[UGPR];
-
-      return (struct key) { base + (x.reg / 2), jay_num_values(x) };
-   } else {
-      return (struct key) { 0, 0 };
-   }
-}
-
-static inline struct key
+static inline struct jay_range
 def_to_sbid_key(jay_function *func, jay_inst *I, jay_def x)
 {
    if (x.file == GPR) {
-      return (struct key) { x.reg, jay_num_values(x) };
+      return (struct jay_range){ x.reg, jay_num_values(x) };
    } else if (x.file == UGPR) {
       /* SEND instructions can only use GRF-aligned multiples of whole
        * registers, so there's no point tracking UGPRs at a finer granularity.
        */
-      return (struct key) {
+      return (struct jay_range){
          func->shader->num_regs[GPR] + x.reg / jay_ugpr_per_grf(func->shader),
          DIV_ROUND_UP(jay_num_values(x), jay_ugpr_per_grf(func->shader))
       };
    } else {
-      return (struct key) { 0, 0 };
+      return (struct jay_range){ 0, 0 };
    }
 }
 
@@ -371,7 +351,7 @@ lower_sbid_local(jay_function *func,
 
       /* Read-after-write */
       jay_foreach_src(I, s) {
-         struct key src = def_to_sbid_key(func, I, I->src[s]);
+         struct jay_range src = def_to_sbid_key(func, I, I->src[s]);
 
          u_foreach_bit(sbid, busy_dst) {
             if (BITSET_TEST_COUNT(bitset_for(edge, sbid, DST), src.base,
@@ -385,7 +365,7 @@ lower_sbid_local(jay_function *func,
 
       /* Write-after-write & write-after-read */
       jay_foreach_dst(I, d) {
-         struct key dst = def_to_sbid_key(func, I, d);
+         struct jay_range dst = def_to_sbid_key(func, I, d);
 
          u_foreach_bit(sbid, busy_dst) {
             if (BITSET_TEST_COUNT(bitset_for(edge, sbid, DST), dst.base,
@@ -448,11 +428,11 @@ lower_sbid_local(jay_function *func,
          busy_dst |= BITFIELD_BIT(sbid);
          busy_src |= BITFIELD_BIT(sbid);
 
-         struct key dst = def_to_sbid_key(func, I, I->dst);
+         struct jay_range dst = def_to_sbid_key(func, I, I->dst);
          BITSET_SET_COUNT(bitset_for(edge, sbid, DST), dst.base, dst.width);
 
          jay_foreach_src(I, s) {
-            struct key src = def_to_sbid_key(func, I, I->src[s]);
+            struct jay_range src = def_to_sbid_key(func, I, I->src[s]);
             BITSET_SET_COUNT(bitset_for(edge, sbid, SRC), src.base, src.width);
          }
 
@@ -515,7 +495,7 @@ lower_sbid_local(jay_function *func,
 typedef uint32_t u32_per_pipe[GEN_NUM_PIPES];
 
 struct swsb_regdist_state {
-   uint32_t nr_keys;
+   jay_shader *shader;
    unsigned ip[GEN_NUM_PIPES];
    unsigned last_shape[GEN_NUM_PIPES];
 
@@ -553,13 +533,13 @@ max_dependence(gen_pipe pipe)
 
 static void
 depend_on_writer(struct swsb_regdist_state *state,
-                 struct key r,
+                 struct jay_range r,
                  unsigned *dep,
                  gen_pipe exec,
                  bool except_exec)
 {
    for (unsigned i = 0; i < r.width; ++i) {
-      assert(r.base + i < state->nr_keys);
+      assert(r.base + i < jay_range_base(state->shader, ~0));
       uint32_t w = state->access[r.base + i][0];
       gen_pipe write = writer_pipe(w);
 
@@ -623,7 +603,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
    }
 
    for (unsigned i = 0; i < ARRAY_SIZE(dsts); ++i) {
-      struct key r = def_to_regdist_key(func, I, dsts[i]);
+      struct jay_range r = jay_def_to_range(func, I, dsts[i]);
       depend_on_writer(ctx, r, dep, exec_pipe, true /* except_pipe */);
 
       for (unsigned i = 0; i < r.width; ++i) {
@@ -635,18 +615,19 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
       }
    }
 
-   /* Read-after-write. The hardware scoreboards accumulators within a pipe, so
-    * we set except_pipe for that to omit those annotations. The hardware does
-    * *not* scoreboard accumulators across pipes so we can't just ignore
-    * accumulators when scoreboarding. For example, the I@1 annotation is
-    * required in the following code:
+   /* Read-after-write. The hardware scoreboards accumulators/flags within a
+    * pipe, so we set except_pipe for that to omit those annotations. The
+    * hardware does *not* scoreboard accumulator/flags  across pipes so we can't
+    * just ignore accumulator/flags when scoreboarding. For example, the I@1
+    * annotation is required in the following code:
     *
     * (16)        mul.s32 acc0, g26, g24<16,8,2>:u16                  │
     * (32)        mad.f32 acc0, u8.6, u8.8, g20                       │ I@1
     */
    jay_foreach_src(I, s) {
-      depend_on_writer(ctx, def_to_regdist_key(func, I, I->src[s]), dep,
-                       exec_pipe, I->src[s].file == ACCUM /* except_pipe */);
+      bool except_pipe = I->src[s].file == ACCUM || I->src[s].file == FLAG;
+      depend_on_writer(ctx, jay_def_to_range(func, I, I->src[s]), dep,
+                       exec_pipe, except_pipe);
    }
 
    /* If dependency P implies dependency Q, drop dependency Q to avoid
@@ -766,7 +747,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
       uint32_t now = make_writer(exec_pipe, ctx->ip[exec_pipe]);
 
       for (unsigned i = 0; i < ARRAY_SIZE(dsts); ++i) {
-         struct key r = def_to_regdist_key(func, I, dsts[i]);
+         struct jay_range r = jay_def_to_range(func, I, dsts[i]);
 
          for (unsigned i = 0; i < r.width; ++i) {
             ctx->access[r.base + i][0] = now;
@@ -774,7 +755,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
       }
 
       jay_foreach_src(I, s) {
-         struct key r = def_to_regdist_key(func, I, I->src[s]);
+         struct jay_range r = jay_def_to_range(func, I, I->src[s]);
          for (unsigned i = 0; i < r.width; ++i) {
             ctx->access[r.base + i][exec_pipe] = ctx->ip[exec_pipe];
          }
@@ -820,10 +801,8 @@ jay_lower_scoreboard_trivial(jay_shader *shader)
 void
 jay_lower_scoreboard(jay_shader *shader)
 {
-   unsigned accums = 4;
-   uint32_t nr_regdist_keys =
-      shader->num_regs[GPR] + shader->num_regs[UGPR] + accums;
-   u32_per_pipe *regdists = malloc(sizeof(*regdists) * nr_regdist_keys);
+   u32_per_pipe *regdists =
+      malloc(sizeof(*regdists) * jay_range_base(shader, ~0));
 
    unsigned max_blocks = 0;
    jay_foreach_function(shader, f)
@@ -831,8 +810,7 @@ jay_lower_scoreboard(jay_shader *shader)
 
    uint32_t nr_sbid_keys =
       shader->num_regs[GPR] +
-      DIV_ROUND_UP(shader->num_regs[UGPR], jay_ugpr_per_grf(shader)) +
-      accums;
+      DIV_ROUND_UP(shader->num_regs[UGPR], jay_ugpr_per_grf(shader));
 
    unsigned max_sbids = intel_device_info_max_sbids(shader->devinfo);
 
@@ -841,7 +819,7 @@ jay_lower_scoreboard(jay_shader *shader)
 
    unsigned dirty_blocks = 0;
    jay_foreach_function(shader, f) {
-      memset(regdists, 0, sizeof(*regdists) * nr_regdist_keys);
+      memset(regdists, 0, sizeof(*regdists) * jay_range_base(shader, ~0));
       clear_sbid_state(&sbid_state, dirty_blocks);
       dirty_blocks = f->num_blocks;
 
@@ -858,8 +836,10 @@ jay_lower_scoreboard(jay_shader *shader)
          }
       }
 
-      struct swsb_regdist_state regdist_state = { .nr_keys = nr_regdist_keys,
-                                                  .access = regdists };
+      struct swsb_regdist_state regdist_state = {
+         .shader = shader,
+         .access = regdists,
+      };
 
       /* RegDist scoreboarding is global but requires no dataflow analysis,
        * because taking a branch stalls all ALU pipelines. Therefore, it

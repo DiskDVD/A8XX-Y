@@ -538,6 +538,15 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
                          &compiler_info->nir_options[stage->stage]);
       nir->info.internal |= is_internal;
       assert(nir->info.stage == stage->stage);
+
+      /* Shorten the shader name for internal shaders. */
+      if (is_internal) {
+         while (strstr(nir->info.name, "src/")) {
+            nir->info.name = strstr(nir->info.name, "src/") + 4;
+         }
+         nir->info.name = ralloc_strdup(nir, nir->info.name);
+      }
+
       nir_validate_shader(nir, "after spirv_to_nir");
 
       vtn_free_specialization(spec);
@@ -579,7 +588,12 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
       radv_shader_choose_subgroup_size(compiler_info, nir, &stage->key, vk_spirv_version(spirv, stage->spirv.size));
 
       progress = false;
-      NIR_PASS(progress, nir, nir_lower_cooperative_matrix_flexible_dimensions, 16, 16, 16);
+      struct nir_lower_coopmat_args coopmat_args = {
+         .m_gran = 16,
+         .n_gran = 16,
+         .k_gran = 16,
+      };
+      NIR_PASS(progress, nir, nir_lower_cooperative_matrix_flexible_dimensions, &coopmat_args);
       if (progress) {
          NIR_PASS(_, nir, nir_opt_deref);
          NIR_PASS(_, nir, nir_opt_dce);
@@ -723,11 +737,15 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
 
    NIR_PASS(_, nir, nir_lower_image, &image_options);
 
-   if (nir->info.stage == MESA_SHADER_VERTEX || nir->info.stage == MESA_SHADER_GEOMETRY ||
-       nir->info.stage == MESA_SHADER_FRAGMENT) {
+   /* Depending on the variable mode mask, this lowers indirect IO, moves all input loads
+    * to the beginning, and moves all output stores to the end. This is an aggressive
+    * lowering and code motion pass.
+    */
+   if (nir->info.stage == MESA_SHADER_VERTEX) {
       NIR_PASS(_, nir, nir_lower_io_vars_to_temporaries, nir_shader_get_entrypoint(nir),
                nir_var_shader_in | nir_var_shader_out);
-   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL) {
+   } else if (nir->info.stage == MESA_SHADER_TESS_EVAL || nir->info.stage == MESA_SHADER_GEOMETRY ||
+              nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS(_, nir, nir_lower_io_vars_to_temporaries, nir_shader_get_entrypoint(nir), nir_var_shader_out);
    }
 
@@ -3890,13 +3908,23 @@ radv_compute_spi_ps_input(enum amd_gfx_level gfx_level, const struct radv_graphi
                       S_02865C_COVERAGE_TO_SHADER_SELECT(gfx_level >= GFX12 && info->ps.reads_fully_covered);
    }
 
-   if (G_0286CC_POS_W_FLOAT_ENA(spi_ps_input)) {
-      /* If POS_W_FLOAT (11) is enabled, at least one of PERSP_* must be enabled too */
+   /* POW_W_FLOAT requires that one set of perspective barycentric coordinates is enabled. */
+   if (G_0286CC_POS_W_FLOAT_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_SAMPLE_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_CENTER_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_CENTROID_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_PULL_MODEL_ENA(spi_ps_input))
       spi_ps_input |= S_0286CC_PERSP_CENTER_ENA(1);
-   }
 
-   if (!(spi_ps_input & 0x7F) && !G_0286CC_LINE_STIPPLE_TEX_ENA(spi_ps_input)) {
-      /* At least one of PERSP_* (0xF) or LINEAR_* (0x70) or LINE_STIPPLE_TEX must be enabled.
+   if (!G_0286CC_PERSP_SAMPLE_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_CENTER_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_CENTROID_ENA(spi_ps_input) &&
+       !G_0286CC_PERSP_PULL_MODEL_ENA(spi_ps_input) &&
+       !G_0286CC_LINEAR_SAMPLE_ENA(spi_ps_input) &&
+       !G_0286CC_LINEAR_CENTER_ENA(spi_ps_input) &&
+       !G_0286CC_LINEAR_CENTROID_ENA(spi_ps_input) &&
+       !G_0286CC_LINE_STIPPLE_TEX_ENA(spi_ps_input)) {
+      /* At least one of PERSP_*, LINEAR_*, or LINE_STIPPLE_TEX must be enabled.
        * LINE_STIPPLE_TEX uses the least number of initialized VGPRs, so let's use it because
        * pixel throughput is limited by the number of initialized VGPRs.
        *

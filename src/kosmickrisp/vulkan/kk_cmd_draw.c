@@ -13,6 +13,7 @@
 #include "kk_cmd_buffer.h"
 #include "kk_format.h"
 #include "kk_image_view.h"
+#include "kk_physical_device.h"
 #include "kk_query_pool.h"
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
@@ -81,7 +82,13 @@ kk_GetRenderingAreaGranularityKHR(
    VkDevice device, const VkRenderingAreaInfoKHR *pRenderingAreaInfo,
    VkExtent2D *pGranularity)
 {
-   *pGranularity = (VkExtent2D){.width = 1, .height = 1};
+   VK_FROM_HANDLE(kk_device, dev, device);
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+
+   *pGranularity = (VkExtent2D){
+      .width = pdev->info.rendering_tile_width,
+      .height = pdev->info.rendering_tile_height,
+   };
 }
 
 static void
@@ -106,7 +113,7 @@ kk_clear_common_attachment_description(
    mtl_render_pass_attachment_descriptor_set_load_action(
       descriptor, MTL_LOAD_ACTION_DONT_CARE);
    mtl_render_pass_attachment_descriptor_set_store_action(
-      descriptor, MTL_STORE_ACTION_DONT_CARE);
+      descriptor, MTL_STORE_ACTION_UNKNOWN);
 }
 
 static void
@@ -127,24 +134,22 @@ kk_fill_common_attachment_description(
       mtl_render_pass_attachment_descriptor_set_slice(
          descriptor, iview->vk.base_array_layer);
    }
-   enum mtl_load_action load_action =
-      force_attachment_load
+
+   /* STORE_OP_NONE behaves like DONT_CARE if there are writes
+    * (CLEAR or DONT_CARE are writes).
+   * If there are no writes, we need to preserve the contents. */
+   force_attachment_load |= (info->load_op == VK_ATTACHMENT_LOAD_OP_LOAD
+      || info->load_op == VK_ATTACHMENT_LOAD_OP_NONE)
+      && info->store_op == VK_ATTACHMENT_STORE_OP_NONE;
+
+   enum mtl_load_action load_action = force_attachment_load
          ? MTL_LOAD_ACTION_LOAD
          : vk_attachment_load_op_to_mtl_load_action(info->load_op);
 
-   /* TODO_KOSMICKRISP Need to tackle issue #14344 */
-   if (load_action == MTL_LOAD_ACTION_DONT_CARE)
-      load_action = MTL_LOAD_ACTION_LOAD;
    mtl_render_pass_attachment_descriptor_set_load_action(descriptor,
                                                          load_action);
-   /* We need to force attachment store to correctly handle situations where the
-    * attachment is written to in a subpass, and later read from in the next one
-    * with the store operation being something else than store. The other reason
-    * being that we break renderpasses when a pipeline barrier is used, so we
-    * need to not loose the information of the attachment when we restart it. */
-   enum mtl_store_action store_action = MTL_STORE_ACTION_STORE;
-   mtl_render_pass_attachment_descriptor_set_store_action(descriptor,
-                                                          store_action);
+   mtl_render_pass_attachment_descriptor_set_store_action(
+      descriptor, MTL_STORE_ACTION_UNKNOWN);
 }
 
 static struct mtl_clear_color
@@ -306,6 +311,11 @@ kk_CmdBeginRendering(VkCommandBuffer commandBuffer,
          pass_descriptor, framebuffer_extent.height);
       mtl_render_pass_descriptor_set_default_raster_sample_count(
          pass_descriptor, 1u);
+   } else {
+      mtl_render_pass_descriptor_set_render_target_width(
+         pass_descriptor, render->area.extent.width + render->area.offset.x);
+      mtl_render_pass_descriptor_set_render_target_height(
+         pass_descriptor, render->area.extent.height + render->area.offset.y);
    }
 
    /* Check if we are rendering to the whole framebuffer. Required to understand
@@ -318,27 +328,16 @@ kk_CmdBeginRendering(VkCommandBuffer commandBuffer,
       (render->view_mask == 0u ||
        render->view_mask == BITFIELD64_MASK(render->layer_count));
 
-   /* Understand if the render area is tile aligned so we know if we actually
-    * need to load the tile to not lose information. */
-   uint32_t tile_alignment = 31u;
-   bool is_tile_aligned = !(render->area.offset.x & tile_alignment) &&
-                          !(render->area.offset.y & tile_alignment) &&
-                          !(render->area.extent.width & tile_alignment) &&
-                          !(render->area.extent.height & tile_alignment);
-
-   /* Rendering to the whole framebuffer */
-   is_tile_aligned |= is_whole_framebuffer;
-
-   /* There are 3 cases where we need to force a load instead of using the user
-    * defined load operation:
-    * 1. Render area is not tile aligned
-    * 2. Load operation is clear but doesn't render to the whole attachment
-    * 3. Resuming renderpass
-    */
+   /* renderTargetWidth/Height doesn't seem to guarantee
+    * that the attachments won't get touched outside the area
+    * so just checking for offset = 0 doesn't cut it. */
    bool force_attachment_load =
-      !is_tile_aligned ||
-      (!is_whole_framebuffer && does_any_attachment_clear) ||
+      !is_whole_framebuffer ||
       (render->flags & VK_RENDERING_RESUMING_BIT);
+
+   render->force_attachment_store =
+      !is_whole_framebuffer ||
+      (render->flags & VK_RENDERING_SUSPENDING_BIT);
 
    kk_set_color_attachments(pass_descriptor, render, dyn,
                             force_attachment_load);
@@ -555,6 +554,8 @@ kk_CmdEndRendering2KHR(VkCommandBuffer commandBuffer,
       .pDepthAttachment = &vk_depth_att,
       .pStencilAttachment = &vk_stencil_att,
    };
+
+   kk_apply_attachment_store_ops(cmd, false);
 
    /* Clean up previous encoder */
    cs_end(cmd);
@@ -858,63 +859,39 @@ kk_flush_sample_locations(struct kk_cmd_buffer *cmd)
 }
 
 static void
-kk_force_attachment_load(struct kk_cmd_buffer *cmd)
-{
-   struct kk_rendering_state *render = &cmd->state.gfx.render;
-
-   for (uint32_t i = 0; i < render->color_att_count; i++) {
-      if (render->color_att[i].iview) {
-         mtl_render_pass_attachment_descriptor *att =
-            mtl_render_pass_descriptor_get_color_attachment(
-               cmd->state.gfx.render_pass_descriptor, i);
-         mtl_render_pass_attachment_descriptor_set_load_action(
-            att, MTL_LOAD_ACTION_LOAD);
-      }
-   }
-   if (render->depth_att.iview) {
-      mtl_render_pass_attachment_descriptor *att =
-         mtl_render_pass_descriptor_get_depth_attachment(
-            cmd->state.gfx.render_pass_descriptor);
-      mtl_render_pass_attachment_descriptor_set_load_action(
-         att, MTL_LOAD_ACTION_LOAD);
-   }
-   if (render->stencil_att.iview) {
-      mtl_render_pass_attachment_descriptor *att =
-         mtl_render_pass_descriptor_get_stencil_attachment(
-            cmd->state.gfx.render_pass_descriptor);
-      mtl_render_pass_attachment_descriptor_set_load_action(
-         att, MTL_LOAD_ACTION_LOAD);
-   }
-}
-
-static void
 kk_flush_render_pass(struct kk_cmd_buffer *cmd)
 {
    struct vk_dynamic_graphics_state *dyn = &cmd->vk.dynamic_graphics_state;
    struct kk_rendering_state *render = &cmd->state.gfx.render;
    bool needs_restart = kk_flush_sample_locations(cmd);
+   bool color_attachment_map_changed = false;
 
    if (IS_DIRTY(COLOR_ATTACHMENT_MAP)) {
       if (memcmp(render->color_map, dyn->cal.color_map,
                  render->color_att_count * sizeof(render->color_map[0])) != 0) {
          assert(cmd->state.gfx.render_pass_descriptor);
+
+         /* Apply the store ops before the new color map is stored. */
+         kk_apply_attachment_store_ops(cmd, true);
+
          kk_set_color_attachments(cmd->state.gfx.render_pass_descriptor, render,
                                   dyn, true);
          needs_restart = true;
+         color_attachment_map_changed = true;
       }
    }
    /* If render pass state changes and the pass is currently active, end the
     * current encoder and prepare to restart it */
    bool active_render = cmd->gfx.encoder != NULL;
    if (needs_restart && active_render) {
+      if (!color_attachment_map_changed) {
+         /* Sample locations changed and color attachment map didn't. */
+         kk_apply_attachment_store_ops(cmd, true);
+      }
+
       cs_end(cmd);
       kk_cmd_buffer_dirty_all_gfx(cmd);
       cmd->state.gfx.need_to_start_render_pass = true;
-
-      /* Override load action to prevent data loss between encoders.
-       * TODO_KOSMICKRISP: Handle store action if we stop always setting it to
-       * STORE. Metal allows it to be encoded later. */
-      kk_force_attachment_load(cmd);
    }
 }
 

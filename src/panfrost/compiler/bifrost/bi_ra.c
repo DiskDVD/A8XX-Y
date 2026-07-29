@@ -628,6 +628,15 @@ bi_choose_spill_node(bi_context *ctx, struct lcra_state *l)
    unsigned best_benefit = 0;
    signed best_node = -1;
 
+   /* consider spilling the node that we're trying to allocate,
+    * rather the ones interfering with it, if that would be
+    * better
+    */
+   if (!BITSET_TEST(no_spill, l->spill_node)) {
+      best_node = l->spill_node;
+      best_benefit = lcra_count_constraints(l, best_node);
+   }
+
    if (nodearray_is_sparse(&l->linear[l->spill_node])) {
       nodearray_sparse_foreach(&l->linear[l->spill_node], elem) {
          unsigned i = nodearray_sparse_key(elem);

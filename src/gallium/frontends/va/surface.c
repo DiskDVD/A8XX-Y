@@ -748,9 +748,8 @@ fail:
 
 VAStatus
 vlVaHandleSurfaceAllocate(vlVaDriver *drv, vlVaSurface *surface,
-                          struct pipe_video_buffer *templat,
                           const uint64_t *modifiers,
-                          unsigned int modifiers_count)
+                          unsigned modifiers_count)
 {
    struct pipe_surface *surfaces;
    unsigned i;
@@ -759,11 +758,11 @@ vlVaHandleSurfaceAllocate(vlVaDriver *drv, vlVaSurface *surface,
       if (!drv->pipe->create_video_buffer_with_modifiers)
          return VA_STATUS_ERROR_ATTR_NOT_SUPPORTED;
       surface->buffer =
-         drv->pipe->create_video_buffer_with_modifiers(drv->pipe, templat,
+         drv->pipe->create_video_buffer_with_modifiers(drv->pipe, &surface->templat,
                                                        modifiers,
                                                        modifiers_count);
    } else {
-      surface->buffer = drv->pipe->create_video_buffer(drv->pipe, templat);
+      surface->buffer = drv->pipe->create_video_buffer(drv->pipe, &surface->templat);
    }
    if (!surface->buffer)
       return VA_STATUS_ERROR_ALLOCATION_FAILED;
@@ -805,7 +804,7 @@ vlVaGetSurfaceBuffer(vlVaDriver *drv, vlVaSurface *surface)
       return NULL;
    if (surface->buffer)
       return surface->buffer;
-   vlVaHandleSurfaceAllocate(drv, surface, &surface->templat, NULL, 0);
+   vlVaHandleSurfaceAllocate(drv, surface, NULL, 0);
    return surface->buffer;
 }
 
@@ -1071,8 +1070,7 @@ vlVaCreateSurfaces2(VADriverContextP ctx, unsigned int format,
             surf->templat.bind = PIPE_BIND_LINEAR | PIPE_BIND_SHARED;
 
          if (modifiers) {
-            vaStatus = vlVaHandleSurfaceAllocate(drv, surf, &surf->templat, modifiers,
-                                                 modifiers_count);
+            vaStatus = vlVaHandleSurfaceAllocate(drv, surf, modifiers, modifiers_count);
             if (vaStatus != VA_STATUS_SUCCESS)
                goto free_surf;
          } /* Delayed allocation from vlVaGetSurfaceBuffer otherwise */

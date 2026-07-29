@@ -513,8 +513,8 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
                               VK_IMAGE_USAGE_SAMPLED_BIT);
 
       supportedImageCreateFlags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT |
-                                  VK_IMAGE_CREATE_EXTENDED_USAGE_BIT |
-                                  VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR;
+                                  VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+
    }
 
    if (prof_list) {

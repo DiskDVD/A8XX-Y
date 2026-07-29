@@ -75,6 +75,17 @@ kk_encode_drawable_present(VkCommandBuffer vk_cmd, void *drawable)
    cmd->drawable = drawable;
 }
 
+static void *
+kk_get_mtl4_command_queue(VkDevice device)
+{
+   VK_FROM_HANDLE(kk_device, dev, device);
+   if (dev->has_queue) {
+      return dev->queue.mtl_handle;
+   }
+
+   return NULL;
+}
+
 static struct vk_queue *
 kk_get_blit_queue(VkDevice device)
 {
@@ -102,6 +113,7 @@ kk_init_wsi(struct kk_physical_device *pdev)
 
    wsi->metal.bind_drawable_to_vkimage = kk_bind_drawable_to_vkimage;
    wsi->metal.encode_drawable_present = kk_encode_drawable_present;
+   wsi->metal.get_mtl4_command_queue = kk_get_mtl4_command_queue;
    wsi->get_blit_queue = kk_get_blit_queue;
 
    pdev->vk.wsi_device = wsi;

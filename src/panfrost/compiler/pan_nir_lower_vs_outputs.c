@@ -102,7 +102,7 @@ build_attr_desc_write(struct nir_builder *b, nir_def *data, uint32_t base,
                       const struct lower_vs_outputs_ctx *ctx)
 {
    nir_def *index = nir_imm_int(b, base);
-   nir_def *vertex_id = nir_load_raw_vertex_id_pan(b);
+   nir_def *vertex_id = nir_load_raw_vertex_id(b);
    nir_def *instance_id = nir_load_instance_id(b);
 
    nir_def *addr_cvt = nir_lea_attr_pan(b, index, vertex_id, instance_id,

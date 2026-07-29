@@ -53,7 +53,7 @@ bool radv_nir_lower_fs_intrinsics(nir_shader *nir, const struct radv_shader_stag
 bool radv_nir_lower_fs_input_attachment(nir_shader *nir);
 
 bool radv_nir_lower_fs_barycentric(nir_shader *shader, const struct radv_graphics_state_key *gfx_state,
-                                   unsigned rast_prim);
+                                   unsigned num_raster_vertices_per_prim);
 
 bool radv_nir_lower_intrinsics_early(nir_shader *nir, bool lower_view_index_to_zero);
 
@@ -84,10 +84,9 @@ typedef struct radv_nir_opt_tid_function_options {
    bool use_dpp16_shift_amd : 1;
    bool use_shuffle_xor : 1;
    bool use_clustered_rotate : 1;
-   /* The can be smaller than the api subgroup/ballot size
+   /* These can be smaller than the api ballot size
     * if some invocations are always inactive.
     */
-   uint8_t hw_subgroup_size;
    uint8_t hw_ballot_bit_size;
    uint8_t hw_ballot_num_comp;
 } radv_nir_opt_tid_function_options;
@@ -95,7 +94,7 @@ typedef struct radv_nir_opt_tid_function_options {
 bool radv_nir_opt_tid_function(nir_shader *shader, const radv_nir_opt_tid_function_options *options);
 
 bool radv_nir_opt_fs_builtins(nir_shader *shader, const struct radv_graphics_state_key *gfx_state,
-                              unsigned vgt_outprim_type);
+                              unsigned num_raster_vertices_per_prim);
 
 bool radv_nir_lower_opt_fs_frag_pos(nir_shader *shader, bool vrs_may_be_enabled, bool sample_shading);
 

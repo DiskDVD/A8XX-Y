@@ -125,9 +125,13 @@ panfrost_shader_compile(struct panfrost_screen *screen, const nir_shader *ir,
       inputs.no_idvs = s->info.has_transform_feedback_varyings;
 
       if (s->info.has_transform_feedback_varyings) {
+         static const nir_lower_xfb_to_stores_options xfb_options = {
+            .address_format = nir_address_format_64bit_global,
+         };
+
          NIR_PASS(_, s, nir_opt_constant_folding);
          NIR_PASS(_, s, nir_io_add_intrinsic_xfb_info);
-         NIR_PASS(_, s, pan_nir_lower_xfb);
+         NIR_PASS(_, s, nir_lower_xfb_to_stores, &xfb_options);
       }
    }
 
@@ -258,9 +262,11 @@ panfrost_shader_get(struct pipe_screen *pscreen,
    if (!panfrost_disk_cache_retrieve(screen->disk_cache, uncompiled,
                                      &state->key, &res)) {
 
+      /* Only use the varying_layout for FS if the key agrees */
+      bool use_layout = uncompiled->nir->info.stage != MESA_SHADER_FRAGMENT ||
+                        state->key.fs.vs_varying_layout.known != 0;
       const struct pan_varying_layout *varying_layout =
-         uncompiled->vs_varying_layout.known != 0
-            ? &uncompiled->vs_varying_layout : NULL;
+         use_layout ? &uncompiled->vs_varying_layout : NULL;
       panfrost_shader_compile(screen, uncompiled->nir, dbg, varying_layout,
                               &state->key, req_local_mem, &res);
 
@@ -331,7 +337,8 @@ panfrost_build_fs_key(struct panfrost_context *ctx,
          key->line_smooth = rast->line_smooth;
    }
 
-   key->vs_varying_layout = uncompiled->vs_varying_layout;
+   if (!key->clip_plane_enable)
+      key->vs_varying_layout = uncompiled->vs_varying_layout;
 
    if (dev->arch <= 5) {
       u_foreach_bit(i, (nir->info.outputs_read >> FRAG_RESULT_DATA0)) {

@@ -334,6 +334,7 @@ v3d_init_screen_caps(struct v3d_screen *screen)
         caps->fbfetch_coherent = true;
         caps->max_dual_source_render_targets = 1;
 
+        caps->device_type = PIPE_DEVICE_TYPE_INTEGRATED_GPU;
         caps->vendor_id = 0x14E4;
 
         caps->video_memory =

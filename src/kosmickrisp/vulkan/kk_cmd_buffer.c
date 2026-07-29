@@ -13,6 +13,10 @@
 #include "kk_entrypoints.h"
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
+#include "kosmickrisp/bridge/mtl_command_buffer.h"
+#include "kosmickrisp/bridge/mtl_device.h"
+#include "kosmickrisp/bridge/mtl_encoder.h"
+#include "kosmickrisp/bridge/vk_to_mtl_map.h"
 
 #include "vk_alloc.h"
 #include "vk_pipeline_layout.h"
@@ -61,6 +65,8 @@ kk_destroy_encoder_state(struct kk_encoder_state *es)
 
    mtl_release(es->allocator);
    es->allocator = NULL;
+
+   util_dynarray_fini(&es->ts_resolves);
 }
 
 static void
@@ -89,6 +95,7 @@ static bool
 kk_init_encoder_state(struct kk_encoder_state *es, mtl_device *handle)
 {
    es->allocator = mtl_new_command_allocator(handle);
+   es->ts_resolves = UTIL_DYNARRAY_INIT;
    return es->allocator != NULL;
 }
 
@@ -337,6 +344,14 @@ kk_stop_encoder(struct kk_cmd_buffer *cmd, struct kk_encoder_state *es)
    mtl_release(es->encoder);
    es->encoder = NULL;
 
+   /* Fold the pending timestamp counter-heap resolves into `cmd_buf` */
+   util_dynarray_foreach(&es->ts_resolves, struct kk_ts_resolve, r) {
+      mtl_command_resolve_counter_heap(es->cmd_buf, r->heap, r->index, 1u,
+                                       r->dst_addr);
+   }
+
+   util_dynarray_clear(&es->ts_resolves);
+
    mtl_end_command_buffer(es->cmd_buf);
 
    util_dynarray_append(&cmd->submit_cmd_bufs, es->cmd_buf);
@@ -388,6 +403,7 @@ kk_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
     * requires not reading input attachments as textures.
     */
    if (cmd->gfx.encoder) {
+      kk_apply_attachment_store_ops(cmd, true);
       cs_end(cmd);
       cs_start_render(cmd);
    } else if (cmd->pre_gfx->encoder) {
@@ -801,4 +817,59 @@ kk_CmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffer)
    VK_FROM_HANDLE(kk_cmd_buffer, cmd, commandBuffer);
 
    cmd->state.cond_render.enabled = false;
+}
+
+void kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store)
+{
+   if (!cmd->gfx.encoder)
+      return;
+
+   struct kk_rendering_state *render = &cmd->state.gfx.render;
+   mtl_render_encoder *encoder = cs_get_render(cmd);
+
+   force_store |= render->force_attachment_store;
+
+   for (uint32_t i = 0; i < render->color_att_count; i++) {
+      uint32_t logical_index = cmd->state.gfx.render.color_map[i];
+
+      if (render->color_att[i].iview && logical_index != MESA_VK_ATTACHMENT_UNUSED) {
+         bool resolve = render->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE;
+         bool retain = (render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_LOAD
+            || render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_NONE)
+            && render->color_att[i].store_op == VK_ATTACHMENT_STORE_OP_NONE;
+
+         enum mtl_store_action store_action = force_store
+            || resolve
+            || retain
+            ? MTL_STORE_ACTION_STORE
+            : vk_attachment_store_op_to_mtl_store_action(render->color_att[i].store_op);
+         mtl_render_set_color_store_action(encoder, store_action, logical_index);
+      }
+   }
+   if (render->depth_att.iview) {
+      bool resolve = render->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE;
+      bool retain = (render->depth_att.load_op == VK_ATTACHMENT_LOAD_OP_LOAD ||
+                     render->depth_att.load_op == VK_ATTACHMENT_LOAD_OP_NONE) &&
+                    render->depth_att.store_op == VK_ATTACHMENT_STORE_OP_NONE;
+
+      enum mtl_store_action store_action = force_store
+            || resolve
+            || retain
+            ? MTL_STORE_ACTION_STORE
+            : vk_attachment_store_op_to_mtl_store_action(render->depth_att.store_op);
+      mtl_render_set_depth_store_action(encoder, store_action);
+   }
+   if (render->stencil_att.iview) {
+      bool resolve = render->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE;
+      bool retain = (render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_LOAD
+         || render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_NONE)
+         && render->stencil_att.store_op == VK_ATTACHMENT_STORE_OP_NONE;
+
+      enum mtl_store_action store_action = force_store
+            || resolve
+            || retain
+            ? MTL_STORE_ACTION_STORE
+            : vk_attachment_store_op_to_mtl_store_action(render->stencil_att.store_op);
+      mtl_render_set_stencil_store_action(encoder, store_action);
+   }
 }

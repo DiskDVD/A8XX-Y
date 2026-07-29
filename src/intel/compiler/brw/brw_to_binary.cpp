@@ -2242,11 +2242,11 @@ brw_generator::generate_code(const brw_shader &s,
       stats->cycles = perf.latency;
       stats->spills = shader_stats.spill_count;
       stats->fills = shader_stats.fill_count;
+      stats->scratch_memory_size = prog_data->total_scratch;
       stats->max_live_registers = shader_stats.max_register_pressure;
       stats->non_ssa_regs_after_nir = shader_stats.non_ssa_registers_after_nir;
       stats->source_hash = prog_data->source_hash;
       stats->grf_registers = devinfo->ver >= 30 ? s.grf_used : 0;
-      stats->scheduler_mode = shader_stats.scheduler_mode;
 
       switch (stage) {
       case MESA_SHADER_VERTEX:

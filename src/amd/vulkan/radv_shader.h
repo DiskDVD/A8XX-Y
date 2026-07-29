@@ -143,7 +143,6 @@ struct radv_graphics_state_key {
    uint32_t dynamic_provoking_vtx_mode : 1;
    uint32_t dynamic_line_rast_mode : 1;
    uint32_t enable_remove_point_size : 1;
-   uint32_t unknown_rast_prim : 1;
    uint32_t dcc_decompress_gfx11 : 1;
    uint32_t reserved : 12;
 
@@ -169,6 +168,8 @@ struct radv_graphics_state_key {
    struct {
       uint32_t provoking_vtx_last : 1;
       uint32_t cull_mode : 2;
+      bool polygon_mode_unknown : 1;
+      uint8_t polygon_mode : 2; /* VK_POLYGON_MODE_FILL/LINE_POINT */
    } rs;
 
    struct {
@@ -249,7 +250,8 @@ struct radv_llvm_compiler_options {
 #define PS_STATE_LINE_RAST_MODE__SHIFT          4
 #define PS_STATE_LINE_RAST_MODE__MASK           0x3
 #define PS_STATE_PS_ITER_MASK__SHIFT            6
-#define PS_STATE_PS_ITER_MASK__MASK             0xffff
+#define PS_STATE_PS_ITER_MASK__MASK             0xff
+/* gap: bits 14:21 */
 #define PS_STATE_RAST_PRIM__SHIFT               22
 #define PS_STATE_RAST_PRIM__MASK                0x3
 #define PS_STATE_USE_FLOAT_FRAG_COORD_XY__SHIFT 24
@@ -258,6 +260,9 @@ struct radv_llvm_compiler_options {
 #define PS_STATE_USE_QUAD_POS__MASK             0x1
 #define PS_STATE_USE_SAMPLE_MASK_IN__SHIFT      26
 #define PS_STATE_USE_SAMPLE_MASK_IN__MASK       0x1
+/* gap: bits 27:29 */
+#define PS_STATE_FRONT_FACE_SELECT__SHIFT 30 /* 0=sysval, 1=front, -1=back; sign-extended */
+#define PS_STATE_FRONT_FACE_SELECT__MASK  0x3
 
 struct radv_shader_layout {
    uint32_t num_sets;

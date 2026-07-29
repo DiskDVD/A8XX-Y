@@ -1515,7 +1515,7 @@ static unsigned
 vertex_builtin_arg(nir_intrinsic_op op)
 {
    switch (op) {
-   case nir_intrinsic_load_raw_vertex_id_pan:
+   case nir_intrinsic_load_raw_vertex_id:
       return PAN_VERTEX_ID;
    case nir_intrinsic_load_instance_id:
       return PAN_INSTANCE_ID;
@@ -1944,7 +1944,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
       emit_compute_builtin(ctx, instr);
       break;
 
-   case nir_intrinsic_load_raw_vertex_id_pan:
+   case nir_intrinsic_load_raw_vertex_id:
       ctx->info->midgard.vs.reads_raw_vertex_id = true;
       FALLTHROUGH;
    case nir_intrinsic_load_instance_id:
@@ -2999,6 +2999,7 @@ midgard_compile_shader_nir(nir_shader *nir,
       nir_log_shaderi(nir);
 
    info->tls_size = nir->scratch_size;
+   info->fau.max = PAN_MAX_PUSH;
 
    nir_foreach_function_with_impl(func, impl, nir) {
       list_inithead(&ctx->blocks);

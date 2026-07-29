@@ -1433,8 +1433,12 @@ impl DeviceBase {
             return DeviceFillBuffer::Clear(pattern.to_vec());
         }
 
-        // We do not support bigger than 128 byte fills.
-        let max_input_pot = address.trailing_zeros().min(len.trailing_zeros()).min(7);
+        // We do not support bigger than 64/128 byte fills.
+        let max_pot = if self.int64_supported() { 7 } else { 6 };
+        let max_input_pot = address
+            .trailing_zeros()
+            .min(len.trailing_zeros())
+            .min(max_pot);
 
         let mut size_pot = max_input_pot;
         for new_size_pot in (min_input_pot..=max_input_pot).rev() {

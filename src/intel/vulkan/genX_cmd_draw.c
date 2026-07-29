@@ -180,32 +180,33 @@ get_push_range_address(struct anv_cmd_buffer *cmd_buffer,
                        const struct anv_shader *shader,
                        const struct anv_push_range *range)
 {
-   struct anv_cmd_graphics_state *gfx_state = &cmd_buffer->state.gfx;
+   struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
+   struct anv_bind_point_state *bind_state = gfx->base;
+
    switch (range->set) {
    case ANV_DESCRIPTOR_SET_DESCRIPTORS:
       if (shader->bind_map.layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER) {
          return anv_address_from_u64(
             anv_cmd_buffer_descriptor_buffer_address(
                cmd_buffer,
-               gfx_state->base.descriptor_buffers[range->index].buffer_index) +
-            gfx_state->base.descriptor_buffers[range->index].buffer_offset);
+               bind_state->descriptor_buffers[range->index].buffer_index) +
+            bind_state->descriptor_buffers[range->index].buffer_offset);
       } else {
          /* This is a descriptor set buffer so the set index is
           * actually given by binding->binding.  (Yes, that's
           * confusing.)
           */
-         struct anv_descriptor_set *set =
-            gfx_state->base.descriptors[range->index];
+         struct anv_descriptor_set *set = bind_state->descriptors[range->index];
          return anv_descriptor_set_address(set);
       }
 
    case ANV_DESCRIPTOR_SET_PUSH_CONSTANTS: {
-      if (gfx_state->base.push_constants_state.alloc_size == 0) {
-         gfx_state->base.push_constants_state =
+      if (bind_state->push_constants_state.alloc_size == 0) {
+         bind_state->push_constants_state =
             anv_cmd_buffer_gfx_push_constants(cmd_buffer);
       }
       return anv_cmd_buffer_gfx_push_constants_state_address(
-         cmd_buffer, gfx_state->base.push_constants_state);
+         cmd_buffer, bind_state->push_constants_state);
    }
 
    case ANV_DESCRIPTOR_SET_NULL:
@@ -213,17 +214,15 @@ get_push_range_address(struct anv_cmd_buffer *cmd_buffer,
       return cmd_buffer->device->workaround_address;
 
    case ANV_DESCRIPTOR_SET_PUSH_POINTER: {
-      uint64_t address =  *((uint64_t *)&gfx_state->base.push_constants.client_data[range->index]);
+      uint64_t address =  *((uint64_t *)&bind_state->push_constants.client_data[range->index]);
       assert(address % ANV_UBO_ALIGNMENT == 0);
       return anv_address_from_u64(address);
    }
 
    default: {
       assert(range->set < MAX_SETS);
-      struct anv_descriptor_set *set =
-         gfx_state->base.descriptors[range->set];
-      const struct anv_descriptor *desc =
-         &set->descriptors[range->index];
+      struct anv_descriptor_set *set = bind_state->descriptors[range->set];
+      const struct anv_descriptor *desc = &set->descriptors[range->index];
 
       if (desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
          if (desc->buffer) {
@@ -233,9 +232,8 @@ get_push_range_address(struct anv_cmd_buffer *cmd_buffer,
       } else {
          assert(desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
          if (desc->buffer) {
-            const struct anv_cmd_pipeline_state *pipe_state = &gfx_state->base;
             uint32_t dynamic_offset =
-               pipe_state->dynamic_offsets[
+               bind_state->dynamic_offsets[
                   range->set].offsets[range->dynamic_offset_index];
             return anv_address_add(desc->buffer->address,
                                    desc->offset + dynamic_offset);
@@ -266,7 +264,9 @@ get_push_range_bound_size(struct anv_cmd_buffer *cmd_buffer,
                           const struct anv_push_range *range)
 {
    assert(shader->vk.stage != MESA_SHADER_COMPUTE);
-   const struct anv_cmd_graphics_state *gfx_state = &cmd_buffer->state.gfx;
+   const struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
+   const struct anv_bind_point_state *bind_state = gfx->base;
+
    switch (range->set) {
    case ANV_DESCRIPTOR_SET_DESCRIPTORS:
       if (shader->bind_map.layout_type == ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER) {
@@ -277,8 +277,7 @@ get_push_range_bound_size(struct anv_cmd_buffer *cmd_buffer,
          return anv_physical_device_bindless_heap_size(
             cmd_buffer->device->physical, true);
       } else {
-         struct anv_descriptor_set *set =
-            gfx_state->base.descriptors[range->index];
+         struct anv_descriptor_set *set = bind_state->descriptors[range->index];
          struct anv_state state = set->desc_surface_mem;
          assert(range->start * 32 < state.alloc_size);
          assert((range->start + range->length) * 32 <= state.alloc_size);
@@ -293,10 +292,8 @@ get_push_range_bound_size(struct anv_cmd_buffer *cmd_buffer,
 
    default: {
       assert(range->set < MAX_SETS);
-      struct anv_descriptor_set *set =
-         gfx_state->base.descriptors[range->set];
-      const struct anv_descriptor *desc =
-         &set->descriptors[range->index];
+      struct anv_descriptor_set *set = bind_state->descriptors[range->set];
+      const struct anv_descriptor *desc = &set->descriptors[range->index];
 
       if (desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {
          /* Here we promote a UBO to a binding table entry so that we can avoid a layer of indirection.
@@ -315,9 +312,8 @@ get_push_range_bound_size(struct anv_cmd_buffer *cmd_buffer,
 
          assert(desc->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
          /* Compute the offset within the buffer */
-         const struct anv_cmd_pipeline_state *pipe_state = &gfx_state->base;
          uint32_t dynamic_offset =
-            pipe_state->dynamic_offsets[
+            bind_state->dynamic_offsets[
                range->set].offsets[range->dynamic_offset_index];
          uint64_t offset = desc->offset + dynamic_offset;
          /* Clamp to the buffer size */
@@ -454,6 +450,7 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
 {
    VkShaderStageFlags flushed = 0;
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
+   struct anv_bind_point_state *bind_state = gfx->base;
 
 #if GFX_VER >= 12
    uint32_t nobuffer_stages = 0;
@@ -466,7 +463,7 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
 
       const struct anv_shader *shader = gfx->shaders[stage];
       const struct anv_pipeline_bind_map *bind_map = &shader->bind_map;
-      struct anv_push_constants *push = &gfx->base.push_constants;
+      struct anv_push_constants *push = &bind_state->push_constants;
       u_foreach_bit(r, shader->prog_data->robust_ubo_ranges) {
          const struct anv_push_range *range = &bind_map->push_ranges[r];
 
@@ -492,7 +489,7 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
             push->gfx.push_reg_mask[stage][r] = range_mask;
             cmd_buffer->state.push_constants_dirty |=
                mesa_to_vk_shader_stage(stage);
-            gfx->base.push_constants_data_dirty = true;
+            bind_state->push_constants_state = ANV_STATE_NULL;
          }
       }
    }
@@ -504,8 +501,8 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
     * Always reallocate on gfx9, gfx11 to fix push constant related flaky tests.
     * See https://gitlab.freedesktop.org/mesa/mesa/-/issues/11064
     */
-   if (gfx->base.push_constants_data_dirty || GFX_VER < 12)
-      gfx->base.push_constants_state = ANV_STATE_NULL;
+   if (GFX_VER < 12)
+      bind_state->push_constants_state = ANV_STATE_NULL;
 
 #if GFX_VERx10 >= 125
    const struct brw_mesh_prog_data *mesh_prog_data =
@@ -594,7 +591,6 @@ cmd_buffer_flush_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer,
 #endif
 
    cmd_buffer->state.push_constants_dirty &= ~flushed;
-   gfx->base.push_constants_data_dirty = false;
 }
 
 #if GFX_VERx10 >= 125
@@ -603,20 +599,21 @@ get_mesh_task_push_addr64(struct anv_cmd_buffer *cmd_buffer,
                           struct anv_cmd_graphics_state *gfx,
                           mesa_shader_stage stage)
 {
+   struct anv_bind_point_state *bind_state = gfx->base;
    const struct anv_shader *shader = gfx->shaders[stage];
    const struct anv_pipeline_bind_map *bind_map = &shader->bind_map;
    if (bind_map->push_ranges[0].length == 0)
       return 0;
 
-   if (gfx->base.push_constants_state.alloc_size == 0) {
-      gfx->base.push_constants_state =
+   if (bind_state->push_constants_state.alloc_size == 0) {
+      bind_state->push_constants_state =
          anv_cmd_buffer_gfx_push_constants(cmd_buffer);
    }
 
    return anv_address_physical(
       anv_address_add(
          anv_cmd_buffer_gfx_push_constants_state_address(
-            cmd_buffer, gfx->base.push_constants_state),
+            cmd_buffer, bind_state->push_constants_state),
          bind_map->push_ranges[0].start * 32));
 }
 
@@ -626,7 +623,7 @@ fill_inline_params(uint32_t *inline_data,
                    struct anv_cmd_graphics_state *gfx,
                    uint64_t push_addr64)
 {
-   const uint32_t *push_data = (const uint32_t *) &gfx->base.push_constants;
+   const uint32_t *push_data = (const uint32_t *) &gfx->base->push_constants;
 
    for (uint32_t i = 0; i < bind_map->inline_dwords_count; i++) {
       switch (bind_map->inline_dwords[i]) {
@@ -760,7 +757,7 @@ cmd_buffer_flush_vertex_buffers(struct anv_cmd_buffer *cmd_buffer,
    uint32_t i = 0;
    u_foreach_bit(vb, vb_emit) {
       const struct anv_vertex_binding *binding =
-         &cmd_buffer->state.vertex_bindings[vb];
+         &cmd_buffer->state.gfx.vertex_bindings[vb];
 
       struct GENX(VERTEX_BUFFER_STATE) state;
       if (binding->size > 0) {
@@ -804,9 +801,14 @@ static inline void
 cmd_buffer_flush_gfx_state(struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_device *device = cmd_buffer->device;
-   struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
+   struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
+   struct anv_bind_point_state *bind_state = anv_cmd_buffer_get_bind_point_state(
+      cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+
+   if (anv_batch_has_error(&cmd_buffer->batch))
+      return;
 
    assert((gfx->active_stages & VK_SHADER_STAGE_COMPUTE_BIT) == 0);
 
@@ -816,7 +818,7 @@ cmd_buffer_flush_gfx_state(struct anv_cmd_buffer *cmd_buffer)
 
    genX(cmd_buffer_emit_hashing_mode)(cmd_buffer, UINT_MAX, UINT_MAX, 1);
 
-   genX(flush_descriptor_buffers)(cmd_buffer, &gfx->base, gfx->active_stages);
+   genX(flush_descriptor_buffers)(cmd_buffer, bind_state, gfx->active_stages);
 
    genX(flush_pipeline_select_3d)(cmd_buffer);
 
@@ -892,7 +894,7 @@ cmd_buffer_flush_gfx_state(struct anv_cmd_buffer *cmd_buffer)
        * allowed to bind different XFB buffers while XFB is enabled.
        */
       for (unsigned idx = 0; idx < MAX_XFB_BUFFERS; idx++) {
-         struct anv_xfb_binding *xfb = &cmd_buffer->state.xfb_bindings[idx];
+         struct anv_xfb_binding *xfb = &cmd_buffer->state.gfx.xfb_bindings[idx];
          anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_SO_BUFFER), sob) {
 #if GFX_VER < 12
             sob.SOBufferIndex = idx;
@@ -901,7 +903,7 @@ cmd_buffer_flush_gfx_state(struct anv_cmd_buffer *cmd_buffer)
             sob._3DCommandSubOpcode = SO_BUFFER_INDEX_0_CMD + idx;
 #endif
 
-            if (cmd_buffer->state.xfb_enabled &&
+            if (cmd_buffer->state.gfx.xfb_enabled &&
                 xfb->addr != 0 && xfb->size != 0) {
                sob.MOCS = xfb->mocs;
                sob.SurfaceBaseAddress = anv_address_from_u64(xfb->addr);
@@ -991,9 +993,11 @@ cmd_buffer_flush_gfx_pointers(struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
 
+   assert(gfx->base != NULL);
+
    cmd_buffer->state.descriptors_dirty |=
       genX(cmd_buffer_flush_push_descriptors)(cmd_buffer,
-                                              &cmd_buffer->state.gfx.base);
+                                              cmd_buffer->state.gfx.base);
 
    uint32_t descriptors_dirty =
       cmd_buffer->state.descriptors_dirty & gfx->active_stages;
@@ -1025,7 +1029,7 @@ cmd_buffer_flush_gfx_pointers(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer->state.descriptors_pointers_dirty |=
          genX(cmd_buffer_flush_descriptor_sets)(
             cmd_buffer,
-            &cmd_buffer->state.gfx.base,
+            cmd_buffer->state.gfx.base,
             descriptors_dirty,
             (const struct anv_shader **)gfx->shaders,
             ARRAY_SIZE(gfx->shaders)) & VK_SHADER_STAGE_ALL_GRAPHICS;
@@ -1275,6 +1279,8 @@ cmd_buffer_post_draw_wa(struct anv_cmd_buffer *cmd_buffer,
    update_dirty_vbs_for_gfx8_vb_flush(cmd_buffer, access_type);
 
    genX(emit_breakpoint)(&cmd_buffer->batch, cmd_buffer->device, false);
+
+   cmd_buffer->state.last_cmd_type = ANV_CMD_TYPE_DRAW;
 }
 
 #if GFX_VER >= 11
@@ -1772,7 +1778,7 @@ void genX(CmdDrawIndirectByteCount2EXT)(
 
    mi_store(&b, mi_reg32(GFX7_3DPRIM_START_VERTEX), mi_imm(firstVertex));
    mi_store(&b, mi_reg32(GFX7_3DPRIM_INSTANCE_COUNT),
-            mi_imm(instanceCount * gfx->instance_multiplier));
+            mi_imm((uint64_t)instanceCount * gfx->instance_multiplier));
    mi_store(&b, mi_reg32(GFX7_3DPRIM_START_INSTANCE), mi_imm(firstInstance));
    mi_store(&b, mi_reg32(GFX7_3DPRIM_BASE_VERTEX), mi_imm(0));
 
@@ -2449,7 +2455,7 @@ void genX(CmdBeginTransformFeedback2EXT)(
       }
    }
 
-   cmd_buffer->state.xfb_enabled = true;
+   cmd_buffer->state.gfx.xfb_enabled = true;
    cmd_buffer->state.gfx.dirty |= ANV_CMD_DIRTY_XFB_ENABLE;
 }
 
@@ -2502,7 +2508,7 @@ void genX(CmdEndTransformFeedback2EXT)(
 end_xfb:
    trace_intel_end_xfb(&cmd_buffer->trace);
 
-   cmd_buffer->state.xfb_enabled = false;
+   cmd_buffer->state.gfx.xfb_enabled = false;
    cmd_buffer->state.gfx.dirty |= ANV_CMD_DIRTY_XFB_ENABLE;
 }
 

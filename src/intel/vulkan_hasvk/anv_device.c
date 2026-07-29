@@ -1808,6 +1808,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->compiler->constant_buffer_0_is_relative =
       device->info.ver < 8 || !device->info.has_context_isolation;
    device->compiler->supports_shader_constants = true;
+   device->compiler->limit_trig_input_range = true;
 
    isl_device_init(&device->isl_dev, &device->info);
 

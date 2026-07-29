@@ -292,6 +292,13 @@ panfrost_emit_resources(struct panfrost_batch *batch,
    if (stage == MESA_SHADER_FRAGMENT) {
       pan_make_resource_table(T, PAN_TABLE_ATTRIBUTE, batch->attribs[stage],
                               batch->nr_varying_attribs[MESA_SHADER_FRAGMENT]);
+      if (batch->fullscreen_texcoord_buf) {
+         /* We put the fullscreen-draw texcoord buffer on
+          * PAN_TABLE_ATTRIBUTE_BUFFER.
+          */
+         pan_make_resource_table(T, PAN_TABLE_ATTRIBUTE_BUFFER,
+                                 batch->fullscreen_texcoord_buf, 1);
+      }
    } else if (stage == MESA_SHADER_VERTEX) {
       pan_make_resource_table(T, PAN_TABLE_ATTRIBUTE, batch->attribs[stage],
                               ctx->vertex->num_elements);

@@ -88,15 +88,6 @@ spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_gl_image@egl_khr_gl_renderbuffer_image-clear-shared-image gl_depth_component24,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 spec@egl_mesa_configless_context@basic,Fail
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
-spec@ext_framebuffer_multisample@accuracy 16 srgb depthstencil,Fail
-spec@ext_framebuffer_multisample@accuracy 16 srgb depthstencil linear,Fail
-spec@ext_framebuffer_multisample@accuracy 16 srgb small depthstencil,Fail
-spec@ext_framebuffer_multisample@accuracy 16 srgb small depthstencil linear,Fail
-spec@ext_framebuffer_multisample@accuracy all_samples srgb depthstencil,Fail
-spec@ext_framebuffer_multisample@accuracy all_samples srgb depthstencil linear,Fail
-spec@ext_framebuffer_multisample@accuracy all_samples srgb small depthstencil,Fail
-spec@ext_framebuffer_multisample@accuracy all_samples srgb small depthstencil linear,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-dual-src-blend 16,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-dual-src-blend 6,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-dual-src-blend 8,Fail
@@ -297,12 +288,8 @@ spec@arb_texture_view@tex-view,Fail
 spec@glsl-1.30@execution@glsl-packed-back-color,Fail
 
 # OpenCL (rusticl) failures
-api@clgetcommandqueueinfo,Fail
 api@clgetextensionfunctionaddressforplatform,Fail
-api@clgetkernelarginfo,Fail
 api@cllinkprogram,Fail
-api@clsetkernelarg,Fail
-api@clsetkernelarg@Input checks,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float1,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float16,Fail
@@ -334,7 +321,6 @@ Images (clCopyImage max size)@3Dto2Darray,Fail
 Math@ilogb,Fail
 Math,Crash
 Relationals,Crash
-Integer Ops,Crash
 Images (API Info),Fail
 Images (API Info)@1Darray,Fail
 Images (API Info)@2D,Fail

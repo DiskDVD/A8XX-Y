@@ -6,9 +6,10 @@
 
 #include "mtl_encoder.h"
 
-#include <Metal/MTL4ComputeCommandEncoder.h>
-#include <Metal/MTL4RenderCommandEncoder.h>
 #include <Metal/MTL4CommandBuffer.h>
+#include <Metal/MTL4ComputeCommandEncoder.h>
+#include <Metal/MTL4Counters.h>
+#include <Metal/MTL4RenderCommandEncoder.h>
 #include <Metal/MTLRenderPass.h>
 
 /* Common encoder utils */
@@ -42,6 +43,19 @@ mtl_barrier_after_encoder_stages(void *encoder, enum mtl_stages after_stages,
       id<MTL4CommandEncoder> enc = (id<MTL4CommandEncoder>)encoder;
       [enc barrierAfterEncoderStages:(MTLStages)after_stages beforeEncoderStages:(MTLStages)before_queue_stages
            visibilityOptions:MTL4VisibilityOptionResourceAlias];
+   }
+}
+
+void
+mtl_barrier_after_queue_stages(void *encoder,
+                               enum mtl_stages after_queue_stages,
+                               enum mtl_stages before_stages)
+{
+   @autoreleasepool {
+      id<MTL4CommandEncoder> enc = (id<MTL4CommandEncoder>)encoder;
+      [enc barrierAfterQueueStages:(MTLStages)after_queue_stages
+                      beforeStages:(MTLStages)before_stages
+                 visibilityOptions:MTL4VisibilityOptionResourceAlias];
    }
 }
 
@@ -425,4 +439,64 @@ mtl_draw_indexed_primitives_indirect(mtl_render_encoder *encoder,
                indexBufferLength:index_buffer_length
                   indirectBuffer:addr];
    }
+}
+
+void
+mtl_compute_write_timestamp(mtl_compute_encoder *encoder,
+                            mtl_counter_heap *heap, uint32_t index)
+{
+   @autoreleasepool {
+      id<MTL4ComputeCommandEncoder> enc =
+         (id<MTL4ComputeCommandEncoder>)encoder;
+      id<MTL4CounterHeap> h = (id<MTL4CounterHeap>)heap;
+      [enc writeTimestampWithGranularity:MTL4TimestampGranularityRelaxed
+                                intoHeap:h
+                                 atIndex:index];
+   }
+}
+
+void
+mtl_render_write_timestamp(mtl_render_encoder *encoder,
+                           enum mtl_render_stages stage, mtl_counter_heap *heap,
+                           uint32_t index)
+{
+   @autoreleasepool {
+      id<MTL4RenderCommandEncoder> enc = (id<MTL4RenderCommandEncoder>)encoder;
+      id<MTL4CounterHeap> h = (id<MTL4CounterHeap>)heap;
+      [enc writeTimestampWithGranularity:MTL4TimestampGranularityRelaxed
+                              afterStage:(MTLRenderStages)stage
+                                intoHeap:h
+                                 atIndex:index];
+   }
+}
+
+
+void
+mtl_render_set_color_store_action(mtl_render_encoder *encoder,
+                                  enum mtl_store_action action,
+                                  uint32_t index)
+{
+    @autoreleasepool {
+        id<MTL4RenderCommandEncoder> enc = (id<MTL4RenderCommandEncoder>)encoder;
+        [enc setColorStoreAction:(MTLStoreAction)action
+                         atIndex:index];
+    }
+}
+
+void mtl_render_set_depth_store_action(mtl_render_encoder *encoder,
+                                       enum mtl_store_action action)
+{
+    @autoreleasepool {
+        id<MTL4RenderCommandEncoder> enc = (id<MTL4RenderCommandEncoder>)encoder;
+        [enc setDepthStoreAction:(MTLStoreAction)action];
+    }
+}
+
+void mtl_render_set_stencil_store_action(mtl_render_encoder *encoder,
+                                       enum mtl_store_action action)
+{
+    @autoreleasepool {
+        id<MTL4RenderCommandEncoder> enc = (id<MTL4RenderCommandEncoder>)encoder;
+        [enc setStencilStoreAction:(MTLStoreAction)action];
+    }
 }

@@ -70,6 +70,18 @@ encode_leaf_node(uint32_t type, IR_NODE child, uint64_t dst_node, REF(anv_accel_
    switch (type) {
    case vk_ir_node_triangle: {
       vk_ir_triangle_node src = DEREF(REF(vk_ir_triangle_node)(src_node));
+
+      if (VK_TEST_BUILD_FLAG_HAS_QUADS) {
+         vk_ir_triangle_node_quad quad =
+            vk_ir_triangle_node_get_quad(REF(vk_ir_triangle_node)(src_node));
+         if (quad.triangle_id == VK_QUAD_TRIANGLE_ID_UNUSED) {
+            anv_encode_triangle(dst_node, src);
+         } else {
+            anv_encode_quad(dst_node, src, quad);
+         }
+         break;
+      }
+
       anv_encode_triangle(dst_node, src);
       break;
    }
@@ -188,11 +200,7 @@ encode_internal_node(uint32_t child, uint32_t child_block_offset_from_internal_n
          DEREF(dst_node).exp_z = exp_i8[2];
          DEREF(dst_node).node_mask = uint8_t(0xff);
          DEREF(dst_node).node_type = node_type;
-
-         /* Note: This is not a real field, it's unused byte padding, which is not
-          * required to be MBZ. We're just using it to store the child count.
-          */
-         DEREF(dst_node).child_count = uint8_t(child_count);
+         DEREF(dst_node).pad = uint8_t(0);
       }
 
       child_aabb = conservative_aabb(child_aabb);
@@ -350,18 +358,7 @@ main()
       DEREF(args.header).ir_internal_node_count - 1 -
       min(global_id_hash, DEREF(args.header).ir_internal_node_count - 1);
 
-   uint32_t intermediate_leaf_node_size;
-   switch (args.geometry_type) {
-   case VK_GEOMETRY_TYPE_TRIANGLES_KHR:
-      intermediate_leaf_node_size = SIZEOF(vk_ir_triangle_node);
-      break;
-   case VK_GEOMETRY_TYPE_AABBS_KHR:
-      intermediate_leaf_node_size = SIZEOF(vk_ir_aabb_node);
-      break;
-   default: /* instances */
-      intermediate_leaf_node_size = SIZEOF(vk_ir_instance_node);
-      break;
-   }
+   uint32_t intermediate_leaf_node_size = vk_ir_node_size(args.geometry_type);
 
    /* Each invocation cluster encodes one internal node. */
    anv_cluster cluster;
@@ -527,8 +524,9 @@ main()
             if (ANV_TEST_BUILD_FLAG_WRITE_LOOKUP_MAPS_FOR_UPDATE &&
                 child != VK_BVH_INVALID_NODE &&
                 args.parent_child_map != 0 &&
-                args.leaf_block_offset_map != 0) {
-	       if (type == vk_ir_node_triangle || type == vk_ir_node_aabb) {
+                args.leaf_block_offset_map != 0 &&
+                args.parent_child_count_map != 0) {
+               if (type == vk_ir_node_triangle || type == vk_ir_node_aabb) {
                   uint32_t ir_offset = ir_id_to_offset(child);
                   uint32_t leaf_id = ir_offset / intermediate_leaf_node_size;
                   /* Block offset 0 is assigned to root, so avoid accidental
@@ -543,6 +541,11 @@ main()
                   uint32_t pcm = 0;
                   pcm = internal_node_block | (cluster.idx << 26);
                   DEREF(INDEX(uint32_t, args.parent_child_map, child_block)) = pcm;
+               }
+
+               if (type == vk_ir_node_internal) {
+                  uint32_t count = anv_shuffle(cluster, idx, found_child_count);
+                  DEREF(INDEX(uint8_t, args.parent_child_count_map, internal_node_block)) = uint8_t(count);
                }
             }
 

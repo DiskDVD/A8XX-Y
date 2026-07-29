@@ -147,7 +147,7 @@ emit_src(struct nvfx_fpc *fpc, int pos, struct nvfx_src src)
       sr |= NVFX_FP_REG_NEGATE;
 
    if (src.abs)
-      hw[1] |= (1 << (29 + pos));
+      hw[1] |= (1u << (29 + pos));
 
    sr |= ((src.swz[0] << NVFX_FP_REG_SWZ_X_SHIFT) |
           (src.swz[1] << NVFX_FP_REG_SWZ_Y_SHIFT) |

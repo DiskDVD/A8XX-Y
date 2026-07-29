@@ -108,9 +108,8 @@ vk_attachment_store_op_to_mtl_store_action(enum VkAttachmentStoreOp op)
    case VK_ATTACHMENT_STORE_OP_STORE:
       return MTL_STORE_ACTION_STORE;
    case VK_ATTACHMENT_STORE_OP_DONT_CARE:
-      return MTL_STORE_ACTION_DONT_CARE;
    case VK_ATTACHMENT_STORE_OP_NONE:
-      return MTL_STORE_ACTION_UNKNOWN;
+      return MTL_STORE_ACTION_DONT_CARE;
    default:
       assert(false && "Unsupported VkAttachmentStoreOp");
       return MTL_STORE_ACTION_UNKNOWN;
@@ -277,8 +276,6 @@ mtl_command_queue_error_to_string(enum mtl_command_queue_error error)
       return "MTL_COMMAND_QUEUE_ERROR_NOT_PERMITTED";
    case MTL_COMMAND_QUEUE_ERROR_OUT_OF_MEMORY:
       return "MTL_COMMAND_QUEUE_ERROR_OUT_OF_MEMORY";
-   case MTL_COMMAND_QUEUE_ERROR_DEVICE_REMOVED:
-      return "MTL_COMMAND_QUEUE_ERROR_DEVICE_REMOVED";
    case MTL_COMMAND_QUEUE_ERROR_ACCESS_REVOKED:
       return "MTL_COMMAND_QUEUE_ERROR_ACCESS_REVOKED";
    case MTL_COMMAND_QUEUE_ERROR_INTERNAL:

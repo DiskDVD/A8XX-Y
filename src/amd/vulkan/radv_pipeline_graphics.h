@@ -325,9 +325,9 @@ radv_vgt_outprim_is_line(unsigned vgt_outprim_type)
 }
 
 static inline bool
-radv_vgt_outprim_is_point_or_line(unsigned vgt_outprim_type)
+radv_vgt_outprim_is_triangle(unsigned vgt_outprim_type)
 {
-   return radv_vgt_outprim_is_point(vgt_outprim_type) || radv_vgt_outprim_is_line(vgt_outprim_type);
+   return vgt_outprim_type == V_028A6C_TRISTRIP;
 }
 
 static inline bool
@@ -340,12 +340,6 @@ static inline bool
 radv_polygon_mode_is_line(unsigned polygon_mode)
 {
    return polygon_mode == V_028814_X_DRAW_LINES;
-}
-
-static inline bool
-radv_polygon_mode_is_points_or_lines(unsigned polygon_mode)
-{
-   return radv_polygon_mode_is_point(polygon_mode) || radv_polygon_mode_is_line(polygon_mode);
 }
 
 static inline bool

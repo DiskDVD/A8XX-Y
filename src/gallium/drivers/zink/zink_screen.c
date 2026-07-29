@@ -1267,6 +1267,21 @@ zink_init_screen_caps(struct zink_screen *screen)
 
    /* Vulkan supports only 4 byte clears */
    caps->hw_clear_buffer_sizes = 4;
+
+   switch (screen->info.props.deviceType) {
+   case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+      caps->device_type = PIPE_DEVICE_TYPE_INTEGRATED_GPU;
+      break;
+   case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+      caps->device_type = PIPE_DEVICE_TYPE_DISCRETE_GPU;
+      break;
+   case VK_PHYSICAL_DEVICE_TYPE_CPU:
+      caps->device_type = PIPE_DEVICE_TYPE_CPU;
+      break;
+   default:
+      caps->device_type = PIPE_DEVICE_TYPE_UNKNOWN;
+      break;
+   }
 }
 
 static VkSampleCountFlagBits

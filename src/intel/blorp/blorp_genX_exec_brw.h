@@ -2254,7 +2254,6 @@ xy_aux_mode(const struct blorp_surface_info *info)
 {
    switch (info->aux_usage) {
    case ISL_AUX_USAGE_CCS_E:
-   case ISL_AUX_USAGE_FCV_CCS_E:
    case ISL_AUX_USAGE_STC_CCS:
    case ISL_AUX_USAGE_ZCS:
       return XY_CCS_E;

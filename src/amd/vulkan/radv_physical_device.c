@@ -639,7 +639,7 @@ radv_physical_device_init_mem_types(struct radv_physical_device *pdev)
       pdev->memory_properties.memoryTypeCount = type_count;
    }
 
-   if (pdev->info.has_l2_uncached) {
+   if (radv_device_coherent_memory_enabled(pdev)) {
       for (int i = 0; i < pdev->memory_properties.memoryTypeCount; i++) {
          VkMemoryType mem_type = pdev->memory_properties.memoryTypes[i];
 
@@ -1587,6 +1587,8 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
       .cooperativeMatrixFlexibleDimensions = true,
       .cooperativeMatrixReductions = true,
       .cooperativeMatrixPerElementOperations = true,
+      .cooperativeMatrixTensorAddressing = true,
+      .cooperativeMatrixBlockLoads = true,
 
       /* VK_KHR_video_encode_av1 */
       .videoEncodeAV1 = true,

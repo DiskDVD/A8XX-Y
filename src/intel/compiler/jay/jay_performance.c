@@ -49,7 +49,7 @@
  * TODO: Need to handle Xe3P details.
  */
 unsigned
-jay_latency(jay_shader *s, jay_inst *I)
+jay_latency(jay_shader *s, jay_inst *I, bool bias_acc)
 {
    if (I->op == JAY_OPCODE_SEND) {
       switch (jay_send_sfid(I)) {
@@ -106,15 +106,16 @@ jay_latency(jay_shader *s, jay_inst *I)
               I->dst.file == J_ADDRESS) {
       return XE_LATENCY_ARF;
    } else {
-      /* Pre-RA, we conservatively assume we can't use accumulators. This could
-       * be tuned to bias the scheduler.
-       */
       bool acc = I->dst.file == ACCUM;
-      unsigned sz = jay_simd_width_logical(s, I);
-      unsigned scale = (sz <= 8) ? 0 : (sz == 16) ? 1 : 3;
+      bool maybe_acc =
+         I->dst.file == GPR && I->type == JAY_TYPE_F32 && bias_acc;
 
-      return (acc ? XE_LATENCY_FPU_ACC : XE_LATENCY_FPU) +
-             XE_LATENCY_DELTA * scale;
+      unsigned base = acc       ? XE_LATENCY_FPU_ACC :
+                      maybe_acc ? (XE_LATENCY_FPU_ACC + XE_LATENCY_FPU) / 2 :
+                                  XE_LATENCY_FPU;
+
+      unsigned sz = jay_simd_width_logical(s, I);
+      return base + XE_LATENCY_DELTA * ((sz <= 8) ? 0 : (sz == 16) ? 1 : 3);
    }
 }
 
@@ -240,7 +241,7 @@ estimate_block_cycles(jay_function *f, jay_block *block)
                latency = jay_occupancy(shader, sbid[I->dep.pipe]);
             }
          } else {
-            latency = jay_latency(shader, sbid[I->dep.pipe]);
+            latency = jay_latency(shader, sbid[I->dep.pipe], false);
             sbid[I->dep.pipe] = NULL;
          }
 
@@ -258,7 +259,7 @@ estimate_block_cycles(jay_function *f, jay_block *block)
       }
 
       jay_foreach_src(I, s) {
-         if (I->src[s].file == ACCUM || I->src[s].file == UACCUM) {
+         if (I->src[s].file == ACCUM) {
             dep_cycles = MAX2(dep_cycles, acc[I->src[s].reg]);
          } else if (jay_is_flag(I->src[s])) {
             dep_cycles = MAX2(dep_cycles, flag[I->src[s].reg]);
@@ -266,10 +267,10 @@ estimate_block_cycles(jay_function *f, jay_block *block)
       }
 
       cycles = MAX2(cycles, dep_cycles);
-      unsigned ready_cycle = cycles + jay_latency(shader, I);
+      unsigned ready_cycle = cycles + jay_latency(shader, I, false);
       fifo_add(&alu[jay_inst_exec_pipe(shader->devinfo, I)], ready_cycle);
 
-      if (I->dst.file == ACCUM || I->dst.file == UACCUM) {
+      if (I->dst.file == ACCUM) {
          acc[I->dst.reg] = ready_cycle;
       } else if (jay_is_flag(I->dst)) {
          flag[I->dst.reg] = ready_cycle;

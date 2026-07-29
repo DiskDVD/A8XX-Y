@@ -4,6 +4,7 @@
  */
 
 #include <xf86drm.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <lib/kmod/pan_kmod.h>
 #include <lib/pan_props.h>
@@ -43,7 +44,7 @@ main(void)
         ctr++) {
       int64_t val = pan_perf_counter_read_sum(perf, ctr);
 
-      printf("%s: %ld\n", ctr->name, val);
+      printf("%s: %" PRId64 "\n", ctr->name, val);
    }
 
    if (pan_perf_disable(perf) < 0) {

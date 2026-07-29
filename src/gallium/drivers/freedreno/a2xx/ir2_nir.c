@@ -790,7 +790,14 @@ setup_input(struct ir2_context *ctx, nir_variable *in)
    if (ctx->so->type != MESA_SHADER_FRAGMENT)
       compile_error(ctx, "unknown shader type: %d\n", ctx->so->type);
 
-   n = ctx->f->inputs_count++;
+   /* load_input() uses nir_intrinsic_base() as the input register
+    * number, so index the linkage by driver location to match
+    */
+   if (n >= ARRAY_SIZE(ctx->f->inputs)) {
+      compile_error(ctx, "driver location %u out of range\n", n);
+      return;
+   }
+   ctx->f->inputs_count = MAX2(ctx->f->inputs_count, n + 1);
 
    /* half of fragcoord from param reg, half from a varying */
    if (slot == VARYING_SLOT_POS) {
@@ -1168,6 +1175,11 @@ ir2_nir_compile(struct ir2_context *ctx, bool binning)
       ctx->f->fragcoord = -1;
       ctx->f->inputs_count = 0;
       memset(ctx->f->inputs, 0, sizeof(ctx->f->inputs));
+      /* driver locations may be sparse, and store_output() must not
+       * match one of the resulting gaps against a real varying slot
+       */
+      for (unsigned i = 0; i < ARRAY_SIZE(ctx->f->inputs); i++)
+         ctx->f->inputs[i].slot = IR2_INPUT_SLOT_UNUSED;
    }
 
    /* Setup inputs: */

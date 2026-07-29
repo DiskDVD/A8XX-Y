@@ -8,6 +8,7 @@
 #include "jay_ir.h"
 #include "jay_opcodes.h"
 #include "jay_private.h"
+#include "shader_enums.h"
 
 /*
  * In addition to having enough total registers globally, the partition needs to
@@ -51,17 +52,7 @@ analyze_per_inst(jay_shader *shader)
                local.ugpr += size;
             } else if (x.file == GPR && i >= 0) {
                enum jay_stride min_stride = jay_src_stride_minmax(I, i, false);
-               enum jay_stride max_stride = jay_src_stride_minmax(I, i, true);
-
-               /* We want to reduce fragmentation of the partition as much as
-                * possible, so assume if the destination didn't already force a
-                * non-32-bit stride, assume sources are 32-bit strided.
-                */
-               if (min_stride <= JAY_STRIDE_4 && JAY_STRIDE_4 <= max_stride) {
-                  local.gpr[JAY_STRIDE_4] += size;
-               } else {
-                  local.gpr[min_stride] += size;
-               }
+               local.gpr[min_stride] += size;
             } else if (x.file == GPR) {
                enum jay_stride min_stride = jay_dst_stride_minmax(I, false);
                local.gpr[min_stride] += size;
@@ -102,6 +93,7 @@ build_partition(jay_shader *shader, struct jay_partition_builder *b, unsigned n)
       .units_x16[UGPR] = jay_ugpr_per_grf(shader) * 16,
       .units_x16[GPR] = 16 / jay_grf_per_gpr(shader),
       .units_x16[MEM] = 16 / jay_grf_per_gpr(shader),
+      .units_x16[FLAG] = 16 / jay_grf_per_gpr(shader),
    };
 
    /* Drop empty blocks and merge the resulting neighbours. This avoids needless
@@ -220,12 +212,50 @@ jay_partition_grf(jay_shader *shader)
       payload_4[1] = shader->prog_data->vue.urb_read_length * 8;
       payload_u[1] = shader->push_grfs;
       eot_4 = 16;
+   } else if (shader->stage == MESA_SHADER_TASK ||
+              shader->stage == MESA_SHADER_MESH) {
+      payload_u[0] = 3 * grf_per_gpr;
+      payload_4[0] = 2;
+      eot_4 = 16;
+      eot_u = 1;
    } else if (shader->stage == MESA_SHADER_TESS_CTRL) {
       payload_4[0] =
          1 +
          shader->prog_data->tcs.include_primitive_id +
          (shader->prog_data->tcs.input_vertices ?: BRW_MAX_TCS_INPUT_VERTICES);
       payload_u[1] = shader->push_grfs;
+      eot_4 = 16;
+   } else if (shader->stage == MESA_SHADER_GEOMETRY) {
+      /* Payload layout for geo shader (bspec 65389):
+       * 16       UGPR   Various fields stored in various subregisters.
+       * 1        GPR    Per-lane Instance IDs & URB Handles.
+       * if invocations == 1:
+       *    1-6   GPR    ICP URB input handles
+       * else if invocations > 1:
+       *    32    UGPR   ICP URB input handles
+       * Varies   UGPR   Constant Data
+       * Varies   GPR    Pushed URB vertex data
+       *
+       * Note that even though ICP URB input handles are technically optional,
+       * we always enable them anyway.
+       */
+      unsigned urb_push_size = shader->prog_data->vue.urb_read_length *
+                               8 *
+                               shader->prog_data->gs.vertices_in;
+
+      unsigned prim_id_size =
+         (shader->prog_data->gs.include_primitive_id ? 1 : 0);
+
+      if (shader->prog_data->gs.invocations == 1) {
+         unsigned urb_icp_size = shader->prog_data->gs.vertices_in;
+         payload_4[0] = 1 + prim_id_size + urb_icp_size;
+         payload_u[1] = shader->push_grfs;
+         payload_4[1] = urb_push_size;
+      } else {
+         payload_4[0] = 1 + prim_id_size;
+         payload_u[1] = 32 + shader->push_grfs;
+         payload_4[1] = urb_push_size;
+      }
       eot_4 = 16;
    } else if (shader->stage == MESA_SHADER_TESS_EVAL) {
       payload_4[0] = 4; /* tesscoord and URB output handles */
@@ -263,14 +293,25 @@ jay_partition_grf(jay_shader *shader)
    unsigned demand[JAY_NUM_GRF_FILES] = { 0 };
    struct instruction_req instr_req = analyze_per_inst(shader);
    unsigned ugpr_limit = register_limit(shader, UGPR, 1024);
+   unsigned hw_flags = 8 / jay_grf_per_gpr(shader);
+   unsigned flag_limit = hw_flags - shader->helpers_tracked;
 
    jay_foreach_function(shader, f) {
       jay_compute_liveness(f);
+      jay_calculate_last_use(f);
       jay_calculate_register_demands(f);
+
+      if (f->demand[FLAG] > flag_limit) {
+         jay_spill(f, FLAG, flag_limit);
+         jay_compute_liveness(f);
+         jay_calculate_last_use(f);
+         jay_calculate_register_demands(f);
+      }
 
       if (f->demand[UGPR] > ugpr_limit) {
          jay_spill(f, UGPR, ugpr_limit);
          jay_compute_liveness(f);
+         jay_calculate_last_use(f);
          jay_calculate_register_demands(f);
       }
 
@@ -434,7 +475,10 @@ jay_partition_grf(jay_shader *shader)
 
       /* Accumulator block */
       { GPR, JAY_STRIDE_4, mapped_accums * grf_per_gpr, JAY_BLOCK_ACCUM },
+      { FLAG, 0, flag_limit * jay_grf_per_gpr(shader) },
    };
+
+   shader->num_regs[FLAG] = hw_flags;
 
    build_partition(shader, blocks, ARRAY_SIZE(blocks));
 
@@ -450,6 +494,7 @@ jay_partition_grf(jay_shader *shader)
          jay_spill(f, GPR, limit);
          jay_validate(f->shader, "spilling");
          jay_compute_liveness(f);
+         jay_calculate_last_use(f);
          jay_calculate_register_demands(f);
       }
 
@@ -468,14 +513,18 @@ jay_partition_grf(jay_shader *shader)
 #define ANSI_BOLD   "\033[1m"
 #define ANSI_ITALIC "\033[3m"
 
+static const char *jay_files[JAY_NUM_RA_FILES] = {
+   [GPR] = "GPR", [UGPR] = "UGPR", [MEM] = "MEM", [FLAG] = "FLAG"
+};
+
 void
 jay_print_partition(struct jay_partition *p)
 {
    jay_foreach_ra_file(file) {
       if (p->nr_blocks[file]) {
-         const char *files[JAY_NUM_RA_FILES] = { "GPR", "UGPR", "MEM" };
          printf("%s" ANSI_BOLD "    GRF      %s%s" ANSI_END "\n",
-                file ? "\n" : "", files[file], file == GPR ? "    Stride" : "");
+                file ? "\n" : "", jay_files[file],
+                file == GPR ? "    Stride" : "");
       }
 
       for (unsigned b = 0; b < p->nr_blocks[file]; ++b) {

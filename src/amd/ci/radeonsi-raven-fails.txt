@@ -39,12 +39,8 @@ glx@glx_arb_sync_control@waitformsc,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgradcube,Fail
 
 # rusticl
-api@clgetcommandqueueinfo,Fail
 api@clgetdeviceinfo,Fail
 api@clgetextensionfunctionaddressforplatform,Fail
-api@clgetkernelarginfo,Fail
-api@clsetkernelarg,Fail
-api@clsetkernelarg@Input checks,Fail
 api@cllinkprogram,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated,Fail
 program@execute@builtin@builtin-float-nextafter-1.0.generated@nextafter float1,Fail

@@ -862,10 +862,10 @@ unsafe impl CLInfo<cl_image_info> for cl_mem {
             CL_IMAGE_NUM_MIP_LEVELS => v.write::<cl_uint>(mem.image_desc.num_mip_levels),
             CL_IMAGE_NUM_SAMPLES => v.write::<cl_uint>(mem.image_desc.num_samples),
             CL_IMAGE_ROW_PITCH => v.write::<usize>(mem.image_desc.image_row_pitch),
-            CL_IMAGE_SLICE_PITCH => v.write::<usize>(if mem.image_desc.dims() == 1 {
-                0
-            } else {
-                mem.image_desc.image_slice_pitch
+            CL_IMAGE_SLICE_PITCH => v.write::<usize>(match mem.image_desc.image_type {
+                // For a 1D image, 1D image buffer and 2D image object return 0.
+                CL_MEM_OBJECT_IMAGE1D | CL_MEM_OBJECT_IMAGE1D_BUFFER | CL_MEM_OBJECT_IMAGE2D => 0,
+                _ => mem.image_desc.image_slice_pitch,
             }),
             CL_IMAGE_WIDTH => v.write::<usize>(mem.image_desc.image_width),
             _ => Err(CL_INVALID_VALUE),

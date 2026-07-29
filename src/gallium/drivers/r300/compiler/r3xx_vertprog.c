@@ -30,14 +30,14 @@
                     t_swizzle(y), t_src_class(vpi->SrcReg[x].File), RC_MASK_NONE) |             \
     (vpi->SrcReg[x].RelAddr << 4))
 
-static unsigned long
+static uint32_t
 t_dst_mask(unsigned int mask)
 {
    /* RC_MASK_* is equivalent to VSF_FLAG_* */
    return mask & RC_MASK_XYZW;
 }
 
-static unsigned long
+static uint32_t
 t_dst_class(rc_register_file file)
 {
    switch (file) {
@@ -53,7 +53,7 @@ t_dst_class(rc_register_file file)
    }
 }
 
-static unsigned long
+static uint32_t
 t_dst_index(struct r300_vertex_program_code *vp, struct rc_dst_register *dst)
 {
    if (dst->File == RC_FILE_OUTPUT)
@@ -62,7 +62,7 @@ t_dst_index(struct r300_vertex_program_code *vp, struct rc_dst_register *dst)
    return dst->Index;
 }
 
-static unsigned long
+static uint32_t
 t_src_class(rc_register_file file)
 {
    switch (file) {
@@ -82,8 +82,8 @@ t_src_class(rc_register_file file)
 static int
 t_src_conflict(struct rc_src_register a, struct rc_src_register b)
 {
-   unsigned long aclass = t_src_class(a.File);
-   unsigned long bclass = t_src_class(b.File);
+   uint32_t aclass = t_src_class(a.File);
+   uint32_t bclass = t_src_class(b.File);
 
    if (aclass != bclass)
       return 0;
@@ -98,14 +98,14 @@ t_src_conflict(struct rc_src_register a, struct rc_src_register b)
    return 0;
 }
 
-static inline unsigned long
-t_swizzle(unsigned int swizzle)
+static inline uint32_t
+t_swizzle(uint32_t swizzle)
 {
    /* this is in fact a NOP as the Mesa RC_SWIZZLE_* are all identical to VSF_IN_COMPONENT_* */
    return swizzle;
 }
 
-static unsigned long
+static uint32_t
 t_src_index(struct r300_vertex_program_code *vp, struct rc_src_register *src)
 {
    if (src->File == RC_FILE_INPUT) {
@@ -122,7 +122,7 @@ t_src_index(struct r300_vertex_program_code *vp, struct rc_src_register *src)
 
 /* these two functions should probably be merged... */
 
-static unsigned long
+static uint32_t
 t_src(struct r300_vertex_program_code *vp, struct rc_src_register *src)
 {
    /* src->Negate uses the RC_MASK_ flags from program_instruction.h,
@@ -135,7 +135,7 @@ t_src(struct r300_vertex_program_code *vp, struct rc_src_register *src)
           (src->RelAddr << 4) | (src->Abs << 3);
 }
 
-static unsigned long
+static uint32_t
 t_src_scalar(struct r300_vertex_program_code *vp, struct rc_src_register *src)
 {
    /* src->Negate uses the RC_MASK_ flags from program_instruction.h,

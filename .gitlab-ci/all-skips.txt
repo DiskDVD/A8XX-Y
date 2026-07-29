@@ -12,6 +12,10 @@ dEQP-VK.api.driver_properties.conformance_version
 # Exclude this test which might fail when a new extension is implemented.
 dEQP-VK.info.device_extensions
 
+# Times out on all supported drivers
+# https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/6728
+dEQP-VK.synchronization2.internally_synchronized_queues.direct_wsi_wsi
+
 # These are tremendously slow (pushing toward a minute), and aren't
 # reliable to be run in parallel with other tests due to CPU-side timing.
 dEQP-GLES[0-9]*.functional.flush_finish.*

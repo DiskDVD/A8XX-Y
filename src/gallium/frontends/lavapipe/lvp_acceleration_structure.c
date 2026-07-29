@@ -55,26 +55,23 @@ lvp_init_radix_sort(struct lvp_device *device)
    simple_mtx_unlock(&device->radix_sort_lock);
 }
 
-static void
-lvp_get_leaf_node_size(VkGeometryTypeKHR geometry_type, uint32_t *ir_leaf_node_size,
-                       uint32_t *output_leaf_node_size)
+static uint32_t
+lvp_get_leaf_node_size(VkGeometryTypeKHR geometry_type)
 {
    switch (geometry_type) {
    case VK_GEOMETRY_TYPE_TRIANGLES_KHR:
-      *ir_leaf_node_size = sizeof(struct vk_ir_triangle_node);
-      *output_leaf_node_size = sizeof(struct lvp_bvh_triangle_node);
+      return sizeof(struct lvp_bvh_triangle_node);
       break;
    case VK_GEOMETRY_TYPE_AABBS_KHR:
-      *ir_leaf_node_size = sizeof(struct vk_ir_aabb_node);
-      *output_leaf_node_size = sizeof(struct lvp_bvh_aabb_node);
+      return sizeof(struct lvp_bvh_aabb_node);
       break;
    case VK_GEOMETRY_TYPE_INSTANCES_KHR:
-      *ir_leaf_node_size = sizeof(struct vk_ir_instance_node);
-      *output_leaf_node_size = sizeof(struct lvp_bvh_instance_node);
+      return sizeof(struct lvp_bvh_instance_node);
       break;
    default:
       break;
    }
+   return 0;
 }
 
 static VkDeviceSize
@@ -83,11 +80,7 @@ lvp_get_as_size_internal(VkGeometryTypeKHR geometry_type, uint32_t leaf_node_cou
    uint32_t internal_node_count = MAX2(leaf_node_count, 2) - 1;
    uint32_t nodes_size = internal_node_count * sizeof(struct lvp_bvh_box_node);
 
-   uint32_t ir_leaf_node_size = 0;
-   uint32_t output_leaf_node_size = 0;
-   lvp_get_leaf_node_size(geometry_type, &ir_leaf_node_size, &output_leaf_node_size);
-
-   nodes_size += leaf_node_count * output_leaf_node_size;
+   nodes_size += leaf_node_count * lvp_get_leaf_node_size(geometry_type);
 
    nodes_size = util_align_npot(nodes_size, LVP_BVH_NODE_PREFETCH_SIZE);
 
@@ -413,9 +406,8 @@ lvp_encode_as(struct vk_acceleration_structure *dst, VkDeviceAddress intermediat
    uint8_t *output = (void *)(uintptr_t)vk_acceleration_structure_get_va(dst);
    struct lvp_bvh_header *output_header = (void *)output;
 
-   uint32_t ir_leaf_node_size = 0;
-   uint32_t output_leaf_node_size = 0;
-   lvp_get_leaf_node_size(geometry_type, &ir_leaf_node_size, &output_leaf_node_size);
+   uint32_t ir_leaf_node_size = vk_ir_node_size(geometry_type, 0);
+   uint32_t output_leaf_node_size = lvp_get_leaf_node_size(geometry_type);
 
    uint32_t root_offset = leaf_count * ir_leaf_node_size;
    const struct vk_ir_box_node *ir_box_nodes = (const void *)(ir_bvh + root_offset);

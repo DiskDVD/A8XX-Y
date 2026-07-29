@@ -69,7 +69,8 @@ morton_code64(uint64_t x, uint64_t y, uint64_t z)
 uint32_t
 lbvh_key(float x01, float y01, float z01)
 {
-   return morton_code(uint32_t(x01 * 255.0), uint32_t(y01 * 255.0), uint32_t(z01 * 255.0)) << 8;
+   /* We do a 24-bit radix sort. To sort all valid nodes before invalid ones, we do min(0xfffffe00). */
+   return min(morton_code(uint32_t(x01 * 255.0), uint32_t(y01 * 255.0), uint32_t(z01 * 255.0)) << 8, 0xfffffe00u);
 }
 
 uint64_t

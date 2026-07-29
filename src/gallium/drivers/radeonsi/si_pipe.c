@@ -225,6 +225,7 @@ static struct pipe_screen *radeonsi_screen_create_impl(struct radeon_winsys *ws,
    /* Set functions first. */
    sscreen->b.context_create = si_pipe_create_context;
    sscreen->b.destroy = si_destroy_screen;
+   sscreen->b.is_format_supported = si_is_format_supported;
 
    si_init_screen_buffer_functions(sscreen);
    si_init_screen_fence_functions(sscreen);

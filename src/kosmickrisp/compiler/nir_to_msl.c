@@ -1059,6 +1059,23 @@ msl_emit_texture_type(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
    }
 }
 
+static const char *
+global_access_qualifier(struct nir_to_msl_ctx *ctx,
+                        enum gl_access_qualifier access)
+{
+   if (!(ctx->disabled_workarounds & BITFIELD64_BIT(6)))
+      return "coherent device";
+   if (access & ACCESS_VOLATILE) {
+      /* KK_WORKAROUND_15 */
+      const bool drop_coherent =
+         !(ctx->disabled_workarounds & BITFIELD64_BIT(15));
+      if ((access & ACCESS_COHERENT) && !drop_coherent)
+         return "volatile coherent device";
+      return "volatile device";
+   }
+   return access & ACCESS_COHERENT ? "coherent device" : "device";
+}
+
 static void
 intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
 {
@@ -1301,19 +1318,15 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_global: {
       enum gl_access_qualifier access = nir_intrinsic_access(instr);
       const char *type = msl_type_for_def(ctx->types, &instr->def);
-      const bool apply_workaround =
-         !(ctx->disabled_workarounds & BITFIELD64_BIT(6));
-      const char *addressing = apply_workaround || (access & ACCESS_COHERENT)
-                                  ? "coherent device"
-                                  : "device";
+      const char *qualifier = global_access_qualifier(ctx, access);
       if (access & ACCESS_ATOMIC) {
          assert(instr->num_components == 1u &&
                 "We can only do single component with atomics");
-         P(ctx, "atomic_load_explicit((%s atomic_%s*)", addressing, type);
+         P(ctx, "atomic_load_explicit((%s atomic_%s*)", qualifier, type);
          src_to_msl(ctx, &instr->src[0]);
          P(ctx, ", memory_order_relaxed);\n");
       } else {
-         src_to_packed_load(ctx, &instr->src[0], addressing, type,
+         src_to_packed_load(ctx, &instr->src[0], qualifier, type,
                             instr->def.num_components);
          P(ctx, ";\n");
       }
@@ -1340,19 +1353,18 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
    case nir_intrinsic_load_global_constant_offset: {
       enum gl_access_qualifier access = nir_intrinsic_access(instr);
       const char *type = msl_type_for_def(ctx->types, &instr->def);
-      const char *addressing =
-         access & ACCESS_COHERENT ? "coherent device" : "device";
+      const char *qualifier = global_access_qualifier(ctx, access);
       if (access & ACCESS_ATOMIC) {
          assert(instr->num_components == 1u &&
                 "We can only do single component with atomics");
-         P(ctx, "atomic_load_explicit((%s atomic_%s*)(", addressing, type);
+         P(ctx, "atomic_load_explicit((%s atomic_%s*)(", qualifier, type);
          src_to_msl(ctx, &instr->src[0]);
          P(ctx, "+");
          src_to_msl(ctx, &instr->src[1]);
          P(ctx, ", memory_order_relaxed);\n");
       } else {
          src_to_packed_load_offset(ctx, &instr->src[0], &instr->src[1],
-                                   addressing,
+                                   qualifier,
                                    msl_type_for_def(ctx->types, &instr->def),
                                    instr->def.num_components);
       }
@@ -1374,22 +1386,18 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
    case nir_intrinsic_store_global: {
       enum gl_access_qualifier access = nir_intrinsic_access(instr);
       const char *type = msl_type_for_src(ctx->types, &instr->src[0]);
-      const bool apply_workaround =
-         !(ctx->disabled_workarounds & BITFIELD64_BIT(6));
-      const char *addressing = apply_workaround || (access & ACCESS_COHERENT)
-                                  ? "coherent device"
-                                  : "device";
+      const char *qualifier = global_access_qualifier(ctx, access);
       if (access & ACCESS_ATOMIC) {
          assert(instr->num_components == 1u &&
                 "We can only do single component with atomics");
-         P_IND(ctx, "atomic_store_explicit((%s atomic_%s*)", addressing, type);
+         P_IND(ctx, "atomic_store_explicit((%s atomic_%s*)", qualifier, type);
          src_to_msl(ctx, &instr->src[1]);
          P(ctx, ", ")
          src_to_packed(ctx, &instr->src[0], type,
                        instr->src[0].ssa->num_components);
          P(ctx, ", memory_order_relaxed);\n");
       } else {
-         src_to_packed_store(ctx, &instr->src[1], addressing, type,
+         src_to_packed_store(ctx, &instr->src[1], qualifier, type,
                              instr->src[0].ssa->num_components);
          writemask_to_msl(ctx, nir_intrinsic_write_mask(instr),
                           instr->num_components);
@@ -2177,6 +2185,12 @@ msl_preprocess_nir(struct nir_shader *nir)
    NIR_PASS(_, nir, nir_opt_deref);
    nir_remove_non_entrypoints(nir);
 
+   /* nir_lower_io_to_temporaries is required before nir_lower_blend since the
+    * blending pass sinks writes to the end of the block where we may have a
+    * jump, which is illegal.
+    */
+   NIR_PASS(_, nir, nir_lower_io_vars_to_temporaries,
+            nir_shader_get_entrypoint(nir), nir_var_shader_out);
    NIR_PASS(_, nir, nir_lower_global_vars_to_local);
    NIR_PASS(_, nir, nir_split_var_copies);
    NIR_PASS(_, nir, nir_split_struct_vars, nir_var_function_temp);
@@ -2269,6 +2283,7 @@ msl_optimize_nir(struct nir_shader *nir)
       NIR_PASS(progress, nir, nir_opt_if, 0);
       NIR_PASS(progress, nir, nir_opt_remove_phis);
       NIR_PASS(progress, nir, nir_opt_loop);
+      NIR_PASS(progress, nir, nir_opt_licm, NULL);
       NIR_PASS(progress, nir, nir_lower_pack);
       NIR_PASS(progress, nir, nir_lower_alu_to_scalar, kk_scalarize_filter,
                NULL);

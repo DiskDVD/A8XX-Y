@@ -96,7 +96,9 @@ pub enum SrcType {
     Dst,
     Src,
     SrRead,
+    SrReadSwizzle,
     SrWrite,
+    SrWriteLanes,
     PcRelOffset,
     Int(u8),
     Uint(u8),
@@ -114,6 +116,8 @@ pub enum SrcField {
     SrcModNot,
     SrIndex,
     SrCount,
+    SrDataType,
+    SrVecSize,
 }
 
 impl SrcType {
@@ -126,10 +130,22 @@ impl SrcType {
         SrcField::SrcModNeg,
         SrcField::SrcModNot,
     ];
-    const SR_READ_FIELDS: &[SrcField] =
+    const SR_READ_SWIZZLE_FIELDS: &[SrcField] =
         &[SrcField::SrIndex, SrcField::SrCount, SrcField::SrcSwizzle];
-    const SR_WRITE_FIELDS: &[SrcField] =
+    const SR_READ_FIELDS: &[SrcField] = &[
+        SrcField::SrIndex,
+        SrcField::SrCount,
+        SrcField::SrDataType,
+        SrcField::SrVecSize,
+    ];
+    const SR_WRITE_LANES_FIELDS: &[SrcField] =
         &[SrcField::SrIndex, SrcField::SrCount, SrcField::DstLanes];
+    const SR_WRITE_FIELDS: &[SrcField] = &[
+        SrcField::SrIndex,
+        SrcField::SrCount,
+        SrcField::SrDataType,
+        SrcField::SrVecSize,
+    ];
 
     fn from_field_type(field_type: &FieldType) -> SrcType {
         match field_type {
@@ -158,7 +174,9 @@ impl SrcType {
             | SrcType::Uint(_) => std::slice::from_ref(&SrcType::DIRECT),
             SrcType::Dst => SrcType::DST_FIELDS,
             SrcType::Src => SrcType::SRC_FIELDS,
+            SrcType::SrReadSwizzle => SrcType::SR_READ_SWIZZLE_FIELDS,
             SrcType::SrRead => SrcType::SR_READ_FIELDS,
+            SrcType::SrWriteLanes => SrcType::SR_WRITE_LANES_FIELDS,
             SrcType::SrWrite => SrcType::SR_WRITE_FIELDS,
         }
     }
@@ -177,8 +195,18 @@ impl SrcType {
             PcRelOffset => assert!(matches!(other, PcRelOffset)),
             Dst => assert!(matches!(other, Dst)),
             Src => assert!(matches!(other, Src)),
-            SrRead => assert!(matches!(other, SrRead)),
-            SrWrite => assert!(matches!(other, SrWrite)),
+            SrReadSwizzle => assert!(matches!(other, SrRead | SrReadSwizzle)),
+            SrRead => match other {
+                SrReadSwizzle => *self = SrReadSwizzle,
+                SrRead => (),
+                _ => panic!("Invalid merge"),
+            },
+            SrWriteLanes => assert!(matches!(other, SrWrite | SrWriteLanes)),
+            SrWrite => match other {
+                SrWriteLanes => *self = SrWriteLanes,
+                SrWrite => (),
+                _ => panic!("Invalid merge"),
+            },
             Int(s_bits) => match other {
                 Int(o_bits) => *s_bits = (*s_bits).max(*o_bits),
                 _ => panic!("Field types don't match"),
@@ -228,7 +256,9 @@ impl ToTokens for SrcType {
             SrcType::PcRelOffset => quote! { i64 },
             SrcType::Dst => quote! { EncodedDst },
             SrcType::Src => quote! { EncodedSrc },
+            SrcType::SrReadSwizzle => quote! { SrReadSwizzle },
             SrcType::SrRead => quote! { SrRead },
+            SrcType::SrWriteLanes => quote! { SrWriteLanes },
             SrcType::SrWrite => quote! { SrWrite },
             SrcType::Int(bits) => {
                 let itype = ident!("i{}", bits.max(&8).next_power_of_two());
@@ -265,10 +295,10 @@ fn map_field_src(
     } else if field_name == "staging_register_write_index" {
         assert_eq!(sr_control, SrControl::ReadWrite);
         (SrcType::SrWrite, SrcField::SrIndex)
-    } else if field_name == "lane" && LOAD_INSTRS.contains(&&instr_name) {
-        (SrcType::SrWrite, SrcField::DstLanes)
-    } else if field_name == "lane" && STORE_INSTRS.contains(&&instr_name) {
-        (SrcType::SrRead, SrcField::SrcSwizzle)
+    } else if field_name == "lane" && LOAD_INSTRS.contains(&instr_name) {
+        (SrcType::SrWriteLanes, SrcField::DstLanes)
+    } else if field_name == "lane" && STORE_INSTRS.contains(&instr_name) {
+        (SrcType::SrReadSwizzle, SrcField::SrcSwizzle)
     } else if SRC_SWIZZLE_ENUMS.iter().any(|e| field_type.is_enum(e)) {
         (SrcType::Src, SrcField::SrcSwizzle)
     } else if DST_LANES_ENUMS.iter().any(|e| field_type.is_enum(e)) {
@@ -301,6 +331,22 @@ fn map_field_src(
     } else if field_name == "sr_write_count" {
         assert_eq!(sr_control, SrControl::ReadWrite);
         (SrcType::SrWrite, SrcField::SrCount)
+    } else if field_name == "register_format"
+        && field_type.is_enum("register_file_format_general_m")
+    {
+        if sr_control.has_read() {
+            (SrcType::SrRead, SrcField::SrDataType)
+        } else {
+            (SrcType::SrWrite, SrcField::SrDataType)
+        }
+    } else if field_name == "vecsize" {
+        if sr_control.has_read() {
+            (SrcType::SrRead, SrcField::SrVecSize)
+        } else {
+            (SrcType::SrWrite, SrcField::SrVecSize)
+        }
+    } else if field_name == "register_width" {
+        (SrcType::SrWrite, SrcField::SrDataType)
     } else {
         (SrcType::from_field_type(field_type), SrcField::Direct)
     }
@@ -340,8 +386,8 @@ impl InstrEncSrc {
         match src_type {
             SrcType::Src => format!("src{}", src_number(field_name)),
             SrcType::Dst => "dst".to_string(),
-            SrcType::SrRead => "sr_src".to_string(),
-            SrcType::SrWrite => "sr_dst".to_string(),
+            SrcType::SrRead | SrcType::SrReadSwizzle => "sr_src".to_string(),
+            SrcType::SrWrite | SrcType::SrWriteLanes => "sr_dst".to_string(),
             _ => to_snake_case(field_name),
         }
     }
@@ -390,6 +436,8 @@ impl InstrEncSrc {
             SrcField::SrcModNot => quote! { #src.not },
             SrcField::SrIndex => quote! { #src.index },
             SrcField::SrCount => quote! { #src.count },
+            SrcField::SrDataType => quote! { #src.data_type.scalar_type() },
+            SrcField::SrVecSize => quote! { #src.data_type.comps() },
         }
     }
 
@@ -415,6 +463,11 @@ impl InstrEncSrc {
             SrcField::SrCount => {
                 // This one is okay to ignore because a bunch of
                 // instructions compute it based on the variant.
+                Default::default()
+            }
+            SrcField::SrDataType | SrcField::SrVecSize => {
+                // Also a-ok, data_type isn't actually ignored but
+                // the same field maps to two different SrcFields
                 Default::default()
             }
         }
@@ -563,12 +616,19 @@ impl InstrEncSources {
 
         if matches!(
             src_type,
-            SrcType::Dst | SrcType::Src | SrcType::SrRead | SrcType::SrWrite
+            SrcType::Dst
+                | SrcType::Src
+                | SrcType::SrRead
+                | SrcType::SrReadSwizzle
+                | SrcType::SrWrite
+                | SrcType::SrWriteLanes
         ) {
             // If it comes from a src or a dst, try to look up the existing
-            // source in the list and use that
+            // source in the list and use that.  Merge the type in so that e.g.
+            // a lane field promotes an existing SrWrite to SrWriteLanes.
             let name = InstrEncSrc::src_name(field_name, &src_type);
-            if let Some(src) = self.srcs.get(&name) {
+            if let Some(src) = self.srcs.get_mut(&name) {
+                src.type_.merge(&src_type);
                 return InstrEncFieldSrc::new(
                     field_name,
                     field_type.clone(),
@@ -641,6 +701,8 @@ struct InstrVariantSrcInfo {
     has_abs: bool,
     has_neg: bool,
     has_not: bool,
+    // true if staging register uses the vecsize+regtype format
+    has_vecsize: bool,
 }
 
 impl InstrVariantSrcInfo {
@@ -661,6 +723,7 @@ impl InstrVariantSrcInfo {
             }
             SrcField::SrcSwizzle => {
                 assert!(self.allowed_swizzles.is_empty());
+                assert!(!self.has_vecsize);
                 self.allowed_swizzles =
                     valid_field_values(arch, field_type, field_restrict);
             }
@@ -674,6 +737,10 @@ impl InstrVariantSrcInfo {
                 self.has_not = true;
             }
             SrcField::SrCount => (),
+            SrcField::SrVecSize | SrcField::SrDataType => {
+                assert!(self.allowed_swizzles.is_empty());
+                self.has_vecsize = true;
+            }
             _ => panic!("Invalid Src field"),
         }
     }
@@ -686,6 +753,7 @@ impl ToTokens for InstrVariantSrcInfo {
             has_abs,
             has_neg,
             has_not,
+            has_vecsize,
             ..
         } = self;
 
@@ -709,6 +777,7 @@ impl ToTokens for InstrVariantSrcInfo {
                 has_abs: #has_abs,
                 has_neg: #has_neg,
                 has_not: #has_not,
+                has_vecsize: #has_vecsize,
             }
         });
     }
@@ -718,6 +787,8 @@ impl ToTokens for InstrVariantSrcInfo {
 struct InstrVariantDstInfo {
     exists: bool,
     is_sr: bool,
+    // true if staging register uses the vecsize+regtype form
+    has_vecsize: bool,
     allowed_lanes: Vec<EnumLiteral>,
 }
 
@@ -737,10 +808,15 @@ impl InstrVariantDstInfo {
             }
             SrcField::DstLanes => {
                 assert!(self.allowed_lanes.is_empty());
+                assert!(!self.has_vecsize);
                 self.allowed_lanes =
                     valid_field_values(arch, field_type, field_restrict);
             }
             SrcField::SrCount => (),
+            SrcField::SrDataType | SrcField::SrVecSize => {
+                assert!(self.allowed_lanes.is_empty());
+                self.has_vecsize = true;
+            }
             _ => panic!("Invalid Dst field"),
         }
     }
@@ -748,7 +824,9 @@ impl InstrVariantDstInfo {
 
 impl ToTokens for InstrVariantDstInfo {
     fn to_tokens(&self, ts: &mut TokenStream2) {
-        let InstrVariantDstInfo { is_sr, .. } = self;
+        let InstrVariantDstInfo {
+            is_sr, has_vecsize, ..
+        } = self;
 
         assert!(self.exists);
         let mut lanes_ts = TokenStream2::new();
@@ -766,6 +844,7 @@ impl ToTokens for InstrVariantDstInfo {
                 allowed_lanes: unsafe {
                     U8EnumSet::from_u8_array([#lanes_ts])
                 },
+                has_vecsize: #has_vecsize,
             }
         });
     }
@@ -828,7 +907,7 @@ impl InstrVariantInfo {
                     field_restrict,
                 );
             }
-            SrcType::SrRead => {
+            SrcType::SrRead | SrcType::SrReadSwizzle => {
                 self.sr_src.get_or_insert_default().add_field(
                     self.arch.clone(),
                     src_field,
@@ -836,7 +915,7 @@ impl InstrVariantInfo {
                     field_restrict,
                 );
             }
-            SrcType::Dst | SrcType::SrWrite => {
+            SrcType::Dst | SrcType::SrWrite | SrcType::SrWriteLanes => {
                 self.dst.get_or_insert_default().add_field(
                     self.arch.clone(),
                     src_field,
@@ -1315,14 +1394,15 @@ pub fn gen_encoder(
         use crate::data_type::DataType;
         use compiler::bitset::ConstBitSet;
         use compiler::enum_as_u8::EnumAsU8;
+        use super::{SrRead, SrWrite};
 
         pub type InstructionInfo = super::InstructionInfo<SrcSwizzle, DstLanes>;
         pub type InstructionSrcInfo = super::InstructionSrcInfo<SrcSwizzle>;
         pub type InstructionDstInfo = super::InstructionDstInfo<DstLanes>;
         pub type EncodedSrc = super::EncodedSrc<SrcSwizzle>;
         pub type EncodedDst = super::EncodedDst<DstLanes>;
-        pub type SrRead = super::SrRead<SrcSwizzle>;
-        pub type SrWrite = super::SrWrite<DstLanes>;
+        pub type SrReadSwizzle = super::SrReadSwizzle<SrcSwizzle>;
+        pub type SrWriteLanes = super::SrWriteLanes<DstLanes>;
     };
     declare_expr_helpers(&mut ts);
 

@@ -235,14 +235,14 @@ nvk_queue_submit_exec(struct nvk_queue *queue,
          };
          result = nvkmd_ctx_wait(queue->exec_ctx, &queue->vk.base, 1, &wait);
          if (result != VK_SUCCESS)
-            goto fail;
+            return result;
       }
    }
 
    result = nvkmd_ctx_wait(queue->exec_ctx, &queue->vk.base,
                            submit->wait_count, submit->waits);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
    for (unsigned i = 0; i < submit->command_buffer_count; i++) {
       struct nvk_cmd_buffer *cmd =
@@ -271,16 +271,15 @@ nvk_queue_submit_exec(struct nvk_queue *queue,
       STACK_ARRAY_FINISH(execs);
 
       if (result != VK_SUCCESS)
-         goto fail;
+         return result;
    }
 
    result = nvkmd_ctx_signal(queue->exec_ctx, &queue->vk.base,
                              submit->signal_count, submit->signals);
    if (result != VK_SUCCESS)
-      goto fail;
+      return result;
 
-fail:
-   return result;
+   return VK_SUCCESS;
 }
 
 static VkResult

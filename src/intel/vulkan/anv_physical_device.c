@@ -548,9 +548,6 @@ get_features(const struct anv_physical_device *pdevice,
       .sparseResidency4Samples                  = has_sparse_or_fake,
       .sparseResidency8Samples                  = has_sparse_or_fake &&
                                                   pdevice->info.verx10 != 125,
-      .sparseResidency16Samples                 = has_sparse_or_fake &&
-                                                  pdevice->info.ver < 30 &&
-                                                  pdevice->info.verx10 != 125,
       .variableMultisampleRate                  = true,
       .inheritedQueries                         = true,
 
@@ -1629,11 +1626,11 @@ get_properties(const struct anv_physical_device *pdevice,
          2 : 4;
       props->maxFragmentShadingRateCoverageSamples =
          devinfo->verx10 >= 125 ? 16:
-         4 * 4 * 16; /* Technically wrong, but some CTS tests fail because of the rates we
-                        report on prior platforms. Fixing all of that is a task for another day. */
+         4 * 4 * 8; /* Technically wrong, but some CTS tests fail because of the rates we
+                       report on prior platforms. Fixing all of that is a task for another day. */
       props->maxFragmentShadingRateRasterizationSamples =
       pdevice->info.has_coarse_pixel_primitive_and_cb ?
-         VK_SAMPLE_COUNT_4_BIT :  VK_SAMPLE_COUNT_16_BIT;
+         VK_SAMPLE_COUNT_4_BIT :  VK_SAMPLE_COUNT_8_BIT;
       props->fragmentShadingRateWithShaderDepthStencilWrites = false;
       props->fragmentShadingRateWithSampleMask = true;
       props->fragmentShadingRateWithShaderSampleMask = devinfo->verx10 >= 200;
@@ -2958,8 +2955,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       device->flush_astc_ldr_void_extent_denorms =
          device->has_astc_ldr && !device->emu_astc_ldr;
    }
-   device->disable_fcv = device->info.verx10 >= 125 ||
-                         instance->drirc.debug.disable_fcv;
    device->brw_disable_subgroup_size_control =
       !intel_use_jay(&device->info, MESA_SHADER_COMPUTE) &&
       instance->drirc.debug.disable_subgroup_size_control;
@@ -3056,6 +3051,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->compiler->shader_debug_log = compiler_debug_log;
    device->compiler->shader_perf_log = compiler_perf_log;
    device->compiler->spilling_rate = instance->drirc.debug.shader_spilling_rate;
+   device->compiler->limit_trig_input_range =
+      instance->drirc.debug.limit_trig_input_range;
 
    isl_device_init(&device->isl_dev, &device->info);
    device->isl_dev.buffer_length_in_aux_addr = !intel_needs_workaround(device->isl_dev.info, 14019708328);
@@ -3465,15 +3462,15 @@ VkResult anv_GetPhysicalDeviceFragmentShadingRatesKHR(
       }                                                                             \
    } while (0)
 
-   VkSampleCountFlags sample_counts =
+   const VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&physical_device->isl_dev);
 
    /* BSpec 47003: There are a number of restrictions on the sample count
     * based off the coarse pixel size.
     */
    static const VkSampleCountFlags cp_size_sample_limits[] = {
-      [1]  = ISL_SAMPLE_COUNT_16_BIT | ISL_SAMPLE_COUNT_8_BIT |
-             ISL_SAMPLE_COUNT_4_BIT | ISL_SAMPLE_COUNT_2_BIT | ISL_SAMPLE_COUNT_1_BIT,
+      [1]  = ISL_SAMPLE_COUNT_8_BIT | ISL_SAMPLE_COUNT_4_BIT |
+             ISL_SAMPLE_COUNT_2_BIT | ISL_SAMPLE_COUNT_1_BIT,
       [2]  = ISL_SAMPLE_COUNT_4_BIT | ISL_SAMPLE_COUNT_2_BIT | ISL_SAMPLE_COUNT_1_BIT,
       [4]  = ISL_SAMPLE_COUNT_4_BIT | ISL_SAMPLE_COUNT_2_BIT | ISL_SAMPLE_COUNT_1_BIT,
       [8]  = ISL_SAMPLE_COUNT_2_BIT | ISL_SAMPLE_COUNT_1_BIT,

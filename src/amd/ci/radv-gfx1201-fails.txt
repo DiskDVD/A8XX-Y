@@ -3,6 +3,14 @@ dEQP-VK.wsi.direct.colorspace.hdr,Fail
 dEQP-VK.wsi.direct_drm.colorspace.basic,Fail
 dEQP-VK.wsi.direct_drm.colorspace.hdr,Fail
 
+# test bug
+dEQP-VK.compute.pipeline.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.buffer.rowmajor.decode,Fail
+dEQP-VK.compute.pipeline.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.physical_buffer.rowmajor.decode,Fail
+dEQP-VK.compute.shader_object_binary.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.buffer.rowmajor.decode,Fail
+dEQP-VK.compute.shader_object_binary.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.physical_buffer.rowmajor.decode,Fail
+dEQP-VK.compute.shader_object_spirv.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.buffer.rowmajor.decode,Fail
+dEQP-VK.compute.shader_object_spirv.cooperative_matrix.khr_r.subgroupscope.matrixmuladd_dequant.bfloat16_bfloat16.physical_buffer.rowmajor.decode,Fail
+
 # Fluster
 GStreamer-H.264-Vulkan@CABREF3_Sand_D,Fail
 GStreamer-H.264-Vulkan@CAFI1_SVA_C,Fail
@@ -531,13 +539,3 @@ GStreamer-VP9-Vulkan@vp93-2-20-10bit-yuv422.webm,Crash
 GStreamer-VP9-Vulkan@vp93-2-20-10bit-yuv444.webm,Crash
 GStreamer-VP9-Vulkan@vp93-2-20-12bit-yuv422.webm,Crash
 GStreamer-VP9-Vulkan@vp93-2-20-12bit-yuv444.webm,Crash
-
-# CTS is missing -frounding-math: https://gitlab.khronos.org/Tracker/vk-gl-cts/-/issues/6580
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.scalar.rte.denorm_flush.directed,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.scalar.rte.denorm_flush.float_controls,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec2.rte.denorm_flush.directed,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec2.rte.denorm_flush.float_controls,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec3.rte.denorm_flush.directed,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec3.rte.denorm_flush.float_controls,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec4.rte.denorm_flush.directed,Fail
-dEQP-VK.spirv_assembly.instruction.compute.opfma.fp64.vec4.rte.denorm_flush.float_controls,Fail

@@ -833,19 +833,7 @@ add_aux_surface_if_supported(struct anv_device *device,
       }
 
       /* Choose aux usage. */
-      if (device->info->verx10 == 125 && !device->physical->disable_fcv) {
-         /* FCV is enabled via 3DSTATE_3D_MODE. We'd expect plain CCS_E to
-          * perform better because it allows for non-zero fast clear colors,
-          * but we've run into regressions in several benchmarks (F1 22 and
-          * RDR2) when trying to enable it. When non-zero clear colors are
-          * enabled, we've observed many partial resolves. We haven't yet
-          * root-caused what layout transitions are causing these resolves,
-          * so in the meantime, we choose to reduce our clear color support.
-          * With only zero clear colors being supported, we might as well
-          * turn on FCV.
-          */
-         image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;
-      } else if (intel_needs_workaround(device->info, 1607794140)) {
+      if (intel_needs_workaround(device->info, 1607794140)) {
          /* FCV is permanently enabled on this hardware. */
          assert(device->info->verx10 == 120);
          image->planes[plane].aux_usage = ISL_AUX_USAGE_FCV_CCS_E;

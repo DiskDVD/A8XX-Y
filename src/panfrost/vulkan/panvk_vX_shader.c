@@ -96,7 +96,7 @@ panvk_lower_sysvals(nir_builder *b, nir_instr *instr, void *data)
       break;
 
 #if PAN_ARCH < 9
-   case nir_intrinsic_load_raw_vertex_offset_pan:
+   case nir_intrinsic_load_raw_vertex_offset:
       val = load_sysval(b, graphics, bit_size, vs.raw_vertex_offset);
       break;
    case nir_intrinsic_load_layer_id:
@@ -206,7 +206,7 @@ panvk_lower_load_vs_input(nir_builder *b, nir_intrinsic_instr *intrin,
    nir_def *ld_attr = nir_load_attribute_pan(
       b, intrin->def.num_components, intrin->def.bit_size,
       PAN_ARCH < 9 ?
-         nir_load_raw_vertex_id_pan(b) :
+         nir_load_raw_vertex_id(b) :
          nir_load_vertex_id(b),
       nir_load_instance_id(b),
       nir_get_io_offset_src(intrin)->ssa,

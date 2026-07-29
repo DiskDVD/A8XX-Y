@@ -46,6 +46,7 @@ typedef void mtl_compiler;
 typedef void mtl_argument_table_descriptor;
 typedef void mtl_argument_table;
 typedef void mtl_commit_options;
+typedef void mtl_counter_heap;
 
 struct mtl_feedback_data;
 typedef void (*mtl_feedback_handler_callback)(struct mtl_feedback_data *data);
@@ -277,9 +278,9 @@ enum mtl_command_queue_error {
    MTL_COMMAND_QUEUE_ERROR_OUT_OF_MEMORY = 3,
 
    /* Indicates the physical removal of the GPU before the command buffer
-    * completed.
+    * completed. Deprecated in macOS 27, never used for Apple GPUs.
     */
-   MTL_COMMAND_QUEUE_ERROR_DEVICE_REMOVED = 4,
+   /* MTL_COMMAND_QUEUE_ERROR_DEVICE_REMOVED = 4, */
 
    /* Indicates that the system revokes GPU access because it’s responsible for
     * too many timeouts or hangs.

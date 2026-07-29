@@ -87,6 +87,7 @@ struct vk_ir_header {
    int32_t min_bounds[3];
    int32_t max_bounds[3];
    uint32_t active_leaf_count;
+   uint32_t tmp_active_leaf_count;
    /* Indirect dispatch dimensions for the encoder.
     * ir_internal_node_count is the thread count in the X dimension,
     * while Y and Z are always set to 1. */
@@ -138,6 +139,18 @@ struct vk_ir_triangle_node {
    uint32_t geometry_id_and_flags;
 };
 
+#define VK_QUAD_TRIANGLE_ID_UNUSED 0xffffffff
+
+struct vk_ir_triangle_node_quad {
+   /*
+    * [0, 27]: primitive_id1
+    * [28,29]: triangle0_shared_edge
+    * [30,31]: triangle1_shared_edge
+    */
+   uint32_t triangle_id;
+   float coords[3];
+};
+
 struct vk_ir_instance_node {
    vk_ir_node base;
    /* See radv_bvh_instance_node */
@@ -178,6 +191,11 @@ struct key64_id_pair {
    uint32_t id;
    uint32_t key_lo;
    uint32_t key_hi;
+};
+
+struct vk_prefix_scan_partition {
+   uint32_t aggregate;
+   uint32_t inclusive_sum;
 };
 
 #ifdef VULKAN
@@ -373,6 +391,7 @@ TYPE(vk_ir_header, 4);
 TYPE(vk_ir_node, 4);
 TYPE(vk_ir_box_node, 4);
 TYPE(vk_ir_triangle_node, 4);
+TYPE(vk_ir_triangle_node_quad, 4);
 TYPE(vk_ir_aabb_node, 4);
 TYPE(vk_ir_instance_node, 8);
 
@@ -389,6 +408,8 @@ struct AccelerationStructureInstance {
 };
 TYPE(AccelerationStructureInstance, 8);
 
+TYPE(vk_prefix_scan_partition, 4);
+
 #else
 
 #define REF(type) uint64_t
@@ -404,9 +425,11 @@ TYPE(AccelerationStructureInstance, 8);
 #define VK_BUILD_FLAG_ALWAYS_ACTIVE (1 << 0)
 #define VK_BUILD_FLAG_PROPAGATE_CULL_FLAGS (1 << 1)
 #define VK_BUILD_FLAG_64BIT_KEYS (1 << 2)
-#define VK_BUILD_FLAG_COUNT 3
+#define VK_BUILD_FLAG_HAS_QUADS (1 << 3)
+#define VK_BUILD_FLAG_COUNT 4
 
-#define VK_LEAF_BUILD_FLAGS (VK_BUILD_FLAG_ALWAYS_ACTIVE | VK_BUILD_FLAG_PROPAGATE_CULL_FLAGS | VK_BUILD_FLAG_64BIT_KEYS)
+#define VK_LEAF_BUILD_FLAGS (VK_BUILD_FLAG_ALWAYS_ACTIVE | VK_BUILD_FLAG_PROPAGATE_CULL_FLAGS | \
+                             VK_BUILD_FLAG_64BIT_KEYS | VK_BUILD_FLAG_HAS_QUADS)
 
 struct leaf_args {
    VOID_REF bvh;
@@ -456,14 +479,7 @@ struct lbvh_generate_ir_args {
    uint32_t internal_node_base;
 };
 
-struct ploc_prefix_scan_partition {
-   uint32_t aggregate;
-   uint32_t inclusive_sum;
-};
-
 #define PLOC_WORKGROUP_SIZE 1024
-#define PLOC_SUBGROUPS_PER_WORKGROUP                                           \
-   (DIV_ROUND_UP(PLOC_WORKGROUP_SIZE, SUBGROUP_SIZE))
 
 #define VK_PLOC_BUILD_FLAGS (VK_BUILD_FLAG_PROPAGATE_CULL_FLAGS | VK_BUILD_FLAG_64BIT_KEYS)
 
@@ -484,6 +500,26 @@ struct hploc_args {
    REF(key32_id_pair) ids;
    VOID_REF ranges;
    uint32_t internal_node_base;
+};
+
+#define PAIR_TRIANGLES_WORKGROUP_SIZE 256
+
+#define VK_PAIR_TRIANGLES_BUILD_FLAGS (VK_BUILD_FLAG_64BIT_KEYS)
+
+struct pair_triangles_args {
+   VOID_REF bvh;
+   REF(vk_ir_header) header;
+   VOID_REF src_ids;
+   REF(vk_prefix_scan_partition) prefix_scan_partitions;
+};
+
+#define VK_ID_PREFIX_SUM_BUILD_FLAGS (VK_BUILD_FLAG_64BIT_KEYS)
+
+struct id_prefix_sum_args {
+   REF(vk_ir_header) header;
+   VOID_REF src_ids;
+   VOID_REF dst_ids;
+   REF(vk_prefix_scan_partition) prefix_scan_partitions;
 };
 
 #endif

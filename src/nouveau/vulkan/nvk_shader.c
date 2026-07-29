@@ -1448,7 +1448,7 @@ nvk_shader_get_executable_statistics(
       WRITE_STR(stat->name, "Fills from memory");
       WRITE_STR(stat->description, "Number of fills from memory to GPRs");
       stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
-      stat->value.u64 = shader->info.num_spills_to_mem;
+      stat->value.u64 = shader->info.num_fills_from_mem;
    }
 
    vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {

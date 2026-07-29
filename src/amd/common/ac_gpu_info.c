@@ -239,7 +239,7 @@ ac_fill_compiler_info(struct radeon_info *info, const struct drm_amdgpu_info_dev
 {
    /* We use ac_compiler_info for shader cache keys, so make sure there is no padding. */
    STATIC_ASSERT(sizeof(enum amd_gfx_level) == 4);
-   STATIC_ASSERT(sizeof(struct ac_compiler_info) == 56);
+   STATIC_ASSERT(sizeof(struct ac_compiler_info) == 60);
 
    struct ac_compiler_info *out = &info->compiler_info;
 
@@ -295,12 +295,16 @@ ac_fill_compiler_info(struct radeon_info *info, const struct drm_amdgpu_info_dev
          out->num_physical_wave64_vgprs_per_simd = 256;
       }
    }
-   if (info->gfx_level >= GFX10_3)
+   if (info->gfx_level >= GFX10_3) {
       out->wave64_vgpr_alloc_granularity = out->num_physical_wave64_vgprs_per_simd / 64;
-   else if (info->gfx_level == GFX9 && info->family >= CHIP_MI200)
+      out->wave64_vgpr_encode_granularity = 4;
+   } else if (info->gfx_level == GFX9 && info->family >= CHIP_MI200) {
       out->wave64_vgpr_alloc_granularity = 8;
-   else
+      out->wave64_vgpr_encode_granularity = 8;
+   } else {
       out->wave64_vgpr_alloc_granularity = 4;
+      out->wave64_vgpr_encode_granularity = 4;
+   }
    out->min_wave64_vgpr_alloc = out->wave64_vgpr_alloc_granularity;
    out->max_vgpr_alloc = 256;
 
@@ -485,8 +489,6 @@ ac_fill_hw_ip_info(struct radeon_info *info, const struct drm_amdgpu_info_device
          return false;
 
       info->ip[ip_type].num_queues = util_bitcount(ip_info->available_rings);
-   } else {
-      return false;
    }
 
    /* Gfx6-8 don't set ip_discovery_version. */
@@ -861,6 +863,9 @@ ac_identify_chip(struct radeon_info *info, const struct drm_amdgpu_info_device *
          break;
       case VCN_IP_VERSION(5, 0, 1):
          info->vcn_ip_version = VCN_5_0_1;
+         break;
+      case VCN_IP_VERSION(5, 0, 2):
+         info->vcn_ip_version = VCN_5_0_2;
          break;
       case VCN_IP_VERSION(5, 3, 0):
          info->vcn_ip_version = VCN_5_3_0;

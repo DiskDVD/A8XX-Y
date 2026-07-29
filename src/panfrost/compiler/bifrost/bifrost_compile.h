@@ -117,6 +117,12 @@ bool valhall_can_merge_workgroups(nir_shader *nir);
       .lower_doubles_options =                                                 \
          nir_lower_dmod, /* TODO: Don't lower supported 64-bit operations */   \
       .lower_int64_options = arch >= 9 ? ~(nir_lower_iadd64) : ~0,             \
+      /* Lower 64-bit ops (notably the shifts used for pointer arithmetic)    \
+       * ourselves, after nir_opt_load_store_vectorize. Letting the frontend  \
+       * lower int64 early turns address math into pack/unpack + carry chains \
+       * that nir_opt_load_store_vectorize cannot parse, which prevents        \
+       * vectorizing scalarized OpenCL vload/vstore accesses. */              \
+      .late_lower_int64 = (arch >= 9),                                         \
       .lower_mul_high = true,                                                  \
       .lower_fisnormal = true,                                                 \
       .lower_uadd_carry = true,                                                \

@@ -1003,6 +1003,7 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_load_pixel_local:
    case nir_intrinsic_load_shared:
    case nir_intrinsic_load_shared_nv:
+   case nir_intrinsic_load_shared_lock_nv:
    case nir_intrinsic_load_task_payload:
    case nir_intrinsic_load_uniform:
    case nir_intrinsic_load_constant:
@@ -1064,6 +1065,7 @@ nir_get_io_offset_src_number(const nir_intrinsic_instr *instr)
    case nir_intrinsic_store_pixel_local:
    case nir_intrinsic_store_shared:
    case nir_intrinsic_store_shared_nv:
+   case nir_intrinsic_store_shared_unlock_nv:
    case nir_intrinsic_store_task_payload:
    case nir_intrinsic_store_global:
    case nir_intrinsic_store_global_intel:
@@ -1470,7 +1472,7 @@ nir_lower_io_passes(nir_shader *nir, bool renumber_vs_inputs)
    /* This must be called after folding constant offset srcs. */
    if (nir->info.stage != MESA_SHADER_MESH &&
        !(nir->options->support_indirect_inputs & BITFIELD_BIT(nir->info.stage)))
-      NIR_PASS(_, nir, nir_lower_io_indirect_loads, nir_var_shader_in);
+      NIR_PASS(_, nir, nir_lower_io_indirect_loads, nir_var_shader_in, false);
 
    /* Lower and remove dead derefs and variables to clean up the IR. */
    NIR_PASS(_, nir, nir_lower_vars_to_ssa);

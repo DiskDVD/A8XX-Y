@@ -44,6 +44,7 @@
     <value name="Fragment" value="9"/>
     <value name="Indexed vertex" value="10"/>
     <value name="Malloc vertex" value="11"/>
+    <value name="Fullscreen" value="12"/>
   </enum>
 
   <enum name="Shader stage">
@@ -1564,10 +1565,8 @@
   <struct name="Vertex Array" size="3">
     <field name="Packet" size="1" start="0:0" type="bool"/>
 
-    <!-- Written by hardware in packet mode -->
+    <!-- Written by hardware in MallocVertexShader job mode -->
     <field name="Pointer" size="58" start="0:6" type="address" modifier="shr(6)"/>
-
-    <!-- Written by hardware, leave zero -->
     <field name="Vertex packet stride" size="16" start="2:0" type="uint"/>
     <field name="Vertex attribute stride" size="16" start="2:16" type="uint"/>
   </struct>
@@ -1622,6 +1621,10 @@
     <field name="Vertex attribute stride" start="0:16" size="16" type="uint"/>
   </struct>
 
+  <struct name="DCD Pointer" size="2">
+    <field name="Address" size="64" start="0:0" type="address"/>
+  </struct>
+
   <struct name="Tiler Pointer" size="2">
     <field name="Address" size="64" start="0:0" type="address"/>
   </struct>
@@ -1647,6 +1650,14 @@
     <section name="Draw" offset="128" type="Draw"/>
     <section name="Position" offset="256" type="Shader Environment"/>
     <section name="Varying" offset="320" type="Shader Environment"/>
+  </aggregate>
+
+  <aggregate name="Fullscreen Job" size="128" align="128">
+    <section name="Header" offset="0" type="Job Header"/>
+    <section name="Primitive" offset="32" type="Primitive"/>
+    <section name="DCD" offset="48" type="DCD Pointer"/>
+    <section name="Tiler" offset="56" type="Tiler Pointer"/>
+    <section name="Scissor" offset="104" type="Scissor"/>
   </aggregate>
 
   <aggregate name="Tiler Job" size="256" align="128">

@@ -486,6 +486,7 @@ lower_tex(nir_builder *b, nir_tex_instr *tex, void *data)
             b, BRW_SHADER_RELOC_EMBEDDED_SAMPLER_HANDLE + tex->sampler_index),
          plane, tex->sampler_non_uniform, true, data);
       nir_tex_instr_add_src(tex, nir_tex_src_sampler_handle, sampler_index);
+      tex->sampler_index = 0;
       progress = true;
    }
 

@@ -598,6 +598,9 @@ static void r600_init_screen_caps(struct r600_screen *rscreen)
 	caps->texture_border_color_quirk = PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_R600;
 	caps->endianness = PIPE_ENDIAN_LITTLE;
 
+	caps->device_type = rscreen->b.info.has_dedicated_vram
+	   ? PIPE_DEVICE_TYPE_DISCRETE_GPU
+	   : PIPE_DEVICE_TYPE_INTEGRATED_GPU;
 	caps->vendor_id = ATI_VENDOR_ID;
 	caps->device_id = rscreen->b.info.pci_id;
 	caps->video_memory = rscreen->b.info.vram_size_kb >> 10;

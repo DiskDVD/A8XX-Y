@@ -217,12 +217,12 @@ void genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
                                 const struct intel_l3_config *cfg);
 
 void genX(flush_descriptor_buffers)(struct anv_cmd_buffer *cmd_buffer,
-                                    struct anv_cmd_pipeline_state *pipe_state,
+                                    struct anv_bind_point_state *bind_state,
                                     VkShaderStageFlags active_stages);
 
 uint32_t
 genX(cmd_buffer_flush_descriptor_sets)(struct anv_cmd_buffer *cmd_buffer,
-                                       struct anv_cmd_pipeline_state *pipe_state,
+                                       struct anv_bind_point_state *bind_state,
                                        const VkShaderStageFlags dirty,
                                        const struct anv_shader **shaders,
                                        uint32_t num_shaders);
@@ -476,33 +476,33 @@ genX(cmd_buffer_emit_push_descriptor_surfaces)(struct anv_cmd_buffer *cmd_buffer
 
 static inline VkShaderStageFlags
 genX(cmd_buffer_flush_push_descriptors)(struct anv_cmd_buffer *cmd_buffer,
-                                        struct anv_cmd_pipeline_state *state)
+                                        struct anv_bind_point_state *bind_state)
 {
-   if (state->push_buffer_stages == 0 && state->push_descriptor_stages == 0)
+   if (bind_state->push_buffer_stages == 0 && bind_state->push_descriptor_stages == 0)
       return 0;
 
-   assert(state->push_descriptor_index != UINT8_MAX);
+   assert(bind_state->push_descriptor_index != UINT8_MAX);
    struct anv_descriptor_set *set =
-      state->descriptors[state->push_descriptor_index];
+      bind_state->descriptors[bind_state->push_descriptor_index];
    assert(set->is_push);
 
    const VkShaderStageFlags push_buffer_dirty =
-      cmd_buffer->state.push_descriptors_dirty & state->push_buffer_stages;
+      cmd_buffer->state.push_descriptors_dirty & bind_state->push_buffer_stages;
    if (push_buffer_dirty) {
       if (set->desc_surface_state.map == NULL)
          genX(cmd_buffer_emit_push_descriptor_buffer_surface)(cmd_buffer, set);
 
       /* Force the next push descriptor update to allocate a new descriptor set. */
-      state->push_descriptor.set_used_on_gpu = true;
+      bind_state->push_descriptor.set_used_on_gpu = true;
    }
 
    const VkShaderStageFlags push_descriptor_dirty =
-      cmd_buffer->state.push_descriptors_dirty & state->push_descriptor_stages;
+      cmd_buffer->state.push_descriptors_dirty & bind_state->push_descriptor_stages;
    if (push_descriptor_dirty) {
       genX(cmd_buffer_emit_push_descriptor_surfaces)(cmd_buffer, set);
 
       /* Force the next push descriptor update to allocate a new descriptor set. */
-      state->push_descriptor.set_used_on_gpu = true;
+      bind_state->push_descriptor.set_used_on_gpu = true;
    }
 
    /* Clear the dirty stages now that we've generated the surface states for

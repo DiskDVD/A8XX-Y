@@ -161,6 +161,9 @@ void si_init_screen_caps(struct si_screen *sscreen)
 
    caps->native_fence_fd = sscreen->info.has_fence_to_handle;
 
+   caps->device_type = sscreen->info.has_dedicated_vram
+      ? PIPE_DEVICE_TYPE_DISCRETE_GPU
+      : PIPE_DEVICE_TYPE_INTEGRATED_GPU;
    caps->endianness = PIPE_ENDIAN_LITTLE;
    caps->vendor_id = ATI_VENDOR_ID;
    caps->device_id = sscreen->info.pci_id;

@@ -513,13 +513,10 @@ isl_device_get_supported_tilings(const struct isl_device *dev)
 isl_sample_count_mask_t ATTRIBUTE_CONST
 isl_device_get_sample_counts(const struct isl_device *dev)
 {
-   if (ISL_GFX_VER(dev) >= 9 && ISL_GFX_VER(dev) < 30) {
-      return ISL_SAMPLE_COUNT_1_BIT |
-             ISL_SAMPLE_COUNT_2_BIT |
-             ISL_SAMPLE_COUNT_4_BIT |
-             ISL_SAMPLE_COUNT_8_BIT |
-             ISL_SAMPLE_COUNT_16_BIT;
-   } else if (ISL_GFX_VER(dev) >= 8) {
+   if (ISL_GFX_VER(dev) >= 8) {
+      /* MSAA 16x is supported in some HW generations from Gfx9 but we choose
+       * not to support it.
+       */
       return ISL_SAMPLE_COUNT_1_BIT |
              ISL_SAMPLE_COUNT_2_BIT |
              ISL_SAMPLE_COUNT_4_BIT |

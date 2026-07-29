@@ -509,6 +509,12 @@ struct pan_shader_info {
           * Used by the Valhall hardware.
           */
          bool allow_merging_workgroups;
+
+         /* Mask of num_workgroups components a precompiled kernel
+          * reads, so dynamic dispatches know which FAU slots to patch.
+          * Stays zero for shaders that are not built by panfrost_compile.
+          */
+         uint8_t precomp_num_workgroups_mask;
       } cs;
    };
 

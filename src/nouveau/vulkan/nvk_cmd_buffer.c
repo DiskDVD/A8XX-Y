@@ -63,6 +63,7 @@ nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
    nvk_cmd_pool_free_gart_mem_list(pool, &cmd->owned_gart_mem);
    nvk_cmd_pool_free_qmd_list(pool, &cmd->owned_qmd);
    util_dynarray_fini(&cmd->pushes);
+   util_dynarray_fini(&cmd->copy_memory_indirect_temps);
    vk_command_buffer_finish(&cmd->vk);
    vk_free(&pool->vk.alloc, cmd);
 }

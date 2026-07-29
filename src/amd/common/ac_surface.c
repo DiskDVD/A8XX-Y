@@ -631,7 +631,8 @@ bool ac_get_supported_modifiers(const struct radeon_info *info,
       ADD_MOD(DRM_FORMAT_MOD_LINEAR)
       break;
    }
-   case GFX12: {
+   case GFX12:
+   case GFX12_1: {
       /* Chip properties no longer affect tiling, and there is no distinction between displayable
        * and non-displayable anymore. (DCC settings may affect displayability though)
        *

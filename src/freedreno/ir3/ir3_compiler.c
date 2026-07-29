@@ -468,6 +468,9 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
          dev_info->threadsize_base * dev_info->max_waves;
       if ((compiler->gen >= 6) && dev_info->props.supports_double_threadsize)
          compiler->nir_options.max_workgroup_invocations *= 2;
+
+      compiler->max_variable_workgroup_size =
+         compiler->nir_options.max_workgroup_invocations;
    }
 
    if (options->lower_base_vertex) {

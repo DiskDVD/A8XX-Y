@@ -98,7 +98,7 @@ jay_lower_post_sched(jay_shader *shader, uint32_t api, uint32_t float_sizes)
 
          /* Restore to global state on block boundaries */
          if (jay_num_successors(block, GPR) > 0) {
-            set_cr0(func, jay_after_block(block), &current, cr0);
+            set_cr0(func, jay_after_block_logical(block), &current, cr0);
          }
       }
    }

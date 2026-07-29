@@ -166,10 +166,12 @@ lower_immediates(jay_builder *b, jay_inst *I, struct hash_table_u64 *constants)
                        !jay_type_is_any_float(I->type) &&
                        jay_as_uint(I->src[s]) <= UINT16_MAX;
 
-            /* Some instructions on some platforms can have at most one
-             * immediate source. TODO: Refine.
-             */
-            allowed &= ((s == 0) || !jay_is_imm(I->src[0]));
+            /* MAD/DP4A can have at most one immediate source on Gfx11 */
+            allowed &= (ver >= 12 || s == 0 || !jay_is_imm(I->src[0])) ||
+                       !(I->op == JAY_OPCODE_MAD ||
+                         I->op == JAY_OPCODE_DP4A_SS ||
+                         I->op == JAY_OPCODE_DP4A_SU ||
+                         I->op == JAY_OPCODE_DP4A_UU);
          }
 
          /* SENDs have immediate messages descriptors but not payloads */
@@ -224,6 +226,21 @@ jay_lower_pre_ra(jay_shader *s)
             jay_builder b = { .shader = s, .func = f };
 
             lower_bf16_restrictions(I, f);
+
+            /* We use predicated-default with flags to optimize OR/AND of
+             * booleans. RA forcibly ties the flags for this case, so insert
+             * copies to legalize that. These copies are usually coalesced.
+             */
+            if (I->predication == JAY_PREDICATED_DEFAULT) {
+               b.cursor = jay_before_inst(I);
+               jay_def copy = jay_alloc_def(&b, FLAG, 1);
+               jay_MOV(&b, copy, I->src[I->num_srcs - 1])->type =
+                  JAY_TYPE_U | s->dispatch_width;
+               assert(jay_defs_equivalent(I->src[I->num_srcs - 1],
+                                          I->src[I->num_srcs - 2]));
+               jay_replace_src(&I->src[I->num_srcs - 1], copy);
+               jay_replace_src(&I->src[I->num_srcs - 2], copy);
+            }
 
             /* Shuffle(UGPR) can result from copyprop if there's a mismatch
              * between isel and divergence analysis (e.g. because multipolygon

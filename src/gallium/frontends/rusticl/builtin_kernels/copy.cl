@@ -11,4 +11,3 @@ create_clear_buffer_kernel(8, uint2);
 create_clear_buffer_kernel(16, uint4);
 create_clear_buffer_kernel(32, uint8);
 create_clear_buffer_kernel(64, uint16);
-create_clear_buffer_kernel(128, ulong16);

@@ -225,12 +225,14 @@ impl DeviceProgramBuild {
         cache: Option<&DiskCacheBorrowed>,
         name: &CStr,
         spec_constants: &HashMap<u32, Vec<u8>>,
+        libclc: &NirShader,
     ) -> Option<cache_key> {
         if let Some(cache) = cache {
             assert_eq!(self.status, CL_BUILD_SUCCESS as cl_build_status);
 
             let spirv = self.spirv.as_ref().unwrap();
             let mut bin = spirv.to_bin().to_vec();
+            bin.extend_from_slice(libclc.source_hash());
             bin.extend_from_slice(name.to_bytes());
 
             for (k, v) in spec_constants {
@@ -654,11 +656,15 @@ impl Program {
         }))
     }
 
-    pub fn from_spirv(context: Arc<Context>, spirv: &[u8]) -> Arc<Program> {
-        let builds = Self::create_default_builds(&context.devs);
+    pub fn from_spirv_with_devs(
+        devs: Vec<&'static Device>,
+        context: Arc<Context>,
+        spirv: &[u8],
+    ) -> Arc<Program> {
+        let builds = Self::create_default_builds(&devs);
         Arc::new(Self {
             base: CLObjectBase::new(RusticlTypes::Program),
-            devs: context.devs.clone(),
+            devs: devs,
             context: context,
             src: ProgramSourceType::Il(SPIRVBin::from_bin(spirv)),
             build: Mutex::new(ProgramBuild {
@@ -668,6 +674,10 @@ impl Program {
                 kernel_info: HashMap::new(),
             }),
         })
+    }
+
+    pub fn from_spirv(context: Arc<Context>, spirv: &[u8]) -> Arc<Program> {
+        Self::from_spirv_with_devs(context.devs.clone(), context, spirv)
     }
 
     pub fn build_info(&self) -> MutexGuard<'_, ProgramBuild> {

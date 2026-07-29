@@ -245,6 +245,10 @@ etna_emit_state(struct etna_context *ctx)
    struct etna_screen *screen = ctx->screen;
    unsigned ccw = ctx->rasterizer->front_ccw;
 
+   if (!ctx->dirty &&
+       !ctx->dirty_sampler_views &&
+       likely(!DBG_ENABLED(ETNA_DBG_CFLUSH_ALL)))
+      return;
 
    /* Pre-reserve the command buffer space which we are likely to need.
     * This must cover all the state emitted below, and the following
@@ -361,8 +365,6 @@ etna_emit_state(struct etna_context *ctx)
    if (likely(dirty & (ETNA_DIRTY_INDEX_BUFFER))) {
       /*00644*/ EMIT_STATE_RELOC(FE_INDEX_STREAM_BASE_ADDR, &ctx->index_buffer.FE_INDEX_STREAM_BASE_ADDR);
       /*00648*/ EMIT_STATE(FE_INDEX_STREAM_CONTROL, ctx->index_buffer.FE_INDEX_STREAM_CONTROL);
-   }
-   if (likely(dirty & (ETNA_DIRTY_INDEX_BUFFER))) {
       /*00674*/ EMIT_STATE(FE_PRIMITIVE_RESTART_INDEX, ctx->index_buffer.FE_PRIMITIVE_RESTART_INDEX);
    }
    if (likely(dirty & (ETNA_DIRTY_VERTEX_BUFFERS))) {

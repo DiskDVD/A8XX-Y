@@ -1476,6 +1476,7 @@ pvr_sub_cmd_gfx_align_ds_subtiles(struct pvr_cmd_buffer *const cmd_buffer,
     */
    ds->has_alignment_transfers = true;
    ds->addr = buffer->dev_addr;
+   ds->base_array_layer = 0;
    ds->physical_extent = rounded_size;
 
    gfx_sub_cmd->wait_on_previous_transfer = true;
@@ -1803,6 +1804,7 @@ static VkResult pvr_sub_cmd_gfx_job_init(const struct pvr_device_info *dev_info,
             .height = u_minify(ds_plane->physical_extent.height,
                                ds_iview->vk.base_mip_level),
          };
+         job->ds.base_array_layer = ds_iview->vk.base_array_layer;
          job->ds.layer_size = ds_plane->layer_size;
 
          job->ds_clear_value = default_ds_clear_value;
@@ -9673,8 +9675,8 @@ void PVR_PER_ARCH(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
    struct pvr_cmd_buffer_state *const state = &cmd_buffer->state;
    const struct pvr_render_pass *const render_pass =
       state->render_pass_info.pass;
-   VkPipelineStageFlags vk_src_stage_mask = 0U;
-   VkPipelineStageFlags vk_dst_stage_mask = 0U;
+   VkPipelineStageFlags2 vk_src_stage_mask = 0U;
+   VkPipelineStageFlags2 vk_dst_stage_mask = 0U;
    bool is_stencil_store_load_needed;
    uint32_t required_stage_mask = 0U;
    uint32_t src_stage_mask;

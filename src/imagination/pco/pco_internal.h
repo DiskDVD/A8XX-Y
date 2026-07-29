@@ -1508,6 +1508,18 @@ static inline pco_instr *pco_last_instr(pco_block *block)
 }
 
 /**
+ * \brief Returns whether an instruction is the last instruction in its block.
+ *
+ * \param[in] instr The instruction.
+ * \return True if the instruction is the last instruction in its block.
+ */
+static inline bool pco_is_last_instr(pco_instr *instr)
+{
+   pco_instr *last_instr = pco_last_instr(instr->parent_block);
+   return instr == last_instr;
+}
+
+/**
  * \brief Returns the next instruction.
  *
  * \param[in] instr The current instruction.

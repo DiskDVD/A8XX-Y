@@ -192,6 +192,8 @@ etna_texture_desc_fill(struct etna_context *ctx,
    DESC_SET(SLICE, res->levels[0].layer_stride);
    DESC_SET(3D_CONFIG, VIVS_TE_SAMPLER_3D_CONFIG_DEPTH(base_depth));
    DESC_SET(ASTC0, COND(astc, VIVS_NTE_SAMPLER_ASTC0_ASTC_FORMAT(format)) |
+                   COND(astc && util_format_is_srgb(sv->base.format),
+                        VIVS_NTE_SAMPLER_ASTC0_ASTC_SRGB) |
                    VIVS_NTE_SAMPLER_ASTC0_UNK8(0xc) |
                    VIVS_NTE_SAMPLER_ASTC0_UNK16(0xc) |
                    VIVS_NTE_SAMPLER_ASTC0_UNK24(0xc));

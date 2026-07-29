@@ -1300,7 +1300,7 @@ namespace {
             flags >>= 4;
          }
 
-         deps.push_back(inst_deps);
+         deps.push_back(std::move(inst_deps));
          update_inst_scoreboard(shader, jps, inst, ip, sb);
          ip++;
       }
@@ -1376,7 +1376,7 @@ namespace {
                }
             }
 
-            deps1.push_back(inst_deps1);
+            deps1.push_back(std::move(inst_deps1));
             ip++;
          }
       }
@@ -1423,7 +1423,7 @@ namespace {
             add_dependency(ids, inst_deps1, dep);
          }
 
-         deps1.push_back(inst_deps1);
+         deps1.push_back(std::move(inst_deps1));
       }
 
       return deps1;

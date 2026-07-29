@@ -837,7 +837,8 @@ v3d_sand8_blit(struct pipe_context *pctx, struct pipe_blit_info *info)
         MESA_TRACE_FUNC();
 
         v3d_blitter_save(v3d, info->render_condition_enable ?
-                         V3D_BLIT_COND : V3D_BLIT);
+                         V3D_BLIT_COND | V3D_SAVE_FRAGMENT_CONSTANT :
+                         V3D_BLIT | V3D_SAVE_FRAGMENT_CONSTANT);
 
         struct pipe_surface dst_surf;
         /* Although the src textures are cpp=1 or cpp=2, the dst texture
@@ -1149,7 +1150,8 @@ v3d_sand30_blit(struct pipe_context *pctx, struct pipe_blit_info *info)
         MESA_TRACE_FUNC();
 
         v3d_blitter_save(v3d, info->render_condition_enable ?
-                         V3D_BLIT_COND : V3D_BLIT);
+                         V3D_BLIT_COND | V3D_SAVE_FRAGMENT_CONSTANT :
+                         V3D_BLIT | V3D_SAVE_FRAGMENT_CONSTANT);
 
         struct pipe_surface dst_surf;
         v3d_set_blit_surface(&dst_surf, pctx, info->dst.resource,

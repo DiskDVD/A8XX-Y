@@ -226,6 +226,9 @@ nvc0_init_screen_caps(struct nvc0_screen *screen)
    caps->max_viewports = NVC0_MAX_VIEWPORTS;
    caps->max_texture_gather_components = 4;
    caps->texture_border_color_quirk = PIPE_QUIRK_TEXTURE_BORDER_COLOR_SWIZZLE_NV50;
+   caps->device_type = dev->info.type == NV_DEVICE_TYPE_DIS
+      ? PIPE_DEVICE_TYPE_DISCRETE_GPU
+      : PIPE_DEVICE_TYPE_INTEGRATED_GPU;
    caps->endianness = PIPE_ENDIAN_LITTLE;
    caps->max_shader_patch_varyings = 30;
    caps->max_window_rectangles = NVC0_MAX_WINDOW_RECTANGLES;

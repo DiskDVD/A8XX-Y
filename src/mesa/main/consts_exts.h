@@ -977,6 +977,13 @@ struct gl_constants
    GLuint ShaderSubgroupSupportedStages;
    GLuint ShaderSubgroupSupportedFeatures;
    bool ShaderSubgroupQuadAllStages;
+
+   /**
+    * Whether GL_LINEAR_TILING_EXT affects regular GL textures, not just
+    * memory objects. For microbenchmarking. Enabled via
+    * MESA_DEBUG=api-tiling-linear.
+    */
+   bool AllowGLTextureLinearTiling;
 };
 
 #endif

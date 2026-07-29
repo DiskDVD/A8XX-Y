@@ -2180,7 +2180,7 @@ static bool si_is_reduction_mode_supported(struct pipe_screen *screen, enum pipe
    return ac_is_reduction_mode_supported(&sscreen->info, format, true);
 }
 
-static bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,
+bool si_is_format_supported(struct pipe_screen *screen, enum pipe_format format,
                                    enum pipe_texture_target target, unsigned sample_count,
                                    unsigned storage_sample_count, unsigned usage)
 {
@@ -4798,7 +4798,6 @@ void si_init_state_functions(struct si_context *sctx)
 
 void si_init_screen_state_functions(struct si_screen *sscreen)
 {
-   sscreen->b.is_format_supported = si_is_format_supported;
    sscreen->b.create_vertex_state = si_pipe_create_vertex_state;
    sscreen->b.vertex_state_destroy = si_pipe_vertex_state_destroy;
 

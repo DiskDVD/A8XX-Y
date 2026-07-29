@@ -280,10 +280,8 @@ emit_biases(struct ethosu_subgraph *subgraph, struct ethosu_operation *operation
 static void
 emit_activation(struct ethosu_subgraph *subgraph, struct ethosu_operation *operation)
 {
-   unsigned min = 0;
-
-   if (operation->type == ETHOSU_OPERATION_TYPE_ELTWISE)
-      min = operation->eltwise.activation_min;
+   int min = 0;
+   int max;
 
    if (operation->type == ETHOSU_OPERATION_TYPE_POOLING)
       EMIT0(NPU_SET_ACTIVATION, operation->pooling.activation);
@@ -291,12 +289,30 @@ emit_activation(struct ethosu_subgraph *subgraph, struct ethosu_operation *opera
       EMIT0(NPU_SET_ACTIVATION, 0x0);
 
    if (operation->ofm.is_signed) {
-      EMIT0(NPU_SET_ACTIVATION_MIN, 0xff80);
-      EMIT0(NPU_SET_ACTIVATION_MAX, 0x7f);
+      if (operation->ofm.precision == 0) {
+         min = INT8_MIN;
+         max = INT8_MAX;
+      } else {
+         min = INT16_MIN;
+         max = INT16_MAX;
+      }
    } else {
-      EMIT0(NPU_SET_ACTIVATION_MIN, min);
-      EMIT0(NPU_SET_ACTIVATION_MAX, 0xff);
+      if (operation->ofm.precision == 0)
+         max = UINT8_MAX;
+      else
+         max = UINT16_MAX;
    }
+
+   if (operation->type == ETHOSU_OPERATION_TYPE_ELTWISE &&
+       !operation->ofm.is_signed)
+      min = operation->eltwise.activation_min;
+   else if (operation->type == ETHOSU_OPERATION_TYPE_CONVOLUTION) {
+      min = operation->conv.activation_min;
+      max = operation->conv.activation_max;
+   }
+
+   EMIT0(NPU_SET_ACTIVATION_MIN, (uint16_t)min);
+   EMIT0(NPU_SET_ACTIVATION_MAX, (uint16_t)max);
 }
 
 static void

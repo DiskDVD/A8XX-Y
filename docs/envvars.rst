@@ -594,14 +594,6 @@ Intel driver environment variables
       pass and iteration that make progress (Gfx >= 9)
    ``mesh``
       dump shader assembly for mesh shaders
-   ``no8``
-      don't generate SIMD8 fragment shader
-   ``no16``
-      suppress generation of 16-wide fragment shaders. useful for
-      debugging broken shaders
-   ``no32``
-      suppress generation of 32-wide fragment shaders. useful for
-      debugging broken shaders
    ``no-oaconfig``
       disable HW performance metric configuration, and anything
       related to i915-perf (useful when running on simulation)

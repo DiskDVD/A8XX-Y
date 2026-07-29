@@ -709,6 +709,7 @@ struct v3d_context {
         struct v3d_vertexbuf_stateobj vertexbuf;
         struct v3d_streamout_stateobj streamout;
         struct v3d_bo *current_oq;
+        uint32_t current_oq_offset;
         struct pipe_resource *prim_counts;
         uint32_t prim_counts_offset;
         struct v3d_perfmon_state *active_perfmon;

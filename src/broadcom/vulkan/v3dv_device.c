@@ -701,6 +701,16 @@ v3dv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    instance->pipeline_cache_enabled = true;
    instance->default_pipeline_cache_enabled = true;
    instance->meta_cache_enabled = true;
+   int64_t pipeline_cache_max_entries =
+      debug_get_num_option("V3DV_MAX_PIPELINE_CACHE_ENTRIES", 0);
+   if (pipeline_cache_max_entries < 0 ||
+       pipeline_cache_max_entries > UINT32_MAX) {
+      mesa_loge("V3DV_MAX_PIPELINE_CACHE_ENTRIES must be between 0 and %u\n",
+                UINT32_MAX);
+      pipeline_cache_max_entries = 0;
+   }
+   instance->pipeline_cache_max_entries = (uint32_t) pipeline_cache_max_entries;
+
    const char *pipeline_cache_str = os_get_option("V3DV_ENABLE_PIPELINE_CACHE");
    uint64_t pipeline_cache_flags =
       parse_debug_string(pipeline_cache_str, v3dv_pipeline_cache_control);
@@ -768,6 +778,8 @@ physical_device_finish(struct v3dv_physical_device *device)
    close(device->render_fd);
    if (device->display_fd >= 0)
       close(device->display_fd);
+   if (device->primary_fd >= 0)
+      close(device->primary_fd);
 
    free(device->name);
 
@@ -1735,6 +1747,8 @@ enumerate_devices(struct vk_instance *vk_instance)
    if (render_fd < 0) {
       if (display_fd != -1)
          close(display_fd);
+      if (primary_fd != -1)
+         close(primary_fd);
       result = VK_ERROR_INCOMPATIBLE_DRIVER;
    } else
       result = create_physical_device(instance, primary_fd, render_fd, display_fd);
@@ -2037,7 +2051,7 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
          result = queue_init(device, &device->queues[device->queue_count],
                              &pCreateInfo->pQueueCreateInfos[i], j);
          if (result != VK_SUCCESS)
-            goto fail;
+            goto fail_queues_init;
 
          device->queue_count++;
       }
@@ -2098,6 +2112,12 @@ v3dv_CreateDevice(VkPhysicalDevice physicalDevice,
    return VK_SUCCESS;
 
 fail:
+   destroy_device_meta(device);
+   v3dv_pipeline_cache_finish(&device->default_pipeline_cache);
+   v3dv_event_free_resources(device);
+   v3dv_query_free_resources(device);
+   v3dv_bo_free(device, device->null_bo);
+fail_queues_init:
    for (uint32_t i = 0; i < device->queue_count; i++)
       queue_finish(&device->queues[i]);
    vk_free2(&device->vk.alloc, pAllocator, device->queues);
@@ -2105,11 +2125,6 @@ fail_queues_alloc:
    cnd_destroy(&device->query_ended);
    mtx_destroy(&device->query_mutex);
    mtx_destroy(&device->queue_mutex);
-   destroy_device_meta(device);
-   v3dv_pipeline_cache_finish(&device->default_pipeline_cache);
-   v3dv_event_free_resources(device);
-   v3dv_query_free_resources(device);
-   v3dv_bo_free(device, device->null_bo);
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
 
@@ -2573,18 +2588,14 @@ get_image_memory_requirements(struct v3dv_image *image,
                               VkImageAspectFlagBits planeAspect,
                               VkMemoryRequirements2 *pMemoryRequirements)
 {
-   uint32_t readahead = 0;
    /* The TFU unit has a 64-bytes readahead so we need to add a
     * V3D_TFU_READAHEAD padding to avoid invalid reads done by the TFU after
     * the end of the last allocated memory page causing MMU error.
     */
-   if (image->vk.usage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
-           readahead = V3D_TFU_READAHEAD_SIZE;
-
    pMemoryRequirements->memoryRequirements = (VkMemoryRequirements) {
       .memoryTypeBits = 0x1,
       .alignment = image->planes[0].alignment,
-      .size = image->non_disjoint_size ? image->non_disjoint_size + readahead : 0
+      .size = image->non_disjoint_size ? image->non_disjoint_size + V3D_TFU_READAHEAD_SIZE : 0
    };
 
    if (planeAspect != VK_IMAGE_ASPECT_NONE) {
@@ -2597,7 +2608,7 @@ get_image_memory_requirements(struct v3dv_image *image,
       VkMemoryRequirements *mem_reqs =
          &pMemoryRequirements->memoryRequirements;
       mem_reqs->alignment = image->planes[plane].alignment;
-      mem_reqs->size = image->planes[plane].size + readahead;
+      mem_reqs->size = image->planes[plane].size + V3D_TFU_READAHEAD_SIZE;
    }
 
    vk_foreach_struct(ext, pMemoryRequirements->pNext) {
@@ -2824,26 +2835,24 @@ static void
 get_buffer_memory_requirements(struct v3dv_buffer *buffer,
                                VkMemoryRequirements2 *pMemoryRequirements)
 {
-   uint32_t readahead = 0;
    /* UBO and SSBO may be read using ldunifa, which prefetches the next 4
     * bytes after a read. If the buffer's size is exactly a multiple of a page
     * size and the shader reads the last 4 bytes with ldunifa the prefetching
-    * would read out of bounds and cause an MMU error, so we allocate extra
-    * space to avoid kernel error spamming. The TFU unit has also a 64-bytes
-    * readahead so we need to add a V3D_TFU_READAHEAD padding to avoid invalid
-    * reads done by the TFU after the end of the last allocated memory page.
+    * would read out of bounds and cause an MMU error, so we need to allocate
+    * extra space to avoid kernel error spamming.
+    *
+    * On the other side, the TFU unit has also a 64-bytes readahead so we need
+    * to add a V3D_TFU_READAHEAD padding to avoid invalid reads done by the
+    * TFU after the end of the last allocated memory page.
+    *
+    * As the buffers can be exported and be used in a different way than
+    * created, the most conservative approach is to always add the
+    * V3D_TFU_READAHEAD padding.
     */
-   if (buffer->usage & (VK_BUFFER_USAGE_TRANSFER_SRC_BIT))
-           readahead = V3D_TFU_READAHEAD_SIZE;
-   else if (buffer->usage & (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)) {
-           readahead = 4;
-   }
-
    pMemoryRequirements->memoryRequirements = (VkMemoryRequirements) {
       .memoryTypeBits = 0x1,
       .alignment = buffer->alignment,
-      .size = align64(buffer->size + readahead, buffer->alignment),
+      .size = align64(buffer->size + V3D_TFU_READAHEAD_SIZE, buffer->alignment),
    };
 
    vk_foreach_struct(ext, pMemoryRequirements->pNext) {

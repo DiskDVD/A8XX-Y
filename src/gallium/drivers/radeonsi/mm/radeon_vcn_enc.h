@@ -67,6 +67,7 @@ struct radeon_enc_dpb_buffer {
 struct radeon_enc_fb_buffer {
    struct si_resource *res;
    void *data;
+   unsigned max_bitstream_size;
 };
 
 struct radeon_enc_pic {

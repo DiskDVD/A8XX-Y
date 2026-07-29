@@ -889,6 +889,7 @@ panvk_get_subqueue_stages(enum panvk_subqueue_id subqueue)
    case PANVK_SUBQUEUE_COMPUTE:
       return VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
              VK_PIPELINE_STAGE_2_COPY_BIT |
+             VK_PIPELINE_STAGE_2_COPY_INDIRECT_BIT_KHR |
              VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT;
    default:
       UNREACHABLE("Invalid subqueue id");

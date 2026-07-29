@@ -3,6 +3,7 @@
  * Copyright (C) 2023 Amazon.com, Inc. or its affiliates.
  * Copyright (C) 2018 Alyssa Rosenzweig
  * Copyright (C) 2020 Collabora Ltd.
+ * Copyright (C) 2026 NXP
  * Copyright © 2017 Intel Corporation
  * SPDX-License-Identifier: MIT
  */
@@ -3115,6 +3116,8 @@ panfrost_val_emit_varying_descriptors(struct panfrost_batch *batch)
 
    batch->nr_varying_attribs[MESA_SHADER_FRAGMENT] = fs_in_slots;
 
+   const bool fullscreen = batch->fullscreen_texcoord_buf != 0;
+
    for (uint32_t i = 0; i < fs_in_slots; i++) {
       const struct pan_varying_slot *fs_slot =
          pan_varying_layout_slot_at(fs_format, i);
@@ -3139,11 +3142,13 @@ panfrost_val_emit_varying_descriptors(struct panfrost_batch *batch)
          cfg.attribute_type = MALI_ATTRIBUTE_TYPE_VERTEX_PACKET;
          cfg.offset_enable = false;
          cfg.format = GENX(pan_format_from_pipe_format)(format)->hw;
-         cfg.table = 61;
+         /* Fullscreen on CSF uses a const buffer, everything else uses HCBs. */
+         cfg.table = fullscreen ? PAN_TABLE_ATTRIBUTE_BUFFER : 61;
          cfg.frequency = MALI_ATTRIBUTE_FREQUENCY_VERTEX;
          cfg.offset = 1024 + offset;
-         /* On v12+, the hardware-controlled buffer is at index 1 for varyings */
-         cfg.buffer_index = PAN_ARCH >= 12 ? 1 : 0;
+         /* On v12+, the hardware-controlled buffer is at index 1 for varyings.
+          * Fullscreen texcoords are on index 0 of ATTR_BUF. */
+         cfg.buffer_index = (PAN_ARCH >= 12 && !fullscreen) ? 1 : 0;
          cfg.attribute_stride = vs_layout->generic_size_B;
          cfg.packet_stride = vs_layout->generic_size_B + 16;
       }
@@ -3369,13 +3374,12 @@ panfrost_increase_vertex_count(struct panfrost_batch *batch, uint32_t increment)
  * because all dirty flags are set there.
  */
 static void
-panfrost_update_active_prim(struct panfrost_context *ctx,
-                            const struct pipe_draw_info *info)
+panfrost_update_active_prim(struct panfrost_context *ctx, enum mesa_prim prim)
 {
    const enum mesa_prim prev_prim = u_reduced_prim(ctx->active_prim);
-   const enum mesa_prim new_prim = u_reduced_prim(info->mode);
+   const enum mesa_prim new_prim = u_reduced_prim(prim);
 
-   ctx->active_prim = info->mode;
+   ctx->active_prim = prim;
 
    if ((ctx->dirty & PAN_DIRTY_RASTERIZER) ||
        (prev_prim != new_prim)) {
@@ -3442,7 +3446,7 @@ panfrost_single_draw_direct(struct panfrost_batch *batch,
 
    struct panfrost_context *ctx = batch->ctx;
 
-   panfrost_update_active_prim(ctx, info);
+   panfrost_update_active_prim(ctx, info->mode);
 
    /* Take into account a negative bias */
    ctx->vertex_count =
@@ -3524,7 +3528,7 @@ panfrost_compatible_batch_state(struct panfrost_batch *batch,
 }
 
 static struct panfrost_batch *
-prepare_draw(struct pipe_context *pipe, const struct pipe_draw_info *info)
+prepare_draw(struct pipe_context *pipe, enum mesa_prim prim)
 {
    struct panfrost_context *ctx = pan_context(pipe);
    struct panfrost_device *dev = pan_device(pipe->screen);
@@ -3546,7 +3550,7 @@ prepare_draw(struct pipe_context *pipe, const struct pipe_draw_info *info)
          return NULL;
    }
 
-   enum mesa_prim reduced_prim = u_reduced_prim(info->mode);
+   enum mesa_prim reduced_prim = u_reduced_prim(prim);
 
    if (unlikely(!panfrost_compatible_batch_state(batch, reduced_prim))) {
       batch = panfrost_get_fresh_batch_for_fbo(ctx, "State change");
@@ -3590,7 +3594,7 @@ panfrost_draw_indirect(struct pipe_context *pipe,
       return;
    }
 
-   struct panfrost_batch *batch = prepare_draw(pipe, info);
+   struct panfrost_batch *batch = prepare_draw(pipe, info->mode);
    if (!batch) {
       mesa_loge("prepare_draw failed");
       return;
@@ -3601,7 +3605,7 @@ panfrost_draw_indirect(struct pipe_context *pipe,
    panfrost_batch_read_rsrc(batch, pan_resource(indirect->buffer),
                             MESA_SHADER_VERTEX);
 
-   panfrost_update_active_prim(ctx, &tmp_info);
+   panfrost_update_active_prim(ctx, info->mode);
 
    ctx->drawid = drawid_offset;
 
@@ -3645,7 +3649,7 @@ panfrost_multi_draw_direct(struct pipe_context *pipe,
                            unsigned num_draws)
 {
    struct panfrost_context *ctx = pan_context(pipe);
-   struct panfrost_batch *batch = prepare_draw(pipe, info);
+   struct panfrost_batch *batch = prepare_draw(pipe, info->mode);
    if (!batch) {
       mesa_loge("prepare_draw failed");
       return;
@@ -3686,6 +3690,57 @@ panfrost_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info,
    } else {
       panfrost_multi_draw_direct(pipe, info, drawid_offset, draws, num_draws);
    }
+}
+
+static void
+panfrost_draw_fullscreen(struct panfrost_context *ctx,
+                         struct panfrost_uncompiled_shader *vs,
+                         enum blitter_attrib_type type,
+                         const struct blitter_attrib *attrib)
+{
+   assert(!ctx->active_queries);
+   assert(!ctx->streamout.num_targets);
+
+   PAN_TRACE_FUNC(PAN_TRACE_GL_CMDSTREAM);
+
+   ctx->draw_calls++;
+
+   struct panfrost_batch *batch = prepare_draw(&ctx->base, MESA_PRIM_QUADS);
+   if (!batch) {
+      mesa_loge("prepare_draw failed");
+      return;
+   }
+
+   /* Fullscreen draw calls don't configure any position or varying shader but
+    * link info is needed. The active primitive update takes care of the
+    * fragment shader variant update. */
+   ctx->uncompiled[MESA_SHADER_VERTEX] = vs;
+   panfrost_update_shader_variant(ctx, MESA_SHADER_VERTEX);
+   panfrost_update_active_prim(ctx, MESA_PRIM_QUADS);
+
+#if PAN_ARCH >= 10
+   /* On CSF, emit texcoord varyings as a constant buffer. */
+   struct pan_ptr texcoord_array =
+      panfrost_emit_fullscreen_vertex_array(batch, type, attrib);
+   struct pan_ptr texcoord_buf_desc =
+      pan_pool_alloc_desc_array(&batch->pool.base, 1, BUFFER);
+   batch->fullscreen_texcoord_buf = texcoord_buf_desc.gpu;
+   panfrost_emit_ubo(texcoord_buf_desc.cpu, 0, texcoord_array.gpu,
+                     PAN_RUN_FULLSCREEN_ARRAY_SIZE);
+#endif
+
+   /* Clear the dirty vertex flag to ensure the shader state update doesn't
+    * emit any vertex info. */
+   ctx->dirty &= ~PAN_DIRTY_VERTEX;
+   panfrost_update_state_3d(batch);
+   panfrost_update_shader_state(batch, MESA_SHADER_FRAGMENT);
+   panfrost_clean_state_3d(ctx);
+
+   JOBX(launch_draw_fullscreen)(batch, type, attrib);
+
+   batch->fullscreen_texcoord_buf = 0;
+
+   batch->draw_count++;
 }
 
 /* Launch grid is the compute equivalent of draw_vbo, so in this routine, we
@@ -4560,6 +4615,8 @@ screen_destroy(struct pipe_screen *pscreen)
    struct panfrost_device *dev = pan_device(pscreen);
    GENX(pan_fb_preload_cache_cleanup)(&dev->fb_preload_cache);
    pan_blend_shader_cache_cleanup(&dev->blend_shaders);
+   if (dev->precomp_cache)
+      GENX(panfrost_precomp_cache_cleanup)(dev->precomp_cache);
 }
 
 static void
@@ -4811,6 +4868,7 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
 #endif
    screen->vtbl.select_tile_size = GENX(pan_select_tile_size);
    screen->vtbl.get_conv_desc = get_conv_desc;
+   screen->vtbl.draw_fullscreen = panfrost_draw_fullscreen;
 
    pan_blend_shader_cache_init(&dev->blend_shaders, panfrost_device_gpu_id(dev),
                                dev->kmod.dev->props.gpu_variant,

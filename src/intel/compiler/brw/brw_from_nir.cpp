@@ -1900,6 +1900,7 @@ get_nir_def(nir_to_brw_state &ntb, const nir_def &def, bool all_sources_uniform)
       case nir_intrinsic_load_ubo_uniform_block_intel:
       case nir_intrinsic_load_workgroup_id:
       case nir_intrinsic_load_indirect_address_intel:
+      case nir_intrinsic_subgroup_barrier_index_intel:
          is_scalar = true;
          break;
 
@@ -2621,6 +2622,7 @@ brw_from_nir_emit_vs_intrinsic(nir_to_brw_state &ntb,
    case nir_intrinsic_load_base_vertex:
       UNREACHABLE("should be lowered by nir_lower_system_values()");
 
+   case nir_intrinsic_load_urb_input_handle_intel:
    case nir_intrinsic_load_urb_output_handle_intel:
       bld.MOV(retype(dest, BRW_TYPE_UD), s.vs_payload().urb_handles);
       break;
@@ -4317,6 +4319,27 @@ brw_from_nir_emit_cs_intrinsic(nir_to_brw_state &ntb,
       break;
    }
 
+   /* Part of a temporary workaround for a broken shader in RE engine, see
+    * brw_nir_lower_divergent_barriers for more details.
+    */
+   case nir_intrinsic_subgroup_barrier_index_intel: {
+      brw_builder xbld = bld.scalar_group();
+      brw_builder ubld = bld.uniform();
+      if (s.subgroup_barrier_index.file == BAD_FILE) {
+         /* First source-order invocation always sets the initial value */
+         s.subgroup_barrier_index = component(ubld.vgrf(BRW_TYPE_UD), 0);
+         xbld.MOV(retype(dest, BRW_TYPE_UD), brw_imm_ud(0u));
+         ubld.MOV(s.subgroup_barrier_index,
+                  brw_imm_ud(nir_intrinsic_base(instr)));
+      } else {
+         xbld.MOV(retype(dest, BRW_TYPE_UD), s.subgroup_barrier_index);
+         ubld.ADD(s.subgroup_barrier_index,
+                  s.subgroup_barrier_index,
+                  brw_imm_ud(nir_intrinsic_base(instr)));
+      }
+      break;
+   }
+
    default:
       brw_from_nir_emit_intrinsic(ntb, bld, instr);
       break;
@@ -4744,17 +4767,21 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
    case nir_intrinsic_load_attribute_payload_intel: {
       assert(instr->def.bit_size == 32);
+      const unsigned vector_payload =
+         nir_intrinsic_vector_payload_intel(instr);
 
       if (nir_src_is_const(instr->src[0])) {
          const brw_reg src = byte_offset(brw_attr_reg(0, dest.type),
                                          nir_src_as_uint(instr->src[0]));
          brw_reg comps[NIR_MAX_VEC_COMPONENTS];
          for (unsigned i = 0; i < instr->num_components; i++) {
-            comps[i] = component(src, i);
+            comps[i] = vector_payload ? offset(src, bld, i) : component(src, i);
          }
          bld.VEC(dest, comps, instr->num_components);
       } else {
          assert(instr->def.num_components == 1);
+         /* Unsupported */
+         assert(!vector_payload);
 
          const brw_reg offset = retype(
             bld.emit_uniformize(get_nir_src(ntb, instr->src[0], 0)),

@@ -1444,6 +1444,15 @@
     <value name="OQ" value="64"/>
   </enum>
 
+  <enum name="FULLSCREEN SR">
+    <value name="TILER_CTX" value="40"/>
+    <value name="SCISSOR_BOX" value="42"/>
+    <value name="TILER_FLAGS" value="56"/>
+    <value name="TILER_DCD_FLAGS0" value="57"/>
+    <value name="TILER_DCD_FLAGS1" value="58"/>
+    <value name="TILER_DCD_FLAGS2" value="59"/>
+  </enum>
+
   <enum name="FRAGMENT SR">
     <value name="ITER_TRACE_ID0" value="0"/>
     <value name="ITER_TRACE_ID1" value="1"/>

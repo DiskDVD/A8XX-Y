@@ -55,6 +55,7 @@ const struct nir_shader_compiler_options brw_scalar_nir_options = {
    .lower_pack_unorm_2x16 = true,
    .lower_pack_unorm_4x8 = true,
    .lower_pack_64_4x16 = true,
+   .lower_pack_64_2x32 = true,
    .lower_scmp = true,
    .lower_to_scalar = true,
    .lower_uadd_carry = true,
@@ -90,7 +91,14 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
    brw_init_isa_info(&compiler->isa, devinfo);
 
-   brw_alloc_reg_sets(compiler);
+   compiler->threads_per_eu_min =
+      debug_get_unsigned_option("INTEL_THREADS_PER_EU_MIN", -1);
+   compiler->threads_per_eu_srchash =
+      debug_get_unsigned_option("INTEL_THREADS_PER_EU_SRCHASH", BRW_SRCHASH_EMPTY);
+
+   brw_alloc_reg_sets(compiler, 0);
+   if (compiler->threads_per_eu_min != -1 && compiler->threads_per_eu_min != 0)
+      brw_alloc_reg_sets(compiler, 1);
 
    compiler->precise_trig = debug_get_bool_option("INTEL_PRECISE_TRIG", false);
 
@@ -114,9 +122,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
     * while letting almost all through to the backend for more detailed
     * throughput analysis.
     */
-   compiler->register_file_size = (devinfo->ver >= 30 ? XE3_MAX_GRF :
-                                   devinfo->ver >= 20 ? XE2_MAX_GRF :
-                                   BRW_MAX_GRF) * REG_SIZE;
    compiler->register_pressure_threshold = devinfo->ver >= 30 ? 268 : 134;
 
    nir_lower_int64_options int64_options =
@@ -257,6 +262,8 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
 
    insert_u64_bit(&config, compiler->precise_trig);
    bits++;
+   insert_u64_bit(&config, compiler->limit_trig_input_range);
+   bits++;
    insert_u64_bit(&config, compiler->lower_dpas);
    bits++;
    insert_u64_bit(&config, compiler->optimistic_simd_heuristic);
@@ -267,7 +274,6 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
       DEBUG_SPILL_FS,
       DEBUG_SPILL_VEC4,
       DEBUG_NO_COMPACTION,
-      DEBUG_DO32,
       DEBUG_SOFT64,
       DEBUG_NO_SEND_GATHER,
       DEBUG_NO_VRT,
@@ -285,6 +291,9 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
       insert_u64_bit(&config, (intel_simd & (1ULL << bit)) != 0);
 
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
+      insert_u64_bit(&config, (intel_simd_overridden & (1 << i)) != 0);
+      bits++;
+
       insert_u64_bit(&config, intel_use_jay(compiler->devinfo, i) != 0);
       bits++;
    }

@@ -142,6 +142,26 @@ operation_set_defaults(struct ethosu_operation *operation)
    operation->kernel.dilation_x = 1;
 }
 
+static void
+set_full_activation_range(struct ethosu_operation *operation)
+{
+   if (operation->ofm.is_signed) {
+      if (operation->ofm.precision == 0) {
+         operation->conv.activation_min = INT8_MIN;
+         operation->conv.activation_max = INT8_MAX;
+      } else {
+         operation->conv.activation_min = INT16_MIN;
+         operation->conv.activation_max = INT16_MAX;
+      }
+   } else {
+      operation->conv.activation_min = 0;
+      if (operation->ofm.precision == 0)
+         operation->conv.activation_max = UINT8_MAX;
+      else
+         operation->conv.activation_max = UINT16_MAX;
+   }
+}
+
 static const struct pipe_ml_operation *
 ethosu_find_first_producer(const struct pipe_ml_operation *poperations, unsigned count,
                            unsigned tensor_index)
@@ -230,6 +250,7 @@ ethosu_lower_fully_connected(struct ethosu_subgraph *subgraph,
                      weight,
                      (int32_t *)poperation->fcon.bias_tensor->data,
                      operation);
+   set_full_activation_range(operation);
 }
 
 static void
@@ -282,6 +303,8 @@ ethosu_lower_convolution(struct ethosu_subgraph *subgraph,
    operation->pad.bottom = poperation->conv.padding_bottom;
    operation->pad.left = poperation->conv.padding_left;
    operation->pad.right = poperation->conv.padding_right;
+   operation->conv.activation_min = poperation->conv.activation_min;
+   operation->conv.activation_max = poperation->conv.activation_max;
 
    lower_conv_common(subgraph, poperation, input_tensor,
                      &conv_weight,

@@ -133,7 +133,7 @@ struct schedule_state {
 
    void (*CalcScore)(struct schedule_instruction *);
    int PresubNopScore;
-   long max_tex_group;
+   int64_t max_tex_group;
    unsigned PrevBlockHasTex : 1;
    unsigned PrevBlockHasKil : 1;
    /* Number of TEX in the current block */

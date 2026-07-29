@@ -105,7 +105,6 @@ mtl_render_pass_attachment_descriptor_set_store_action(
    @autoreleasepool {
       MTLRenderPassAttachmentDescriptor *desc = (MTLRenderPassAttachmentDescriptor *)descriptor;
       desc.storeAction = (MTLStoreAction)action;
-      desc.storeActionOptions = MTLStoreActionOptionNone; /* TODO_KOSMICKRISP Maybe expose this? */
    }
 }
 

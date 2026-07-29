@@ -81,6 +81,11 @@ kk_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
       uint32_t count = util_dynarray_num_elements(&cmd_buffer->submit_cmd_bufs,
                                                   mtl_command_buffer *);
 
+      if (cmd_buffer->drawable) {
+         mtl_command_queue_wait_for_drawable(queue->mtl_handle,
+                                             cmd_buffer->drawable);
+      }
+
       /* Metal complains with empty submissions. */
       if (count > 0u) {
          mtl_commit_options_add_feedback_handler(queue->commit_options,
@@ -92,7 +97,6 @@ kk_queue_submit(struct vk_queue *vk_queue, struct vk_queue_submit *submit)
       if (cmd_buffer->drawable) {
          mtl_command_queue_signal_drawable(queue->mtl_handle,
                                            cmd_buffer->drawable);
-         mtl_drawable_present(cmd_buffer->drawable);
          cmd_buffer->drawable = NULL;
       }
    }

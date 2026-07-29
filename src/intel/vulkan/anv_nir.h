@@ -179,6 +179,8 @@ void anv_apply_per_prim_attr_wa(struct nir_shader *ms_nir,
                                 struct nir_shader *fs_nir,
                                 struct anv_device *device);
 
+bool anv_nir_xe2_r11g11b10_atomic_swap_wa(nir_shader *nir);
+
 static inline bool
 anv_nir_is_promotable_ubo_binding(nir_src src)
 {

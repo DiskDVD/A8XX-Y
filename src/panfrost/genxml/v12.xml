@@ -1157,6 +1157,12 @@
     <value name="OQ" value="64"/>
   </enum>
 
+  <enum name="FULLSCREEN SR">
+    <value name="TILER_CTX" value="40"/>
+    <value name="SCISSOR_BOX" value="42"/>
+    <value name="TILER_FLAGS" value="56"/>
+  </enum>
+
   <enum name="FRAGMENT SR">
     <value name="FBD_POINTER" value="40"/>
     <value name="BBOX_MIN" value="42"/>

@@ -372,21 +372,7 @@ encode_gfx12(uint32_t ir_leaf_node_size, REF(vk_ir_box_node) intermediate_intern
 void
 main()
 {
-   uint32_t ir_leaf_node_size;
-   switch (args.geometry_type) {
-   case VK_GEOMETRY_TYPE_TRIANGLES_KHR: {
-      ir_leaf_node_size = SIZEOF(vk_ir_triangle_node);
-      break;
-   }
-   case VK_GEOMETRY_TYPE_AABBS_KHR: {
-      ir_leaf_node_size = SIZEOF(vk_ir_aabb_node);
-      break;
-   }
-   default:
-      /* instances */
-      ir_leaf_node_size = SIZEOF(vk_ir_instance_node);
-      break;
-   }
+   uint32_t ir_leaf_node_size = vk_ir_node_size(args.geometry_type);
 
    uint32_t intermediate_leaf_nodes_size = args.leaf_node_count * ir_leaf_node_size;
    REF(vk_ir_box_node) intermediate_internal_nodes =

@@ -195,7 +195,7 @@ nv30_validate_blend_colour(struct nv30_context *nv30)
    }
 
    BEGIN_NV04(push, NV30_3D(BLEND_COLOR), 1);
-   PUSH_DATA (push, (float_to_ubyte(rgba[3]) << 24) |
+   PUSH_DATA (push, ((uint32_t)(float_to_ubyte(rgba[3])) << 24) |
                     (float_to_ubyte(rgba[0]) << 16) |
                     (float_to_ubyte(rgba[1]) <<  8) |
                     (float_to_ubyte(rgba[2]) <<  0));

@@ -74,6 +74,15 @@ def declare_options(android_version):
         B("anv_slm_robust_vectorization", False,
           "Use robust vectorization for SLM accesses",
           c_name="slm_robust_vectorization"),
+        B("anv_xe2_r11g11b10_atomic_swap_wa", True,
+          "Enable workaround for apps using atomic swaps on R11G11B10 images",
+          c_name="r11g11b10_atomic_swap_wa"),
+        B("anv_emulate_active_thread_barriers", True,
+          "Emulates Xe2+ active thread barriers on Gfx125 and below",
+          c_name="emulate_active_thread_barriers"),
+        B("anv_emulate_divergent_barriers", False,
+          "Temporary workaround for a broken shader in some recent RE engine games",
+          c_name="emulate_divergent_barriers"),
 
         # Workaround various driver
         B("always_flush_cache", False,
@@ -81,9 +90,6 @@ def declare_options(android_version):
         B("anv_force_filter_addr_rounding", False,
           "Force min/mag filter address rounding to be enabled even for NEAREST sampling",
           c_name="force_filter_addr_rounding"),
-        B("anv_disable_fcv", False,
-          "Disable FCV optimization",
-          c_name="disable_fcv"),
         B("anv_enable_buffer_comp", False,
           "Enable CCS on buffers where possible",
           c_name="enable_buffer_comp"),
@@ -134,6 +140,9 @@ def declare_options(android_version):
         B("intel_enable_wa_14024015672_msaa", False,
           "Workaround for RHWO MSAA",
           c_name="wa_14024015672_msaa"),
+        B("anv_back_to_back_dispatch_dataport_flush", False,
+          "Add a flush between back to back dispatch operations",
+          c_name="b2b_dispatch_dataport_flush"),
 
         # Workaround command emission, shader specific
         B("force_vk_typed_barrier_after_dispatch_to_compute", False,
@@ -144,6 +153,11 @@ def declare_options(android_version):
           "Insert a barrier for typed resources after dispatch of a shader for any other shader"),
         B("force_vk_untyped_barrier_after_dispatch_to_top", False,
           "Insert a barrier for untyped resources after dispatch of a shader for any other shader"),
+        B("brw_prefer_simd32_fs", False,
+          "Keep this fragment shader's SIMD32 variant even if the throughput "
+          "model ties it"),
+        B("anv_xe2_force_simd32_cs", False,
+          "Force this compute shader to dispatch at SIMD32 (Xe2+ only)"),
     ]
 
     perf_options = [
@@ -162,6 +176,10 @@ def declare_options(android_version):
         I("query_copy_with_shader_threshold", 6, 0, 0x7fffffff,
           "Query threshold count above which query copies are executed with a shader",
           c_name="query_copy_with_shader_threshold"),
+
+        B("anv_enable_alloc_oversubscription", True,
+          "Allow the optional alignment of allocation sizes to large page sizes",
+          c_name="alloc_oversubscription"),
 
         B("anv_disable_push_constant_alloc", True,
           "Disable push constant space allocations",
@@ -185,6 +203,9 @@ def declare_options(android_version):
         I("anv_enable_opt_divergent_atomics_compute_only", 0, 0, 3,
           "Enable fusion of divergent atomics for compute shaders only (see brw_divergent_atomics_flags)",
           c_name="opt_divergent_atomics_compute_only"),
+        F("anv_max_vs_payload", 0.90, 0.0, 1.0,
+          "Maximum percentage of the register file that can be used as thread payload for the vertex shader",
+          c_name="max_vs_payload"),
         B("intel_force_compute_surface_prefetch", True,
           "Enable binding table surface prefteching for compute shaders",
           c_name="cs_surface_prefetch"),

@@ -39,6 +39,9 @@ radv_nir_lower_io(nir_shader *nir)
    /* Fold constant offset srcs for IO. */
    NIR_PASS(_, nir, nir_opt_constant_folding);
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      NIR_PASS(_, nir, nir_lower_io_indirect_loads, nir_var_shader_in, true);
+
    if (nir->xfb_info)
       NIR_PASS(_, nir, nir_io_add_intrinsic_xfb_info);
 

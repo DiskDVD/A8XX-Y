@@ -141,6 +141,7 @@ a6xx_base = GPUProps(
         sysmem_per_ccu_depth_cache_size = 64 * 1024,
         sysmem_per_ccu_color_cache_size = 64 * 1024,
         gmem_ccu_color_cache_fraction = CCUColorCacheFraction.QUARTER.value,
+        gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.QUARTER.value,
 
         prim_alloc_threshold = 0x7,
         vs_max_inputs_count = 32,
@@ -782,6 +783,7 @@ a7xx_base = GPUProps(
         sysmem_per_ccu_depth_cache_size = 256 * 1024,
         sysmem_per_ccu_color_cache_size = 64 * 1024,
         gmem_ccu_color_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
+        gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.EIGHTH.value,
 
         prim_alloc_threshold = 0x7,
         vs_max_inputs_count = 32,

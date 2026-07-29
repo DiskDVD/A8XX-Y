@@ -73,13 +73,6 @@ kk_preprocess_nir(UNUSED struct vk_physical_device *vk_pdev, nir_shader *nir,
     */
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
-   /* nir_lower_io_to_temporaries is required before nir_lower_blend since the
-    * blending pass sinks writes to the end of the block where we may have a
-    * jump, which is illegal.
-    */
-   NIR_PASS(_, nir, nir_lower_io_vars_to_temporaries,
-            nir_shader_get_entrypoint(nir), nir_var_shader_out);
-
    msl_preprocess_nir(nir);
 
    /* Cannot be part of msl_preprocess_nir since clc does not expose
@@ -930,6 +923,7 @@ nir_opts(nir_shader *nir, void *data)
       NIR_PASS(progress, nir, nir_opt_if, 0);
       NIR_PASS(progress, nir, nir_opt_dead_cf);
       NIR_PASS(progress, nir, nir_opt_cse);
+      NIR_PASS(progress, nir, nir_opt_licm, NULL);
 
       NIR_PASS(progress, nir, nir_opt_peephole_select,
                &(nir_opt_peephole_select_options){

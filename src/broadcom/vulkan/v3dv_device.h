@@ -155,6 +155,8 @@ struct v3dv_instance {
    bool pipeline_cache_enabled;
    bool default_pipeline_cache_enabled;
    bool meta_cache_enabled;
+   /* A value of 0 means unlimited caching. */
+   uint32_t pipeline_cache_max_entries;
 };
 
 enum v3dv_queue_type {

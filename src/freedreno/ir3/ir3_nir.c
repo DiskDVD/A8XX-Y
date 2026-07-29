@@ -322,9 +322,9 @@ ir3_optimize_loop(struct ir3_compiler *compiler,
       if (gcm == -1)
          gcm = debug_get_num_option("GCM", 0);
       if (gcm == 1)
-         progress |= OPT(s, nir_opt_gcm, true);
+         progress |= OPT(s, nir_opt_gcm, true, true);
       else if (gcm == 2)
-         progress |= OPT(s, nir_opt_gcm, false);
+         progress |= OPT(s, nir_opt_gcm, false, true);
       nir_opt_peephole_select_options peephole_select_options = {
          .limit = 16,
          .indirect_load_ok = true,
@@ -1054,7 +1054,7 @@ ir3_nir_post_finalize(struct ir3_shader *shader)
       nir_lower_subgroups_options options = {
             .subgroup_size = subgroup_size,
             .ballot_bit_size = 32,
-            .ballot_components = max_subgroup_size / 32,
+            .ballot_components = MAX2(1, max_subgroup_size / 32),
             .lower_to_scalar = true,
             .lower_vote_feq = true,
             .lower_vote_ieq = true,

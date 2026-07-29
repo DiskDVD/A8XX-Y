@@ -196,7 +196,7 @@ static const struct {
    { "mad (8) r0:d r1:d r2:d r3:d",
      "Gfx9 3-source instructions must use Align16 mode.", { .eq = 90 }
    },
-   { "mad (8) r0:d r1:d r2:d r3:d", VALID, { .gt = 90 } },
+   { "mad (8) r0:d r1:d r2:d r3:d", VALID, { .gt = 90, .lt = 120 } },
 
    { "mad (8) r0.:d r1:d r2:d r3:d {Align16}", VALID,                                   { .eq = 90 } },
    { "mad (8) r0.:d r1:d r2:d r3:d {Align16}", "Align16 mode doesn't exist on Gfx11+.", { .ge = 110 } },
@@ -1943,6 +1943,22 @@ static const struct {
      "Transposed LSC vectors are restricted to exec_size=1.", { .ge = 200, .has_lsc = true }
    },
    { "send.ugm (8) null r1 null:0 a0.0 a0.0", VALID, { .ge = 200, .has_lsc = true } },
+
+
+   { "send.ugm (1) r10 r80 null:0 0x0 0x02400403",
+     "LSC 2D block messages require Xe2+.", { .lt = 200, .has_lsc = true }
+   },
+   { "send.ugm (1) r10 r80 null:0 0x0 0x02400403", VALID, { .ge = 200, .has_lsc = true } },
+   { "send.tgm (1) r10 r80 null:0 0x0 0x02400403", VALID, { .ge = 200, .has_lsc = true } },
+   { "send.slm (1) r10 r80 null:0 0x0 0x02400403",
+     "LSC 2D block messages must use UGM or TGM.", { .ge = 200, .has_lsc = true }
+   },
+   { "send.ugm (1) r10 r80 null:0 0x0 0x22400403",
+     "UGM 2D block messages require flat A64 addressing.", { .ge = 200, .has_lsc = true }
+   },
+   { "send.ugm (1) r10 r80 null:0 0x0 0x02400803",
+     "UGM 2D block messages require d8, d16, d32, or d64 data size.", { .ge = 200, .has_lsc = true }
+   },
 
 
    /* ARF scalar register restrictions. */

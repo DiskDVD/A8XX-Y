@@ -401,7 +401,7 @@ emit_tex(struct r300_fragment_program_compiler *c, struct rc_sub_instruction *in
       (translate_strq_swizzle(inst->SrcReg[0].Swizzle) << 8) |
       R500_TEX_DST_ADDR(inst->DstReg.Index) | (GET_SWZ(inst->TexSwizzle, 0) << 24) |
       (GET_SWZ(inst->TexSwizzle, 1) << 26) | (GET_SWZ(inst->TexSwizzle, 2) << 28) |
-      (GET_SWZ(inst->TexSwizzle, 3) << 30);
+      ((uint32_t)(GET_SWZ(inst->TexSwizzle, 3)) << 30);
 
    if (inst->Opcode == RC_OPCODE_TXD) {
       use_temporary(code, inst->SrcReg[1].Index);

@@ -218,6 +218,7 @@ struct radv_shader_info {
       bool selects_frag_coord_xy_dynamically : 1;
       bool selects_quad_pos_dynamically : 1;
       bool selects_sample_mask_in_dynamically : 1;
+      bool selects_front_face_dynamically : 1;
 
       bool has_epilog : 1;
    } ps;

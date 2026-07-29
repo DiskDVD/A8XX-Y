@@ -2271,7 +2271,7 @@ v3d_optimize_nir(struct v3d_compile *c, struct nir_shader *s)
                 NIR_PASS(progress, s, nir_opt_if, false);
                 if (c && !c->disable_gcm) {
                         bool local_progress = false;
-                        NIR_PASS(local_progress, s, nir_opt_gcm, false);
+                        NIR_PASS(local_progress, s, nir_opt_gcm, false, true);
                         c->gcm_progress |= local_progress;
                         progress |= local_progress;
                 }
@@ -5104,6 +5104,27 @@ v3d_nir_to_vir(struct v3d_compile *c)
                 vir_dumpi(c);
         }
 
+        /* Pressure-probe split: stash the pre-RA thrsw state. In probe-only
+         * mode, compute the pre-spill register pressure and stop before
+         * register allocation; the caller picks the lowest-pressure strategy
+         * and resumes it via v3d_nir_to_vir_finish().
+         */
+        c->restore_last_thrsw = restore_last_thrsw;
+        c->restore_scoreboard_lock = restore_scoreboard_lock;
+
+        if (c->probe_only) {
+                vir_calculate_live_intervals(c);
+                c->max_pressure = vir_get_max_temps(c);
+                return;
+        }
+
+        v3d_nir_to_vir_finish(c);
+}
+
+void
+v3d_nir_to_vir_finish(struct v3d_compile *c)
+{
+        assert(!c->probe_only);
         /* Attempt to allocate registers for the temporaries.  If we fail,
          * reduce thread count and try again.
          */
@@ -5150,8 +5171,8 @@ v3d_nir_to_vir(struct v3d_compile *c)
         /* If we didn't spill, then remove the last thread switch we injected
          * artificially (if any) and restore the previous one.
          */
-        if (!c->spills && c->last_thrsw != restore_last_thrsw)
-                vir_restore_last_thrsw(c, restore_last_thrsw, restore_scoreboard_lock);
+        if (!c->spills && c->last_thrsw != c->restore_last_thrsw)
+                vir_restore_last_thrsw(c, c->restore_last_thrsw, c->restore_scoreboard_lock);
 
         if (c->spills &&
             (V3D_DBG(VIR) ||

@@ -196,6 +196,9 @@ struct ethosu_operation {
          bool depthwise;
          unsigned scale;
          unsigned shift;
+         uint16_t activation;
+         int activation_min;
+         int activation_max;
       } conv;
 
       struct {
