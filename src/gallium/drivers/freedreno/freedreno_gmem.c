@@ -640,6 +640,49 @@ render_tiles(struct fd_batch *batch, struct fd_gmem_stateobj *gmem) assert_dt
    simple_mtx_unlock(&ctx->gmem_lock);
 }
 
+static bool
+fd_gmem_a810_prefers_sysmem(struct fd_batch *batch)
+{
+   struct fd_context *ctx = batch->ctx;
+   struct fd_screen *screen = ctx->screen;
+   struct pipe_framebuffer_state *pfb = &batch->framebuffer;
+
+   if (!ctx->emit_sysmem_prep || FD_DBG(GMEM))
+      return false;
+
+   if (screen->gpu_id != 810 && screen->info->gmem_size != 576 * 1024)
+      return false;
+
+   /* Some reasons, notably FB_READ on a6xx+, still require GMEM because the
+    * sysmem path would need cmdstream patching.  Keep those constraints (and
+    * autotune's interpretation of them) intact.
+    */
+   if (screen->gmem_reason_mask &&
+       (batch->gmem_reason & ~screen->gmem_reason_mask))
+      return false;
+
+   struct fd_gmem_stateobj *gmem = lookup_gmem_state(batch, false, false);
+   unsigned nr_tiles = gmem->nbins_x * gmem->nbins_y;
+   unsigned pixels = pfb->width * pfb->height;
+   bool msaa = pfb->samples > 1;
+   bool large_rt = pixels >= 1920 * 1080;
+   bool zs_load_store =
+      (batch->restore & (FD_BUFFER_DEPTH | FD_BUFFER_STENCIL)) ||
+      (batch->resolve & (FD_BUFFER_DEPTH | FD_BUFFER_STENCIL));
+
+   fd_screen_lock(screen);
+   fd_gmem_reference(&gmem, NULL);
+   fd_screen_unlock(screen);
+
+   if (nr_tiles < 4)
+      return false;
+
+   if (msaa || zs_load_store)
+      return true;
+
+   return large_rt && nr_tiles >= 6;
+}
+
 static void
 render_sysmem(struct fd_batch *batch) assert_dt
 {
@@ -727,6 +770,9 @@ fd_gmem_render_tiles(struct fd_batch *batch)
       if ((pfb->nr_cbufs == 0) && !pfb->zsbuf.texture) {
          sysmem = true;
       }
+
+      if (!sysmem && fd_gmem_a810_prefers_sysmem(batch))
+         sysmem = true;
    }
 
    if (FD_DBG(SYSMEM))

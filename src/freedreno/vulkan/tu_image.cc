@@ -363,7 +363,7 @@ ubwc_possible(struct tu_device *device,
        vk_format_get_plane_count(format) == 1)
       return false;
 
-   if (type == VK_IMAGE_TYPE_3D && mip_levels > 1) {
+   if (type == VK_IMAGE_TYPE_3D && mip_levels > 1 && info->chip < 8) {
       if (device) {
          perf_debug(
             device,
