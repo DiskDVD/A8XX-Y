@@ -396,9 +396,13 @@ fdl6_view_init(struct fdl6_view *view, const struct fdl_layout **layouts,
          if (args->chroma_offsets[1] == FDL_CHROMA_LOCATION_MIDPOINT)
             view->descriptor[7] |= A8XX_TEX_MEMOBJ_7_UV_OFFSET_V(0.25);
 
+         uint32_t uv_pitch = ubwc_enabled ?
+            fdl_ubwc_pitch(layouts[1], args->base_miplevel) :
+            fdl_pitch(layouts[1], args->base_miplevel);
+
          descriptor[8] |= A8XX_TEX_MEMOBJ_8_BASE_V_LO(base_addr[2]);
          descriptor[9] |= A8XX_TEX_MEMOBJ_9_BASE_V_HI(base_addr[2] >> 32) |
-                          A8XX_TEX_MEMOBJ_9_UV_PITCH(fdl_pitch(layouts[1], args->base_miplevel));
+                          A8XX_TEX_MEMOBJ_9_UV_PITCH(uv_pitch);
 
          return;
       } else if (args->filter_width) {
