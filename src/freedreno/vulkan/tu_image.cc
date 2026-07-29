@@ -779,6 +779,20 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
          .sparse = image->vk.create_flags &
             VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT,
          .force_disable_linear_fallback = force_disable_linear_fallback,
+         .usage =
+            COND(image->vk.usage &
+                    (VK_IMAGE_USAGE_SAMPLED_BIT |
+                     VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT),
+                 FDL_IMAGE_USAGE_SAMPLED) |
+            COND(image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT,
+                 FDL_IMAGE_USAGE_STORAGE) |
+            COND(image->vk.usage &
+                    (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT |
+                     VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR),
+                 FDL_IMAGE_USAGE_ATTACHMENT),
          .plane = i,
       };
 
@@ -1697,4 +1711,3 @@ tu_bind_sparse_image(struct tu_device *device, void *submit,
                          prev_bo_offset, bind_range);
    }
 }
-

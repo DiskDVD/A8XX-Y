@@ -75,6 +75,12 @@ struct fdl_explicit_layout {
    uint32_t pitch;
 };
 
+enum fdl_image_usage {
+   FDL_IMAGE_USAGE_SAMPLED    = BITFIELD_BIT(0),
+   FDL_IMAGE_USAGE_STORAGE    = BITFIELD_BIT(1),
+   FDL_IMAGE_USAGE_ATTACHMENT = BITFIELD_BIT(2),
+};
+
 /**
  * General layout params for images.
  */
@@ -111,6 +117,8 @@ struct fdl_image_params {
    bool sparse;
 
    bool force_disable_linear_fallback;
+
+   uint32_t usage;
 
    uint32_t plane;
 };

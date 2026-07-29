@@ -91,6 +91,35 @@ fdl6_tile_alignment(struct fdl_layout *layout, uint32_t *heightalign)
    layout->base_align = 4096;
 }
 
+static uint32_t
+fdl6_linear_fallback_threshold_texels(struct fdl_layout *layout,
+                                      const struct fd_dev_info *info,
+                                      const struct fdl_image_params *params,
+                                      const struct fdl_explicit_layout *explicit_layout)
+{
+   uint32_t threshold = fdl_linear_fallback_threshold_texels(layout, info);
+
+   /* UBWC v6 on a8xx has per-miplevel metadata addressing and avoids the
+    * older-generation descriptor limitations that made the linear mip fallback
+    * broadly attractive.  On multi-CCU a8xx parts, sampled/storage/attachment
+    * images are usually more bandwidth-sensitive than padding-sensitive, so
+    * keep UBWC/tiling enabled for narrow images unless the layout is imported
+    * with explicit strides or the caller asked to emulate sparse tiling.
+    *
+    * Keep the historical threshold for single-CCU a8xx parts: the padding cost
+    * is proportionally more important on small-GMEM/bandwidth-constrained GPUs.
+    */
+   if (info->chip >= 8 && info->num_ccu > 1 && layout->ubwc &&
+       !explicit_layout && !params->sparse &&
+       (params->usage & (FDL_IMAGE_USAGE_SAMPLED |
+                         FDL_IMAGE_USAGE_STORAGE |
+                         FDL_IMAGE_USAGE_ATTACHMENT))) {
+      threshold = 1;
+   }
+
+   return threshold;
+}
+
 /* NOTE: good way to test this is:  (for example)
  *  piglit/bin/texelFetch fs sampler3D 100x100x8
  */
@@ -151,7 +180,8 @@ fdl6_layout_image(struct fdl_layout *layout, const struct fd_dev_info *info,
    assert(!params->force_ubwc || layout->ubwc);
 
    layout->linear_fallback_threshold_texels =
-      fdl_linear_fallback_threshold_texels(layout, info);
+      fdl6_linear_fallback_threshold_texels(layout, info, params,
+                                            explicit_layout);
 
    if (!params->force_ubwc &&
        layout->width0 < layout->linear_fallback_threshold_texels) {
@@ -347,6 +377,18 @@ fdl6_layout_image(struct fdl_layout *layout, const struct fd_dev_info *info,
          layout->ubwc_slices[level].offset = ubwc_offset;
          ubwc_offset += layout->ubwc_slices[level].size0 *
                         u_minify(params->depth0, level);
+      }
+
+      /* A8xx descriptors can address UBWC v6 metadata per mip level for 3D
+       * images.  Keep the metadata packing invariant explicit so descriptor
+       * programming does not silently drift back to the older single-stride
+       * assumptions.
+       */
+      if (info->chip >= 8 && params->depth0 > 1 && params->mip_levels > 1) {
+         for (uint32_t level = 1; level < params->mip_levels; level++) {
+            assert(layout->ubwc_slices[level].offset >=
+                   layout->ubwc_slices[level - 1].offset);
+         }
       }
    }
 
