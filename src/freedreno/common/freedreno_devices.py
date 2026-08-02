@@ -1426,6 +1426,7 @@ add_gpus([
             has_fs_tex_prefetch = False,
             has_salu_int_narrowing_quirk = True,
             shading_rate_matches_vk = True,
+            max_samples = 4,
         )],
         num_ccu = 1,
         num_slices = 1,
