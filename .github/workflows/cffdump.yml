@@ -1,0 +1,59 @@
+name: Build cffdump and Decode RD Files
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_drm_shim_probe:
+        description: "Run vulkaninfo under freedreno drm-shim with valid/invalid FD_GPU_ID"
+        required: false
+        default: true
+        type: boolean
+      valid_fd_gpu_id:
+        description: "Known-good FD_GPU_ID (default a630=307)"
+        required: false
+        default: "307"
+      invalid_fd_gpu_id:
+        description: "Intentionally wrong FD_GPU_ID for assert/sanity checks"
+        required: false
+        default: "999999"
+
+jobs:
+  build-and-decode:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            python3-pip \
+            flex \
+            bison \
+            glslang-tools \
+            libdrm-dev \
+            pkg-config \
+            vulkan-tools
+
+          pip3 install --upgrade meson
+          pip3 install mako
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build and decode
+        env:
+          RUN_DRM_SHIM_PROBE: ${{ inputs.run_drm_shim_probe && '1' || '0' }}
+          VALID_FD_GPU_ID: ${{ inputs.valid_fd_gpu_id }}
+          INVALID_FD_GPU_ID: ${{ inputs.invalid_fd_gpu_id }}
+        run: |
+          chmod +x cffdump_auto.sh
+          bash ./cffdump_auto.sh
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: decoded-rd-files
+          path: results/
