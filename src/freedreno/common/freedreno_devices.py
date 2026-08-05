@@ -1428,7 +1428,7 @@ add_gpus([
             shading_rate_matches_vk = True,
             max_samples = 4,
         )],
-        num_ccu = 2, # test
+        num_ccu = 1, # test
         num_slices = 2, # test
         tile_align_w = 64,
         tile_align_h = 32,
