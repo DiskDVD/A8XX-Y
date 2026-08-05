@@ -1428,8 +1428,8 @@ add_gpus([
             shading_rate_matches_vk = True,
             max_samples = 4,
         )],
-        num_ccu = 1,
-        num_slices = 1,
+        num_ccu = 2, # test
+        num_slices = 2, # test
         tile_align_w = 64,
         tile_align_h = 32,
         tile_max_w = 16384,
@@ -1471,8 +1471,8 @@ add_gpus([
             shading_rate_matches_vk = True,
             max_samples = 4,
         )],
-        num_ccu = 2,
-        num_slices = 2,
+        num_ccu = 1, # testing
+        num_slices = 1, #testing
         tile_align_w = 64,
         tile_align_h = 32,
         tile_max_w = 16384,
