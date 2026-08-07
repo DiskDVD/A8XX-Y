@@ -492,6 +492,9 @@ struct fd_dev_info {
       /* If GMEM needs to be disabled for this GPU */
       bool disable_gmem;
 
+      /* Maximum supported MSAA sample count. 0 means use the generation default. */
+      uint32_t max_samples;
+
       /* GMEM size in bytes */
       uint32_t gmem_size;
    } props;
