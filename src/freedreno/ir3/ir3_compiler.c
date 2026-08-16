@@ -62,6 +62,7 @@ ir3_get_gpu_profile(uint32_t chip_id)
 {
     switch (chip_id) {
     case 0x44010000: /* Adreno 810 */
+    case 0x44010200: /* Adreno 812 */
         return (struct ir3_gpu_profile){90, 4, 4, false, 128};
     case 0x44030000: /* Adreno 825 */
         return (struct ir3_gpu_profile){85, 8, 8, false, 0};
@@ -247,9 +248,10 @@ ir3_compiler_debug_init(void)
 }
 
 static inline bool
-ir3_is_a810(const struct fd_dev_id *dev_id)
+ir3_is_a810_or_a812(const struct fd_dev_id *dev_id)
 {
-   return dev_id->chip_id == 0x44010000;
+   return dev_id->chip_id == 0x44010000 ||
+          dev_id->chip_id == 0x44010200;
 }
 
 struct ir3_compiler *
@@ -268,7 +270,7 @@ ir3_compiler_create(struct fd_device *dev, const struct fd_dev_id *dev_id,
    compiler->options = *options;
    compiler->info = dev_info;
 
-   if (ir3_is_a810(dev_id))
+   if (ir3_is_a810_or_a812(dev_id))
       ir3_shader_debug |= IR3_DBG_NODESCPREFETCH;
 
    /* TODO see if older GPU's were different here */
