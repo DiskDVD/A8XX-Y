@@ -1086,7 +1086,11 @@ brw_from_nir_emit_alu(nir_to_brw_state &ntb, nir_alu_instr *instr,
       break;
 
    case nir_op_fadd:
-      if (nir_has_any_rounding_mode_enabled(execution_mode)) {
+   case nir_op_fadd_rtne:
+      if (instr->op == nir_op_fadd_rtne) {
+         bld.exec_all().emit(SHADER_OPCODE_RND_MODE, bld.null_reg_ud(),
+                             brw_imm_d(BRW_RND_MODE_RTNE));
+      } else if (nir_has_any_rounding_mode_enabled(execution_mode)) {
          brw_rnd_mode rnd =
             brw_rnd_mode_from_execution_mode(execution_mode);
          bld.exec_all().emit(SHADER_OPCODE_RND_MODE, bld.null_reg_ud(),
@@ -2579,7 +2583,7 @@ emit_gs_vertex(nir_to_brw_state &ntb, const nir_src &vertex_count_nir_src,
        * effect of any call to EndPrimitive() that the shader may have
        * made before outputting its first vertex.
        */
-      abld.exec_all().MOV(s.control_data_bits, brw_imm_ud(0u));
+      abld.MOV(s.control_data_bits, brw_imm_ud(0u));
       abld.emit(BRW_OPCODE_ENDIF);
    }
 
@@ -4061,7 +4065,9 @@ static bool
 can_use_instruction_offset(enum lsc_addr_surface_type binding_type, int32_t offset)
 {
    const unsigned max_bits = brw_max_immediate_offset_bits(binding_type);
-   return offset >= u_intN_min(max_bits) && offset <= u_intN_max(max_bits);
+   return offset % 4 == 0 &&
+          offset >= u_intN_min(max_bits) &&
+          offset <= u_intN_max(max_bits);
 }
 
 static brw_reg
@@ -5164,6 +5170,7 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
       unsigned nr = base_offset / REG_SIZE;
       nr += instr->intrinsic == nir_intrinsic_load_inline_data_intel ? BRW_INLINE_PARAM_REG : 0;
       brw_reg src = brw_uniform_reg(nr, dest.type);
+      src.offset = base_offset % REG_SIZE;
 
       if (nir_src_is_const(instr->src[0])) {
          unsigned load_offset = nir_src_as_uint(instr->src[0]);
@@ -5172,7 +5179,7 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
           * data take the modulo of the offset with 4 bytes and add it to
           * the offset to read from within the source register.
           */
-         src.offset = load_offset + base_offset % REG_SIZE;
+         src.offset += load_offset;
 
          for (unsigned j = 0; j < instr->num_components; j++) {
             xbld.MOV(offset(dest, xbld, j), offset(src, xbld, j));
@@ -5227,6 +5234,10 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
 
    case nir_intrinsic_load_ubo: {
       s.prog_data->has_ubo_pull = true;
+      if (devinfo->has_lsc) {
+         brw_from_nir_emit_memory_access(ntb, bld, xbld, instr);
+         break;
+      }
 
       bool no_mask_handle = false;
 
@@ -5756,6 +5767,7 @@ brw_from_nir_emit_memory_access(nir_to_brw_state &ntb,
       srcs[MEMORY_LOGICAL_ADDRESS] = get_nir_src(ntb, instr->src[1], 0);
       break;
 
+   case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ubo_uniform_block_intel:
       mode = MEMORY_MODE_CONSTANT;
       FALLTHROUGH;

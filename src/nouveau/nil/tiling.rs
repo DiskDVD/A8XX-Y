@@ -167,12 +167,12 @@ impl GOBType {
         }
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn nil_gob_type_extent_B(self) -> Extent4D<units::Bytes> {
         self.extent_B()
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn nil_gob_type_height(self) -> u32 {
         self.extent_B().height
     }
@@ -281,7 +281,7 @@ impl Tiling {
         extent_B.width * extent_B.height * extent_B.depth * extent_B.array_len
     }
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn nil_tiling_size_B(&self) -> u32 {
         self.size_B()
     }
@@ -344,7 +344,7 @@ pub fn sparse_block_extent_B(
     sparse_block_extent_el(format, dim).to_B(format)
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nil_sparse_block_extent_px(
     format: Format,
     dim: ImageDim,

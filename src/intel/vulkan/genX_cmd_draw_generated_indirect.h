@@ -190,7 +190,6 @@ genX(cmd_buffer_emit_indirect_generated_draws_init)(struct anv_cmd_buffer *cmd_b
       .device               = device,
       .cmd_buffer           = cmd_buffer,
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
-      .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->generation.batch,
       .kernel               = gen_kernel,
    };
@@ -524,7 +523,6 @@ genX(cmd_buffer_emit_indirect_generated_draws_inring)(struct anv_cmd_buffer *cmd
       .device               = device,
       .cmd_buffer           = cmd_buffer,
       .dynamic_state_stream = &cmd_buffer->dynamic_state_stream,
-      .general_state_stream = &cmd_buffer->general_state_stream,
       .batch                = &cmd_buffer->batch,
       .kernel               = gen_kernel,
    };

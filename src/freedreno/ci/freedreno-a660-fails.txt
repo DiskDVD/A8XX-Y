@@ -58,10 +58,6 @@ spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvu420,Fail
 #Expected CL error: CL_LINK_PROGRAM_FAILURE -17
 api@cllinkprogram,Fail
 
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/8408
-program@execute@global-offset,Fail
-program@execute@global-offset@3d- input dependent,Fail
-
 #
 ## freedreno issues:
 #
@@ -130,3 +126,17 @@ dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_subsampled_large_
 dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_subsampled_with_offset,Fail
 gmem-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_subsampled_large_fb_with_offset,Fail
 gmem-dEQP-VK.renderpasses.renderpass2.custom_resolve.fast_lib.fdm_nonsubsampled_with_offset,Fail
+
+#
+# OpenCL-CTS
+#
+
+# float controls?
+SPIRV new,Fail
+SPIRV new@op_neg_half,Fail
+SPIRV new@op_spec_constant_half_simple,Fail
+
+# crashes with wave128, passes with wave64 (and gen8+)
+Subgroups,Fail
+Subgroups@subgroup_functions_clustered_reduce,Fail
+Subgroups@subgroup_functions_ballot,Fail

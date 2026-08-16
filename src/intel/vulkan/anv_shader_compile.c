@@ -11,6 +11,7 @@
 
 #include "nir/nir_builtin_builder.h"
 
+#include "common/intel_common.h"
 #include "common/intel_compute_slm.h"
 #include "common/intel_l3_config.h"
 
@@ -191,17 +192,17 @@ anv_get_robust_flags(const struct vk_pipeline_robustness_state *rstate)
        BRW_ROBUSTNESS_UBO : 0);
 }
 
-static enum anv_descriptor_set_layout_type
+static enum anv_shader_binding_mode
 set_layouts_get_layout_type(struct anv_descriptor_set_layout * const *set_layouts,
                             uint32_t set_layout_count)
 {
    for (uint32_t s = 0; s < set_layout_count; s++) {
       if (set_layouts[s]) {
-         return set_layouts[s]->type;
+         return set_layouts[s]->binding_mode;
       }
    }
 
-   return ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_UNKNOWN;
+   return ANV_SHADER_BINDING_MODE_UNKNOWN;
 }
 
 void
@@ -990,7 +991,8 @@ wa_18019110168_load_provoking_vertex(nir_builder *b, void *data)
    nir_def *val = NULL;
 
    for (uint32_t i = 0; i < bind_map->inline_dwords_count; i++) {
-      if (bind_map->inline_dwords[i] == anv_drv_const_dword(gfx.wa_18019110168)) {
+      if (bind_map->inline_dwords[i] ==
+          anv_drv_const_dword(drv_data.gfx.wa_18019110168)) {
          val = nir_load_inline_data_intel(
             b, 1, 32, nir_imm_int(b, 0),
             .base = i * 4);
@@ -1000,9 +1002,9 @@ wa_18019110168_load_provoking_vertex(nir_builder *b, void *data)
 
    if (val == NULL) {
       val = nir_load_push_data_intel(b, 1, 32, nir_imm_int(b, 0),
-                                     .base = anv_drv_const_offset(gfx.wa_18019110168) -
+                                     .base = anv_drv_const_offset(drv_data.gfx.wa_18019110168) -
                                              bind_map->push_ranges[0].start * 32,
-                                     .range = anv_drv_const_size(gfx.wa_18019110168));
+                                     .range = anv_drv_const_size(drv_data.gfx.wa_18019110168));
    }
 
    return nir_iand_imm(b, val, ANV_WA_18019110168_PROVOKING_VERTEX_MASK);
@@ -1015,9 +1017,9 @@ wa_18019110168_load_per_primitive_remap_table(nir_builder *b, void *data)
    nir_def *val = NULL;
 
    val = nir_load_push_data_intel(b, 1, 32, nir_imm_int(b, 0),
-                                  .base = anv_drv_const_offset(gfx.wa_18019110168) -
+                                  .base = anv_drv_const_offset(drv_data.gfx.wa_18019110168) -
                                           bind_map->push_ranges[0].start * 32,
-                                  .range = anv_drv_const_size(gfx.wa_18019110168));
+                                  .range = anv_drv_const_size(drv_data.gfx.wa_18019110168));
 
    return nir_iand_imm(b, val, ANV_WA_18019110168_PER_PRIMITIVE_REMAP_TABLE_OFFSET_MASK);
 }
@@ -1623,7 +1625,7 @@ anv_shader_lower_nir(struct anv_device *device,
 
    if (!(shader_data->info->flags & VK_SHADER_CREATE_DESCRIPTOR_HEAP_BIT_EXT)) {
       NIR_PASS(_, nir, anv_nir_lower_resource_intel, pdevice,
-                  shader_data->bind_map.layout_type);
+                  shader_data->bind_map.binding_mode);
    }
 
    shader_data->push_desc_info.push_set_buffer =
@@ -1900,8 +1902,10 @@ anv_bsr(const struct intel_device_info *devinfo,
    /* Gfx30+ supports VRT, for other platforms just program is to 0. HW ignore
     * these bits if VRT is disabled.
     */
-   uint64_t registers_per_thread = devinfo->ver >= 30 ?
-                                   ((uint64_t)ptl_register_blocks(grf_used) << 60) : 0;
+   uint64_t registers_per_thread =
+      devinfo->ver >= 30 ? ((uint64_t)intel_register_blocks(devinfo,
+                                                            grf_used) << 60) :
+                           0;
    return registers_per_thread |
           offset |
           SET_BITS(bindless_shader_dispatch_mode, 4, 4) |
@@ -1919,7 +1923,9 @@ anv_shader_compile_jay(const struct intel_device_info *devinfo, void *mem_ctx,
       jay_compile(devinfo, mem_ctx, nir,
                   (union brw_any_prog_data *)compile_params->prog_data,
                   (union brw_any_prog_key *)compile_params->key,
-                  shader_data->archiver);
+                  shader_data->archiver,
+                  nir->info.stage == MESA_SHADER_FRAGMENT ? params.fs.mue_map
+                                                          : NULL);
 
    /* Early return if there are not resume shaders to compile */
    if (params.bs.num_resume_shaders == 0 ||
@@ -1975,7 +1981,7 @@ anv_shader_compile_jay(const struct intel_device_info *devinfo, void *mem_ctx,
                                           resume_nir,
                                           &main_prog_data,
                                           (union brw_any_prog_key *)compile_params->key,
-                                          shader_data->archiver);
+                                          shader_data->archiver, NULL);
 
       resume_prog_data[i] = main_prog_data;
       resume_grf_used[i] = resume_prog_data[i].base.grf_used;
@@ -1990,6 +1996,11 @@ anv_shader_compile_jay(const struct intel_device_info *devinfo, void *mem_ctx,
        */
       reloc_count += resume_prog_data[i].base.num_relocs + 1;
    }
+
+   /* Copy resource requirements accumulated across all resume shaders. */
+   prog_data->base.total_scratch = main_prog_data.base.total_scratch;
+   prog_data->bs.max_stack_size = main_prog_data.bs.max_stack_size;
+   prog_data->base.has_ubo_pull = main_prog_data.base.has_ubo_pull;
 
    /* Allocate the relocs array once, sized for the whole thing. */
    struct intel_shader_reloc *relocs =
@@ -2159,7 +2170,7 @@ anv_shader_compile(struct vk_device *vk_device,
             info->set_layouts[i]->dynamic_descriptor_count : 0;
       }
 
-      shader_data->bind_map.layout_type =
+      shader_data->bind_map.binding_mode =
          set_layouts_get_layout_type((struct anv_descriptor_set_layout * const *)info->set_layouts,
                                      info->set_layout_count);
       shader_data->bind_map.surface_to_descriptor =
@@ -2210,6 +2221,10 @@ anv_shader_compile(struct vk_device *vk_device,
       case MESA_SHADER_COMPUTE:
          populate_cs_prog_key(&shader_data->key.cs, vk_device->physical,
                               info->robustness);
+         shader_data->prog_data.cs.force_simd32 =
+            device->info->ver >= 20 &&
+            shader_data->workaround != NULL &&
+            shader_data->workaround->force_xe2_simd32_cs;
          break;
       case MESA_SHADER_RAYGEN:
       case MESA_SHADER_ANY_HIT:
@@ -2288,7 +2303,6 @@ anv_shader_compile(struct vk_device *vk_device,
          .stats = shader_data->stats,
          .log_data = device,
          .mem_ctx = mem_ctx,
-         .source_hash = shader_data->source_hash,
          .archiver = shader_data->archiver,
       };
       struct brw_compile_params *compile_params = &params.base;
@@ -2329,6 +2343,8 @@ anv_shader_compile(struct vk_device *vk_device,
          UNREACHABLE("Invalid graphics shader stage");
       }
 
+      shader_data->prog_data.base.source_hash = shader_data->source_hash;
+
       if (intel_use_jay(devinfo, nir->info.stage)) {
          struct jay_shader_bin *bin =
             anv_shader_compile_jay(devinfo, mem_ctx, nir, params, shader_data);
@@ -2347,6 +2363,9 @@ anv_shader_compile(struct vk_device *vk_device,
       } else {
          shader_data->code = brw_compile(compiler, compile_params);
       }
+
+      /* The compiler should not alter this. */
+      assert(shader_data->prog_data.base.source_hash == shader_data->source_hash);
 
       if (shader_data->info->stage == MESA_SHADER_FRAGMENT) {
          shader_data->num_stats =

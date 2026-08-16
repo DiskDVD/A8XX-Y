@@ -104,4 +104,3 @@ glx@glx-visuals-stencil -pixmap,Fail
 
 # uprev Piglit in Mesa
 vulkan@shaders@cmat-uniform-ctor,Fail
-

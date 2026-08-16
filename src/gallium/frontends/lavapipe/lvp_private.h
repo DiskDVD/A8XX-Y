@@ -312,7 +312,7 @@ struct lvp_image_view {
 
    struct {
       unsigned image_plane;
-      struct pipe_sampler_view *sv;
+      struct pipe_sampler_view sv;
       struct pipe_image_view iv;
       struct lp_texture_handle *texture_handle;
       struct lp_texture_handle *image_handle;
@@ -611,7 +611,7 @@ struct lvp_buffer {
 struct lvp_buffer_view {
    struct vk_buffer_view vk;
    enum pipe_format pformat;
-   struct pipe_sampler_view *sv;
+   struct pipe_sampler_view sv;
    struct pipe_image_view iv;
 
    struct lp_texture_handle *texture_handle;

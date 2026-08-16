@@ -858,7 +858,6 @@ glx@glx-tfp,Crash
 # X Error of failed request:  BadDrawable (invalid Pixmap or Window parameter)
 #   Major opcode of failed request:  130 (MIT-SHM)
 #   Minor opcode of failed request:  3 (X_ShmPutImage)
-glx@glx-visuals-depth,Crash
 glx@glx-visuals-depth -pixmap,Crash
 glx@glx-visuals-stencil,Crash
 glx@glx-visuals-stencil -pixmap,Crash
@@ -983,7 +982,6 @@ spec@arb_enhanced_layouts@arb_enhanced_layouts-transform-feedback-layout-qualifi
 spec@arb_enhanced_layouts@arb_enhanced_layouts-transform-feedback-layout-qualifiers_gs_max,Crash
 spec@arb_enhanced_layouts@arb_enhanced_layouts-transform-feedback-layout-qualifiers_vs,Crash
 spec@arb_enhanced_layouts@arb_enhanced_layouts-transform-feedback-layout-qualifiers_vs_interface,Crash
-spec@arb_enhanced_layouts@arb_enhanced_layouts-transform-feedback-layout-qualifiers_vs_named_interface,Crash
 
 spec@arb_es2_compatibility@texwrap formats,Fail
 spec@arb_es2_compatibility@texwrap formats offset,Fail
@@ -1075,7 +1073,6 @@ spec@arb_texture_rg@texwrap formats@GL_R8- NPOT,Fail
 spec@arb_texture_rg@texwrap formats@GL_RG16- NPOT,Fail
 spec@arb_texture_rg@texwrap formats@GL_RG8- NPOT,Fail
 
-spec@arb_transform_feedback3@arb_transform_feedback3-ext_interleaved_two_bufs_gs,Crash
 spec@arb_transform_feedback3@arb_transform_feedback3-ext_interleaved_two_bufs_gs_max,Crash
 
 # error: main:90: eglChooseConfig() returned no configs
@@ -1256,6 +1253,7 @@ spec@arb_internalformat_query2@max dimensions related pname checks@GL_MAX_DEPTH,
 spec@arb_internalformat_query2@max dimensions related pname checks@GL_MAX_HEIGHT,Fail
 spec@arb_internalformat_query2@max dimensions related pname checks@GL_MAX_LAYERS,Fail
 spec@arb_internalformat_query2@max dimensions related pname checks@GL_MAX_WIDTH,Fail
+vulkan@shaders@cmat-uniform-ctor,Fail
 
 dEQP-GLES3.functional.fbo.blit.rect.nearest_consistency_out_of_bounds_min,Fail
 dEQP-GLES3.functional.fbo.blit.rect.nearest_consistency_out_of_bounds_min_reverse_dst_x,Fail

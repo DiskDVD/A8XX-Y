@@ -6,7 +6,7 @@ use std::cmp::Reverse;
 use crate::builder::*;
 use crate::ir::*;
 use crate::model::FAUModel;
-use compiler::bitset::BitSet;
+use compiler::bitset::{BitSet, ConstBitSet};
 use compiler::enum_as_u8::EnumAsU8;
 use compiler::smallvec::SmallVec;
 use kraid_proc_macros::EnumAsU8;
@@ -167,18 +167,47 @@ impl FAUSlot {
 ///
 ///  4. Instructions executed within the execution engine limit the number of
 ///     FAU indices they can encode (1 in v13, 2 in v14)
-struct LegalizeFau<'a> {
+struct LegalizeFAU<'a> {
     fau_model: &'a FAUModel,
     slots: SmallVec<FAUSlot>,
+    inval_src: ConstBitSet<1, usize>,
+    src64_w1: ConstBitSet<1, usize>,
 }
 
-impl LegalizeFau<'_> {
-    fn extract_srcs(&mut self, op: &Op) {
-        for src in op.srcs() {
+impl LegalizeFAU<'_> {
+    fn new<'a>(fau_model: &'a FAUModel) -> LegalizeFAU<'a> {
+        LegalizeFAU {
+            fau_model,
+            slots: Default::default(),
+            inval_src: ConstBitSet::new(),
+            src64_w1: ConstBitSet::new(),
+        }
+    }
+
+    fn extract_srcs(&mut self, model: &dyn Model, op: &Op) {
+        for (src_idx, src) in op.srcs().iter().enumerate() {
             let SrcRef::FAU(fau) = src.src_ref else {
                 continue;
             };
+
             let idx64 = fau.idx >> 1;
+            let word = fau.idx & 1;
+
+            if word == 1 && model.op_src_is_64bit(&op, src) {
+                self.src64_w1.insert(src_idx);
+
+                // We can't handle .w1 in most 64-bit ops.  If we can't compose
+                // with W1 (byte swizzles) or if the resulting swizzle isn't
+                // supported, we have to mark this source invalid.
+                if !Swizzle::replicate_word(1)
+                    .swizzle(src.swizzle)
+                    .is_some_and(|s| model.op_src_supports_swizzle(op, src, s))
+                {
+                    self.inval_src.insert(src_idx);
+                    continue;
+                }
+            }
+
             let slot = self
                 .slots
                 .iter_mut()
@@ -202,22 +231,30 @@ impl LegalizeFau<'_> {
         }
     }
 
+    fn fau_retained(&self, fau: &FAURef) -> bool {
+        let idx64 = fau.idx >> 1;
+        self.slots
+            .iter()
+            .any(|s| s.page == fau.page && s.idx64 == idx64)
+    }
+
     /// Once we filtered all slots, we can apply it back to the Op
     /// all FAU srcs that have been retained are ok, the rest require
     /// legalization.
-    fn apply_legalization(&mut self, b: &mut impl SSABuilder, op: &mut Op) {
+    fn apply_legalization(&self, b: &mut impl SSABuilder, op: &mut Op) {
         // TODO: use only one registers if the same FAU is read twice
-        for src in op.srcs_mut().iter_mut() {
-            let SrcRef::FAU(fau) = &src.src_ref else {
+        for (src_idx, src) in op.srcs_mut().iter_mut().enumerate() {
+            let SrcRef::FAU(fau) = &mut src.src_ref else {
                 continue;
             };
-            let idx64 = fau.idx >> 1;
-            let fau_retained = self
-                .slots
-                .iter()
-                .any(|s| s.page == fau.page && s.idx64 == idx64);
-            if !fau_retained {
+            if self.inval_src.contains(src_idx) || !self.fau_retained(fau) {
                 move_src_to_tmp(b, src);
+            } else if self.src64_w1.contains(src_idx) {
+                // We already checked that this swizzle is supported
+                fau.idx &= !1;
+                fau.load64 = true;
+                src.swizzle =
+                    Swizzle::replicate_word(1).swizzle(src.swizzle).unwrap();
             }
         }
     }
@@ -345,20 +382,22 @@ fn legalize_fau_srcs(
     fau_model: &FAUModel,
     op: &mut Op,
 ) {
-    let mut ctx = LegalizeFau {
-        fau_model,
-        slots: SmallVec::new(),
-    };
+    let mut ctx = LegalizeFAU::new(fau_model);
 
-    ctx.extract_srcs(op);
-    if ctx.slots.is_empty() {
+    ctx.extract_srcs(b.model(), op);
+    if ctx.slots.is_empty() && ctx.inval_src.is_empty() {
         return;
     }
 
-    if b.model().op_is_message(op) {
-        ctx.legalize_message();
-    } else {
-        ctx.legalize_execution_unit();
+    // We can have zero legal slots even if some sources are FAU in the case
+    // where we early-discard a 64-bit source.  But, in this case, further
+    // legalization is unnecessary.
+    if !ctx.slots.is_empty() {
+        if b.model().op_is_message(op) {
+            ctx.legalize_message();
+        } else {
+            ctx.legalize_execution_unit();
+        }
     }
 
     ctx.apply_legalization(b, op);

@@ -28,6 +28,7 @@ unsigned type_size_dvec4(const struct glsl_type *type, bool bindless);
 
 struct brw_mem_access_cb_data {
    const struct intel_device_info *devinfo;
+   const struct shader_info *info;
 };
 
 static inline unsigned

@@ -47,10 +47,18 @@ struct kk_device_info {
    VkSampleCountFlags supported_sample_counts;
 };
 
+struct kk_env_settings {
+   bool experimental_enabled;
+   bool gpu_capture_enabled;
+   const char *gpu_capture_dir;
+   uint64_t disabled_workarounds;
+};
+
 struct kk_physical_device {
    struct vk_physical_device vk;
    mtl_device *mtl_dev_handle;
    struct kk_device_info info;
+   struct kk_env_settings settings;
 
    struct wsi_device wsi_device;
 

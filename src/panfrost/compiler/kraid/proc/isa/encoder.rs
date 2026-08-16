@@ -853,6 +853,7 @@ impl ToTokens for InstrVariantDstInfo {
 struct InstrVariantInfo {
     ident: Ident,
     arch: Range<u8>,
+    exec_unit: Ident,
     is_message: bool,
     srcs: Vec<InstrVariantSrcInfo>,
     sr_src: Option<InstrVariantSrcInfo>,
@@ -871,6 +872,7 @@ impl InstrVariantInfo {
 
         InstrVariantInfo {
             ident,
+            exec_unit: ident!("{}", to_camel_case(&instr.exec_unit)),
             arch: instr.arch.clone(),
             is_message: false,
             srcs: Default::default(),
@@ -931,7 +933,10 @@ impl InstrVariantInfo {
 impl ToTokens for InstrVariantInfo {
     fn to_tokens(&self, ts: &mut TokenStream2) {
         let InstrVariantInfo {
-            ident, is_message, ..
+            ident,
+            exec_unit,
+            is_message,
+            ..
         } = self;
 
         let mut src_infos_ts = TokenStream2::new();
@@ -954,6 +959,7 @@ impl ToTokens for InstrVariantInfo {
 
         ts.extend(quote! {
             const #ident: InstructionInfo = InstructionInfo {
+                exec_unit: ExecUnit::#exec_unit,
                 is_message: #is_message,
                 srcs: #srcs_ts,
                 sr_src: #sr_src_ts,
@@ -1410,11 +1416,23 @@ pub fn gen_encoder(
         .add_meta_enum(
             "src_swizzle",
             SRC_SWIZZLE_ENUMS.iter().cloned(),
-            ["h01", "b0123"],
+            [
+                (("swiz_m", "h01"), "none"),
+                (("swiz_int_m", "h01"), "none"),
+                (("lanes_int_m", "b0123"), "none"),
+            ],
         )
         .expect("Failed to create src_swizzle meta-enum");
     isa.enums
-        .add_meta_enum("dst_lanes", DST_LANES_ENUMS.iter().cloned(), [])
+        .add_meta_enum(
+            "dst_lanes",
+            DST_LANES_ENUMS.iter().cloned(),
+            [
+                (("dest_width_narrow_m", "h01"), "hf01"),
+                (("dest_width_narrow_m", "h0"), "hf0"),
+                (("dest_width_narrow_m", "h1"), "hf1"),
+            ],
+        )
         .expect("Failed to create dst_lanes meta-enum");
     isa.enums
         .add_meta_enum(

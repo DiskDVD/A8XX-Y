@@ -149,9 +149,6 @@ vk_border_color_to_mtl_sampler_border_color(enum VkBorderColor color)
    case VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE:
    case VK_BORDER_COLOR_INT_OPAQUE_WHITE:
       return MTL_SAMPLER_BORDER_COLOR_OPAQUE_WHITE;
-   case VK_BORDER_COLOR_FLOAT_CUSTOM_EXT:
-   case VK_BORDER_COLOR_INT_CUSTOM_EXT:
-      return MTL_SAMPLER_BORDER_COLOR_OPAQUE_WHITE;
    default:
       UNREACHABLE("Unsupported address mode");
    }

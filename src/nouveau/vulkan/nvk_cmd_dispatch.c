@@ -196,6 +196,8 @@ nvk_cmd_upload_qmd(struct nvk_cmd_buffer *cmd,
             global_size[1],
             global_size[2],
          },
+         .dependence_counter = 0,
+         .hw_dependence_counter = 0,
       };
 
       assert(shader->cbuf_map.cbuf_count <= ARRAY_SIZE(qmd_info.cbufs));

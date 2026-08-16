@@ -688,6 +688,14 @@ impl<K> BitSet<K> {
         }
         true
     }
+
+    pub fn len(&self) -> usize {
+        let mut count = 0;
+        for w in self.words.iter() {
+            count += usize::try_from(w.count_ones()).unwrap();
+        }
+        count
+    }
 }
 
 impl<K: IntoBitIndex> BitSet<K> {

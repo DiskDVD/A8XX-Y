@@ -251,7 +251,7 @@ struct etna_context {
    bool is_noop;
 
    bool compute_only;
-   bool in_draw_vbo;
+   bool in_atomic_emit;
    bool in_transfer_blit;
 
    /* Set by etna_copy_resource/etna_copy_resource_box when the caller
@@ -303,5 +303,17 @@ etna_flush(struct pipe_context *pctx, struct pipe_fence_handle **fence,
 
 bool
 etna_render_condition_check(struct pipe_context *pctx);
+
+#ifndef NDEBUG
+static inline void clear_atomic_emit_flag(struct etna_context **ctx_ptr) {
+   (*ctx_ptr)->in_atomic_emit = false;
+}
+
+#define ETNA_CONTEXT_ATOMIC_EMIT(_ctx) \
+   struct etna_context *_atomic_emit_cleanup __attribute__((cleanup(clear_atomic_emit_flag))) = (_ctx); \
+   (_ctx)->in_atomic_emit = true
+#else
+#define ETNA_CONTEXT_ATOMIC_EMIT(_ctx)
+#endif
 
 #endif

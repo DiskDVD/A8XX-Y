@@ -3331,6 +3331,7 @@ do_alu_action(struct lp_build_nir_soa_context *bld,
       result = lp_build_abs(float_bld, src[0]);
       break;
    case nir_op_fadd:
+   case nir_op_fadd_rtne:
       result = lp_build_add(float_bld, src[0], src[1]);
       break;
    case nir_op_fceil:

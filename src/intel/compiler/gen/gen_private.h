@@ -91,7 +91,7 @@ struct gen_sub_ranges {
 
    constexpr
    const gen_sub_range&
-   operator[](std::size_t i) const
+   operator[](size_t i) const
    {
       assert(i < N);
       return ranges[i];
@@ -160,7 +160,7 @@ struct gen_ranges {
 
    constexpr
    const gen_range&
-   operator[](std::size_t i) const
+   operator[](size_t i) const
    {
       assert(i < N);
       return ranges[i];

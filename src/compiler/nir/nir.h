@@ -2212,6 +2212,10 @@ typedef enum {
    /**
     * Identifies any subgroup-like operation whose behaviour depends on other
     * logical threads. This is incompatible with CAN_REORDER.
+    *
+    * It also indicates that the intrinsic can be CSE'ed if:
+    * - the active invocations don't change
+    * - the intrinsic has no access index or ACCESS_CAN_REORDER is set
     */
    NIR_INTRINSIC_SUBGROUP = BITFIELD_BIT(2),
 

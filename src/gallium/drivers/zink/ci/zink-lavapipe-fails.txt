@@ -141,7 +141,6 @@ spec@ext_transform_feedback@tessellation quads wireframe,Fail
 spec@ext_transform_feedback@tessellation quad_strip wireframe,Fail
 
 # uprev Piglit in Mesa
-glx@glx-make-current,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp@sRGB decode full precision,Fail
 vulkan@shaders@cmat-uniform-ctor,Fail

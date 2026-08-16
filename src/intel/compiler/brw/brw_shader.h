@@ -244,7 +244,15 @@ public:
    } inst_arena;
 };
 
-void brw_print_instructions(const brw_shader &s, FILE *file = stderr);
+enum brw_print_flags {
+   BRW_PRINT_DEFS         = 1 << 0,
+   BRW_PRINT_BLOCKS       = 1 << 1,
+   BRW_PRINT_REG_PRESSURE = 1 << 2,
+};
+
+void brw_print_instructions(const brw_shader &s, FILE *file = stderr,
+                            unsigned flags = BRW_PRINT_DEFS | BRW_PRINT_BLOCKS |
+                                             BRW_PRINT_REG_PRESSURE);
 
 void brw_print_instruction(const brw_shader &s, const brw_inst *inst,
                            FILE *file = stderr,

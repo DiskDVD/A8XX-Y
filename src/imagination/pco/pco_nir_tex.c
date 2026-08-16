@@ -53,7 +53,7 @@ static bool lower_tex_query_basic(nir_builder *b,
                                   pco_data *data)
 {
    nir_def *new_def;
-   
+
    b->cursor = nir_before_instr(&tex->instr);
 
    switch (tex->op) {
@@ -871,8 +871,13 @@ lower_image(nir_builder *b, nir_intrinsic_instr *intr, void *cb_data)
    enum glsl_sampler_dim image_dim = nir_intrinsic_image_dim(intr);
    bool is_array = nir_intrinsic_image_array(intr);
    enum pipe_format format = nir_intrinsic_format(intr);
-   unsigned desc_set = nir_src_comp_as_uint(intr->src[0], 0);
-   unsigned binding = nir_src_comp_as_uint(intr->src[0], 1);
+
+   nir_scalar scalar = nir_scalar_resolved(intr->src[0].ssa, 0);
+   unsigned desc_set = nir_scalar_as_uint(scalar);
+
+   scalar = nir_scalar_resolved(intr->src[0].ssa, 1);
+   unsigned binding = nir_scalar_as_uint(scalar);
+
    nir_def *elem = nir_channel(b, intr->src[0].ssa, 2);
 
    if (intr->intrinsic == nir_intrinsic_image_deref_size) {
@@ -1078,8 +1083,8 @@ lower_image(nir_builder *b, nir_intrinsic_instr *intr, void *cb_data)
 
    if (ia) {
       assert(!is_array);
-      nir_load_const_instr *load = nir_def_as_load_const(intr->src[0].ssa);
-      bool onchip = load->def.num_components == 4;
+
+      bool onchip = intr->src[0].ssa->num_components == 4;
 
       if (onchip) {
          unsigned ia_idx = nir_src_comp_as_uint(intr->src[0], 3);
@@ -1146,8 +1151,8 @@ lower_image(nir_builder *b, nir_intrinsic_instr *intr, void *cb_data)
 
       case GLSL_SAMPLER_DIM_2D: {
          /* Calculate untwiddled offset. */
-         nir_def *x = nir_i2i16(b, nir_channel(b, coords, 0));
-         nir_def *y = nir_i2i16(b, nir_channel(b, coords, 1));
+         nir_def *x = nir_channel(b, coords, 0);
+         nir_def *y = nir_channel(b, coords, 1);
          twiddled_offset = nir_interleave(b, y, x);
          twiddled_offset =
             nir_imul_imm(b, twiddled_offset, util_format_get_blocksize(format));

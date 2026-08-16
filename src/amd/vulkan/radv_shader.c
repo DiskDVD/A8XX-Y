@@ -566,14 +566,18 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
 
       progress = false;
       NIR_PASS(progress, nir, nir_inline_functions);
+
+      /* Inlining leaves the now-unused function implementations in the
+       * shader.  Drop them before running whole-shader cleanup passes.
+       * Cooperative matrix call functions are not inlined and must remain.
+       */
+      nir_remove_non_cmat_call_entrypoints(nir);
+
       if (progress) {
          NIR_PASS(_, nir, nir_opt_copy_prop_vars);
          NIR_PASS(_, nir, nir_opt_copy_prop);
       }
       NIR_PASS(_, nir, nir_opt_deref);
-
-      /* Pick off the single entrypoint that we want - leave cmat call functions */
-      nir_remove_non_cmat_call_entrypoints(nir);
 
       /* Make sure we lower constant initializers on output variables so that
        * nir_remove_dead_variables below sees the corresponding stores
@@ -600,7 +604,7 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
          NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_function_temp | nir_var_shader_temp, NULL);
       }
 
-      NIR_PASS(progress, nir, radv_nir_lower_cooperative_matrix, compiler_info->ac->gfx_level, stage,
+      NIR_PASS(progress, nir, radv_nir_lower_cooperative_matrix, compiler_info->ac->gfx_level,
                nir->info.max_subgroup_size);
       if (progress) {
          NIR_PASS(_, nir, nir_opt_dce);
@@ -878,6 +882,12 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
       .layout = &stage->layout,
       .embedded_samplers = &embedded_samplers,
    };
+
+   /* Remove deref_cast(undefined) texture derefs in dead control flow before nir_vk_lower_ycbcr_tex.
+    * An earlier radv_optimize_nir() would have done this if optimisations_disabled=false.
+    */
+   if (stage->key.optimisations_disabled)
+      NIR_PASS(_, nir, nir_opt_dead_cf);
 
    NIR_PASS(progress, nir, nir_vk_lower_ycbcr_tex, ycbcr_conversion_lookup, &lower_ycbcr_state);
    /* Gather info in the case that nir_vk_lower_ycbcr_tex might have emitted resinfo instructions. */
@@ -1985,13 +1995,17 @@ radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader *
    const bool disable_rbplus = pdev->info.has_rbplus && !pdev->info.rbplus_allowed;
 
    regs->ps.db_shader_control =
-      S_02880C_Z_EXPORT_ENABLE(info->ps.writes_z) | S_02880C_STENCIL_TEST_VAL_EXPORT_ENABLE(info->ps.writes_stencil) |
-      S_02880C_KILL_ENABLE(info->ps.can_discard) | S_02880C_MASK_EXPORT_ENABLE(mask_export_enable) |
-      S_02880C_CONSERVATIVE_Z_EXPORT(conservative_z_export) | S_02880C_Z_ORDER(z_order) |
-      S_02880C_DEPTH_BEFORE_SHADER(info->ps.early_fragment_test) |
+      S_02880C_KILL_ENABLE(info->ps.can_discard) | S_02880C_CONSERVATIVE_Z_EXPORT(conservative_z_export) |
+      S_02880C_Z_ORDER(z_order) | S_02880C_DEPTH_BEFORE_SHADER(info->ps.early_fragment_test) |
       S_02880C_PRE_SHADER_DEPTH_COVERAGE_ENABLE(info->ps.post_depth_coverage) |
       S_02880C_EXEC_ON_HIER_FAIL(info->ps.writes_memory) | S_02880C_EXEC_ON_NOOP(info->ps.writes_memory) |
       S_02880C_DUAL_QUAD_DISABLE(disable_rbplus) | S_02880C_PRIMITIVE_ORDERED_PIXEL_SHADER(info->ps.pops);
+
+   if (!info->ps.has_epilog) {
+      regs->ps.db_shader_control |= S_02880C_Z_EXPORT_ENABLE(info->ps.writes_z) |
+                                    S_02880C_STENCIL_TEST_VAL_EXPORT_ENABLE(info->ps.writes_stencil) |
+                                    S_02880C_MASK_EXPORT_ENABLE(mask_export_enable);
+   }
 
    if (pdev->info.gfx_level >= GFX12) {
       regs->ps.spi_ps_in_control = S_028640_PS_W32_EN(info->wave_size == 32);
@@ -2033,8 +2047,8 @@ radv_precompute_registers_hw_fs(struct radv_device *device, struct radv_shader *
          regs->ps.pa_sc_shader_control = S_028C40_LOAD_COLLISION_WAVEID(info->ps.pops);
    }
 
-   regs->ps.spi_shader_z_format = ac_get_spi_shader_z_format(info->ps.writes_z, info->ps.writes_stencil,
-                                                             info->ps.writes_sample_mask, info->ps.writes_mrt0_alpha);
+   regs->ps.spi_shader_z_format = ac_get_spi_shader_z_format(
+      info->ps.writes_z, info->ps.writes_stencil, info->ps.writes_sample_mask, info->ps.writes_mrt0_alpha_to_mrtz);
 }
 
 static void
@@ -3190,6 +3204,7 @@ radv_shader_part_create(struct radv_device *device, struct radv_shader_part_bina
 
    shader_part->spi_shader_col_format = binary->info.spi_shader_col_format;
    shader_part->cb_shader_mask = binary->info.cb_shader_mask;
+   shader_part->db_shader_control = binary->info.db_shader_control;
    shader_part->spi_shader_z_format = binary->info.spi_shader_z_format;
 
    if (pdev->info.gfx_level >= GFX11)
@@ -3748,6 +3763,11 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
 
    binary->info.spi_shader_col_format = key->spi_shader_col_format;
    binary->info.cb_shader_mask = ac_get_cb_shader_mask(key->spi_shader_col_format);
+   binary->info.db_shader_control =
+      S_02880C_Z_EXPORT_ENABLE(key->has_depth_output && !key->ignore_depth_output) |
+      S_02880C_STENCIL_TEST_VAL_EXPORT_ENABLE(key->has_stencil_output && !key->ignore_stencil_output) |
+      S_02880C_MASK_EXPORT_ENABLE(key->has_sample_mask_output && !key->lower_1bit_sample_mask_to_discard) |
+      S_02880C_KILL_ENABLE(key->lower_1bit_sample_mask_to_discard);
    binary->info.spi_shader_z_format = key->spi_shader_z_format;
 
    epilog = radv_shader_part_create(device, binary, info.wave_size);

@@ -496,10 +496,10 @@ kk_GetPhysicalDeviceImageFormatProperties2(
          /* Optimal device access and identical memory layout if optimization
           * is the same both with and without host transfer usage */
          bool with_host_transfer = kk_image_layout_can_optimize(
-            pImageFormatInfo->usage, pImageFormatInfo->tiling,
+            pdev, pImageFormatInfo->usage, pImageFormatInfo->tiling,
             pImageFormatInfo->flags, p_format);
          bool without_host_transfer = kk_image_layout_can_optimize(
-            pImageFormatInfo->usage & ~VK_IMAGE_USAGE_HOST_TRANSFER_BIT,
+            pdev, pImageFormatInfo->usage & ~VK_IMAGE_USAGE_HOST_TRANSFER_BIT,
             pImageFormatInfo->tiling, pImageFormatInfo->flags, p_format);
          host_props->optimalDeviceAccess =
             with_host_transfer == without_host_transfer;

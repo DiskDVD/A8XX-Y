@@ -256,9 +256,9 @@ static void
 alu_fcmp_to_msl(struct nir_to_msl_ctx *ctx, nir_alu_instr *instr,
                 const char *op)
 {
-   /* KK_WORKAROUND_14 Since comparison operations must always preserve NANs,
-    * this is always applied */
-   if (!(ctx->disabled_workarounds & BITFIELD64_BIT(14))) {
+   /* KK_WORKAROUND_17 Follow up to KK_WORKAROUND_14 since the safe pragma is
+    * not enough in macOS26 */
+   if (!(ctx->disabled_workarounds & BITFIELD64_BIT(17))) {
       /* fneu is unordered (true on NaN), the others are ordered. */
       bool ordered = instr->op != nir_op_fneu;
       for (unsigned i = 0; i < 2; i++) {
@@ -1562,6 +1562,10 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
       P(ctx, "));\n");
       break;
    }
+   case nir_intrinsic_bindless_image_levels:
+      src_to_msl(ctx, &instr->src[0]);
+      P(ctx, ".get_num_mip_levels();\n");
+      break;
    case nir_intrinsic_bindless_image_load:
       src_to_msl(ctx, &instr->src[0]);
       P(ctx, ".read(");
@@ -2016,7 +2020,7 @@ jump_instr_to_msl(struct nir_to_msl_ctx *ctx, nir_jump_instr *jump)
 }
 
 static const char *
-alu_fp_math_mode_pragma(const nir_alu_instr *alu)
+alu_fp_math_mode_pragma(struct nir_to_msl_ctx *ctx, const nir_alu_instr *alu)
 {
    unsigned fp_math_ctrl = alu->fp_math_ctrl;
 
@@ -2029,6 +2033,15 @@ alu_fp_math_mode_pragma(const nir_alu_instr *alu)
             fp_math_ctrl |= src_alu->fp_math_ctrl;
          }
       }
+   }
+
+   /* KK_WORKAROUND_14 Since comparison operations must always preserve NANs,
+    * this is always applied */
+   if (!(ctx->disabled_workarounds & BITFIELD64_BIT(14))) {
+      bool is_min_max_sz = (alu->op == nir_op_fmin || alu->op == nir_op_fmax) &&
+                           (fp_math_ctrl & nir_fp_preserve_signed_zero);
+      if (is_min_max_sz || nir_alu_instr_is_comparison(alu))
+         return "safe";
    }
 
    if (fp_math_ctrl & (nir_fp_no_contract | nir_fp_no_reassoc))
@@ -2049,7 +2062,7 @@ instr_to_msl(struct nir_to_msl_ctx *ctx, nir_instr *instr)
    switch (instr->type) {
    case nir_instr_type_alu: {
       nir_alu_instr *alu = nir_instr_as_alu(instr);
-      const char *math_mode = alu_fp_math_mode_pragma(alu);
+      const char *math_mode = alu_fp_math_mode_pragma(ctx, alu);
       if (math_mode) {
          P_IND(ctx, "{\n");
          P_IND(ctx, "#pragma METAL fp math_mode(%s)\n", math_mode);

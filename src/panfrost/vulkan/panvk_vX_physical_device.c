@@ -39,7 +39,6 @@ panvk_per_arch(get_physical_device_extensions)(
    const struct panvk_instance *instance,
    struct vk_device_extension_table *ext)
 {
-   bool has_vk1_2 = PAN_ARCH >= 10;
    bool has_gralloc = vk_android_get_ugralloc() != NULL;
 
    *ext = (struct vk_device_extension_table){
@@ -51,6 +50,7 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_calibrated_timestamps =
          device->kmod.dev->props.gpu_can_query_timestamp,
       .KHR_compute_shader_derivatives = PAN_ARCH >= 9,
+      .KHR_cooperative_matrix = PAN_ARCH >= 11,
       .KHR_copy_commands2 = true,
       .KHR_copy_memory_indirect = PAN_ARCH >= 10,
       .KHR_create_renderpass2 = true,
@@ -83,7 +83,7 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_maintenance3 = true,
       .KHR_maintenance4 = true,
       .KHR_maintenance5 = true,
-      .KHR_maintenance6 = PAN_ARCH >= 10,
+      .KHR_maintenance6 = true,
       .KHR_maintenance7 = true,
       .KHR_maintenance8 = true,
       .KHR_maintenance9 = true,
@@ -108,14 +108,14 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_shader_integer_dot_product = true,
       .KHR_shader_maximal_reconvergence = PAN_ARCH >= 9,
       .KHR_shader_non_semantic_info = true,
-      .KHR_shader_quad_control = has_vk1_2,
+      .KHR_shader_quad_control = PAN_ARCH >= 9,
       .KHR_shader_relaxed_extended_instruction = true,
       .KHR_shader_subgroup_extended_types = true,
       .KHR_shader_subgroup_rotate = true,
       .KHR_shader_subgroup_uniform_control_flow = PAN_ARCH >= 9,
       .KHR_shader_terminate_invocation = true,
       .KHR_shader_untyped_pointers = PAN_ARCH >= 9,
-      .KHR_spirv_1_4 = PAN_ARCH >= 10,
+      .KHR_spirv_1_4 = true,
       .KHR_storage_buffer_storage_class = true,
 #ifdef PANVK_USE_WSI_PLATFORM
       .KHR_present_id = true,
@@ -477,6 +477,10 @@ panvk_per_arch(get_physical_device_features)(
       .computeDerivativeGroupQuads = PAN_ARCH >= 9,
       .computeDerivativeGroupLinear = PAN_ARCH >= 9,
 
+      /* VK_KHR_cooperative_matrix */
+      .cooperativeMatrix = PAN_ARCH >= 11,
+      .cooperativeMatrixRobustBufferAccess = false,
+
       /* VK_KHR_maintenance7 */
       .maintenance7 = true,
 
@@ -776,7 +780,7 @@ get_api_version()
    if (PAN_ARCH >= 10)
       return VK_MAKE_API_VERSION(0, 1, 4, VK_HEADER_VERSION);
 
-   return VK_MAKE_API_VERSION(0, 1, 1, VK_HEADER_VERSION);
+   return VK_MAKE_API_VERSION(0, 1, 3, VK_HEADER_VERSION);
 }
 
 static VkConformanceVersion
@@ -1215,6 +1219,9 @@ panvk_per_arch(get_physical_device_properties)(
 
       /* VK_KHR_compute_shader_derivatives */
       .meshAndTaskShaderDerivatives = false,
+
+      /* VK_KHR_cooperative_matrix */
+      .cooperativeMatrixSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT,
 
       /* VK_KHR_robustness2 */
       .robustStorageBufferAccessSizeAlignment = 4,

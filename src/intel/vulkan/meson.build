@@ -263,6 +263,7 @@ anv_deps = [
   idep_intel_blorp,
   idep_mda,
   idep_anv_drirc,
+  idep_metrics_library_intel,
 ]
 
 if with_platform_x11

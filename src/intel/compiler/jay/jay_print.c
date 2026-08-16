@@ -24,9 +24,10 @@ static const char *jay_file_str[JAY_FILE_LAST + 1] = {
    [J_ARF] = "arf", [MEM] = "m",       [TEST_FILE] = "t",
 };
 
-static const char *jay_base_types[] = {
-   [JAY_TYPE_U] = "u", [JAY_TYPE_S] = "s", [JAY_TYPE_F] = "f", [JAY_TYPE_BF] = "bf"
-};
+static const char *jay_base_types[] = { [JAY_TYPE_U] = "u",
+                                        [JAY_TYPE_S] = "s",
+                                        [JAY_TYPE_F] = "f",
+                                        [JAY_TYPE_BF] = "bf" };
 
 void
 jay_print_type(FILE *fp, enum jay_type t)
@@ -275,12 +276,12 @@ jay_print_block(FILE *fp, jay_block *block)
    fprintf(fp, "}");
    first = true;
    jay_foreach_successor(block, succ, GPR) {
-      fprintf(fp, "%s B%d", first ? " ->" : "", succ->index);
+      fprintf(fp, "%s B%d", first ? " ->" : "", (*succ)->index);
       first = false;
    }
    first = true;
    jay_foreach_successor(block, succ, UGPR) {
-      fprintf(fp, "%s B%d", first ? " =>" : "", succ->index);
+      fprintf(fp, "%s B%d", first ? " =>" : "", (*succ)->index);
       first = false;
    }
    fprintf(fp, "\n\n");

@@ -65,8 +65,7 @@ void radv_nir_lower_io(nir_shader *nir);
 
 bool radv_nir_lower_io_to_mem(const struct radv_compiler_info *compiler_info, struct radv_shader_stage *stage);
 
-bool radv_nir_lower_cooperative_matrix(nir_shader *shader, enum amd_gfx_level gfx_level,
-                                       struct radv_shader_stage *stage, unsigned wave_size);
+bool radv_nir_lower_cooperative_matrix(nir_shader *shader, enum amd_gfx_level gfx_level, unsigned wave_size);
 
 bool radv_nir_opt_cooperative_matrix(nir_shader *shader, enum amd_gfx_level gfx_level);
 
@@ -74,8 +73,7 @@ bool radv_nir_lower_draw_id_to_zero(nir_shader *shader);
 
 bool radv_nir_remap_color_attachment(nir_shader *shader, const struct radv_graphics_state_key *gfx_state);
 
-bool radv_nir_trim_fs_color_exports(nir_shader *shader, const struct radv_ps_epilog_key *epilog_key,
-                                    bool mrt0_alpha_is_dead);
+bool radv_nir_trim_fs_exports(nir_shader *shader, const struct radv_ps_epilog_key *epilog_key, bool mrt0_alpha_is_dead);
 
 bool radv_nir_lower_printf(nir_shader *shader, struct radv_debug_nir *debug_nir);
 
@@ -83,7 +81,10 @@ typedef struct radv_nir_opt_tid_function_options {
    bool use_masked_swizzle_amd : 1;
    bool use_dpp16_shift_amd : 1;
    bool use_shuffle_xor : 1;
+   bool use_quad_swap_broadcast : 1;
    bool use_clustered_rotate : 1;
+   bool use_permute16_amd : 1;
+   bool use_dpp8_swizzle_amd : 1;
    /* These can be smaller than the api ballot size
     * if some invocations are always inactive.
     */

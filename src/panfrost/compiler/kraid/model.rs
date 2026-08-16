@@ -3,7 +3,10 @@
 
 use crate::encode_v9::*;
 use crate::ir::*;
+use crate::isa::ExecUnit;
 use kraid_bindings::*;
+
+pub use kraid_bindings::pan_model as PanModel;
 
 pub struct SmallConstantTable(Vec<SmallConstant>);
 
@@ -43,11 +46,15 @@ impl FAUModel {
 pub trait Model {
     fn arch(&self) -> u8;
 
+    fn pan_model(&self) -> &PanModel;
+
     fn fau(&self) -> &FAUModel;
 
     fn encode_shader(&self, s: &Shader<'_>) -> Vec<u32>;
 
     fn op_is_supported(&self, op: &Op) -> bool;
+
+    fn op_exec_unit(&self, op: &Op) -> Option<ExecUnit>;
 
     fn op_is_message(&self, op: &Op) -> bool;
 
@@ -79,15 +86,22 @@ pub trait Model {
     fn subgroup_size(&self) -> u8 {
         unsafe { pan_subgroup_size(self.arch().into()).try_into().unwrap() }
     }
+
+    fn max_threads(&self, registers_used: u8) -> u8;
 }
 
 struct ValhallModel {
     arch: u8,
+    pan_model: std::ptr::NonNull<PanModel>,
     fau: FAUModel,
 }
 
+// SAFETY: The pan_model pointer points to static data
+unsafe impl Send for ValhallModel {}
+unsafe impl Sync for ValhallModel {}
+
 impl ValhallModel {
-    fn new(arch: u8) -> ValhallModel {
+    fn new(arch: u8, pan_model: std::ptr::NonNull<PanModel>) -> ValhallModel {
         use crate::isa::{SmallConstantTable, v9};
         let sc_table = SmallConstantTable(v9::SmallConstantT::collect(arch));
         let fau = FAUModel {
@@ -98,7 +112,11 @@ impl ValhallModel {
             }),
             single_fau_ram_index: arch < 14,
         };
-        ValhallModel { arch, fau }
+        ValhallModel {
+            arch,
+            pan_model,
+            fau,
+        }
     }
 
     #[inline]
@@ -157,6 +175,10 @@ impl Model for ValhallModel {
         self.arch
     }
 
+    fn pan_model(&self) -> &PanModel {
+        unsafe { self.pan_model.as_ref() }
+    }
+
     fn fau(&self) -> &FAUModel {
         &self.fau
     }
@@ -167,6 +189,10 @@ impl Model for ValhallModel {
 
     fn op_is_supported(&self, op: &Op) -> bool {
         op.as_virtual().is_some() || v9_op_is_supported(op, self.arch)
+    }
+
+    fn op_exec_unit(&self, op: &Op) -> Option<ExecUnit> {
+        v9_op_exec_unit(op, self.arch)
     }
 
     fn op_is_message(&self, op: &Op) -> bool {
@@ -270,18 +296,27 @@ impl Model for ValhallModel {
             preload: Some(preload),
         })
     }
+
+    fn max_threads(&self, registers_used: u8) -> u8 {
+        64 / registers_used.max(32)
+    }
 }
 
 pub fn model_for_gpu_id(
     gpu_id: u64,
+    gpu_variant: u32,
 ) -> Result<Box<dyn Model + Sync + Send>, &'static str> {
     // SAFETY: pan_arch() just translates one integer to another
     let arch = u8::try_from(unsafe { pan_arch(gpu_id) }).unwrap();
+    let pan_model = unsafe {
+        let model = pan_get_model(gpu_id, gpu_variant) as *mut _;
+        std::ptr::NonNull::new(model).ok_or("Invalid GPU ID or variant")?
+    };
 
     if arch >= 15 {
         Err("Kraid does not yet support this GPU")
     } else if arch >= 9 {
-        Ok(Box::new(ValhallModel::new(arch)))
+        Ok(Box::new(ValhallModel::new(arch, pan_model)))
     } else {
         Err("Kraid only supports Valhall (v9) and later GPUs")
     }

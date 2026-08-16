@@ -36,6 +36,9 @@ else
     -DCMAKE_BUILD_TYPE=Release \
     -DCL_INCLUDE_DIR="$MESA_SOURCE_DIR/include" \
     -DCL_LIB_DIR="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)" \
+    -DGL_IS_SUPPORTED=ON \
+    -DGLES_IS_SUPPORTED=ON \
+    -DVULKAN_IS_SUPPORTED=ON \
     -DOPENCL_LIBRARIES=OpenCL \
     -DSPIRV_INCLUDE_DIR=/usr \
     -DSPIRV_TOOLS_DIR=/usr/bin

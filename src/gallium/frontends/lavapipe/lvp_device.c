@@ -233,6 +233,7 @@ static const struct vk_device_extension_table lvp_device_extensions_supported = 
    .EXT_calibrated_timestamps             = true,
    .EXT_color_write_enable                = true,
    .EXT_conditional_rendering             = true,
+   .EXT_cooperative_matrix_maintenance1   = true,
    .EXT_debug_marker                      = true,
    .EXT_depth_bias_control                = true,
    .EXT_depth_clip_enable                 = true,
@@ -909,10 +910,16 @@ lvp_get_features(const struct lvp_physical_device *pdevice,
       .cooperativeMatrix = has_cooperative_matrix(),
       .cooperativeMatrixRobustBufferAccess = has_cooperative_matrix(),
 
-      .cooperativeMatrixFlexibleDimensions = true,
-      .cooperativeMatrixConversions = true,
+      .cooperativeMatrixProperties2 = true,
       .cooperativeMatrixReductions = true,
+      .cooperativeMatrixConversions = true,
       .cooperativeMatrixPerElementOperations = true,
+      .cooperativeMatrixGetCoordinate = true,
+
+      .cooperativeMatrixFlexibleDimensions = true,
+      .cooperativeMatrixConversionsNV = true,
+      .cooperativeMatrixReductionsNV = true,
+      .cooperativeMatrixPerElementOperationsNV = true,
       .cooperativeMatrixTensorAddressing = true,
       .cooperativeMatrixBlockLoads = true,
 
@@ -3030,6 +3037,26 @@ fill_matrix_prop_khr(struct __vk_outarray *base, struct matrix_prop *prop)
 }
 
 static void
+fill_matrix_prop_ext(struct __vk_outarray *base, struct matrix_prop *prop)
+{
+   vk_outarray(VkCooperativeMatrixProperties2EXT) *out = (void *)base;
+
+   vk_outarray_append_typed(VkCooperativeMatrixProperties2EXT, out, p)
+   {
+      *p = (struct VkCooperativeMatrixProperties2EXT){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_2_EXT,
+         .MGranularity = 8,
+         .NGranularity = 8,
+         .KGranularity = 8,
+         .AType = prop->a_type,
+         .BType = prop->b_type,
+         .CType = prop->c_type,
+         .ResultType = prop->r_type
+      };
+   }
+}
+
+static void
 fill_flexible_matrix_prop_nv(struct __vk_outarray *base, struct matrix_prop *prop)
 {
    vk_outarray(VkCooperativeMatrixFlexibleDimensionsPropertiesNV) *out = (void *)base;
@@ -3093,5 +3120,19 @@ lvp_GetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV(
 {
    VK_OUTARRAY_MAKE_TYPED(VkCooperativeMatrixFlexibleDimensionsPropertiesNV, out, pProperties, pPropertyCount);
    fill_array_sizes_structs(&out.base, fill_flexible_matrix_prop_nv);
+   return vk_outarray_status(&out);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+lvp_GetPhysicalDeviceCooperativeMatrixProperties2EXT(VkPhysicalDevice physicalDevice,
+                                                     const VkPhysicalDeviceCooperativeMatrixInfo2EXT *info,
+                                                     uint32_t *pPropertyCount,
+                                                     VkCooperativeMatrixProperties2EXT *pProperties)
+{
+   VK_OUTARRAY_MAKE_TYPED(VkCooperativeMatrixProperties2EXT, out, pProperties, pPropertyCount);
+
+   if (info->scope == VK_SCOPE_SUBGROUP_KHR &&
+       !(info->flags & VK_COOPERATIVE_MATRIX_SATURATING_ACCUMULATION_BIT_EXT))
+      fill_array_sizes_structs(&out.base, fill_matrix_prop_ext);
    return vk_outarray_status(&out);
 }

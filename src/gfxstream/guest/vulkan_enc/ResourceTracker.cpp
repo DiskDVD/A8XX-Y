@@ -3451,6 +3451,7 @@ VkResult ResourceTracker::on_vkAllocateMemory(void* context, VkResult input_resu
     {                                                                                          \
         auto it = info_VkDevice.find(device);                                                  \
         if (it == info_VkDevice.end()) return result;                                          \
+        mesa_logw("%s:%d: Allocation failure %d", __func__, __LINE__, result);                 \
         emitDeviceMemoryReport(it->second,                                                     \
                                VK_DEVICE_MEMORY_REPORT_EVENT_TYPE_ALLOCATION_FAILED_EXT, 0,    \
                                pAllocateInfo->allocationSize, VK_OBJECT_TYPE_DEVICE_MEMORY, 0, \
@@ -4336,10 +4337,16 @@ VkResult ResourceTracker::on_vkMapMemory(void* context, VkResult host_result, Vk
         createBlob.size = deviceMemoryInfo.coherentMemorySize;
 
         auto blob = VirtGpuDevice::getInstance()->createBlob(createBlob);
-        if (!blob) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        if (!blob) {
+            mesa_loge("%s: createBlob failed", __func__);
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
 
         VirtGpuResourceMappingPtr mapping = blob->createMapping();
-        if (!mapping) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        if (!mapping) {
+            mesa_loge("%s: createMapping failed", __func__);
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
 
         auto coherentMemory =
             std::make_shared<CoherentMemory>(mapping, createBlob.size, device, memory);

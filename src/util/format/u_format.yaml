@@ -2418,6 +2418,15 @@
   block: {width: 1, height: 1, depth: 1}
   channels: []
   swizzles: [X, Y, Z, W]
+
+- name: X6Y10_X6U10X6V10_422_UNORM
+  alias: P210
+  layout: planar2
+  colorspace: YUV
+  subsampling: 422
+  block: {width: 1, height: 1, depth: 1}
+  channels: []
+  swizzles: [X, Y, Z, W]
 - name: Y10Y10Y10X2_U10V10U10X2V10U10V10X2_420_UNORM
   alias: P030
   layout: planar2

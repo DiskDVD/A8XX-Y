@@ -269,8 +269,9 @@ validate_inst(struct validate_state *validate, jay_inst *I)
          (!jay_is_null(I->cond_flag) && opinfo->cmod));
 
    /* We should not be clobbering multiple flags in SIMD16 with a mov.u32 */
-   CHECK(!(I->dst.file == FLAG && jay_type_size_bits(I->type) >
-                                     validate->func->shader->dispatch_width));
+   CHECK(!(I->dst.file == FLAG &&
+           jay_type_size_bits(I->type) >
+              jay_type_size_bits(jay_flag_type(validate->func))));
 
    unsigned num_srcs = I->num_srcs;
 
@@ -362,12 +363,18 @@ jay_validate_function(struct validate_state *validate)
       validate->block = block;
       validate->I = NULL;
 
-      CHECK(block->logical_succs[0] || !block->logical_succs[1]);
       CHECK(block->index < validate->func->num_blocks);
 
-      /* Post-RA we can remove physical jumps though they exist logically */
-      if (block->logical_succs[1] && !validate->post_ra) {
-         CHECK(jay_block_ending_jump(block) != NULL);
+      /* If the block has a fall-through edge, it must be the first block in
+       * the successors list.
+       */
+      jay_block *next_block = jay_next_block(block);
+      for (enum jay_file file = GPR; file <= UGPR; ++file) {
+         bool is_first_successor = true;
+         jay_foreach_successor(block, succ, file) {
+            CHECK(*succ != next_block || is_first_successor);
+            is_first_successor = false;
+         }
       }
 
       /* Loop headers have a single forward edge and a single back edge. There
@@ -406,10 +413,10 @@ jay_validate_function(struct validate_state *validate)
            ++file) {
          if (jay_num_successors(block, file) > 1 && !validate->post_ra) {
             jay_foreach_successor(block, succ, file) {
-               if (jay_num_predecessors(succ, file) > 1) {
+               if (jay_num_predecessors(*succ, file) > 1) {
                   chirp(validate, "%s critical edge (B%u -> B%u)",
                         file == GPR ? "Logical" : "Physical", block->index,
-                        succ->index);
+                        (*succ)->index);
                }
             }
          }

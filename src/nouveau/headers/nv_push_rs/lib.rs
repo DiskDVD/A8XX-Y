@@ -265,6 +265,10 @@ impl Push {
         }
         self.mem.extend_from_slice(data);
     }
+
+    pub fn size(&self) -> usize {
+        self.mem.len()
+    }
 }
 
 impl Default for Push {

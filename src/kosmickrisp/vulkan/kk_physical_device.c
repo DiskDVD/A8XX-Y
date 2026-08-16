@@ -7,6 +7,7 @@
 
 #include "kk_physical_device.h"
 
+#include "kk_debug.h"
 #include "kk_entrypoints.h"
 #include "kk_image.h"
 #include "kk_instance.h"
@@ -15,6 +16,7 @@
 #include "kk_wsi.h"
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
+#include "kosmickrisp/bridge/ns_process_info.h"
 
 #include "util/disk_cache.h"
 #include "util/mesa-blake3.h"
@@ -39,6 +41,7 @@ kk_get_vk_version()
 
 static void
 kk_get_device_extensions(const struct kk_instance *instance,
+                         const struct kk_env_settings *settings,
                          struct vk_device_extension_table *ext)
 {
    *ext = (struct vk_device_extension_table){
@@ -166,17 +169,22 @@ kk_get_device_extensions(const struct kk_instance *instance,
       .EXT_attachment_feedback_loop_layout = true,
       .EXT_attachment_feedback_loop_dynamic_state = true,
       .EXT_blend_operation_advanced = true,
+      .EXT_border_color_swizzle = KK_EXPERIMENTAL(CUSTOM_BORDER),
       .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = true,
+      .EXT_custom_border_color = KK_EXPERIMENTAL(CUSTOM_BORDER),
       .EXT_custom_resolve = true,
       .EXT_debug_marker = true,
       .EXT_depth_clip_control = true,
+      .EXT_depth_clip_enable = true,
       .EXT_extended_dynamic_state3 = true,
       .EXT_external_memory_metal = true,
       .EXT_external_memory_host = true,
       .EXT_hdr_metadata = true,
       .EXT_image_2d_view_of_3d = true,
+      .EXT_image_view_min_lod = KK_EXPERIMENTAL(IMAGE_VIEW_MIN_LOD),
       .EXT_load_store_op_none = true,
+      .EXT_map_memory_placed = true,
       .EXT_memory_budget = true,
       .EXT_multi_draw = true,
       .EXT_mutable_descriptor_type = true,
@@ -184,6 +192,7 @@ kk_get_device_extensions(const struct kk_instance *instance,
       .EXT_post_depth_coverage = true,
       .EXT_primitive_restart_index = true,
       .EXT_primitive_topology_list_restart = true,
+      .EXT_provoking_vertex = true,
       .EXT_robustness2 = true,
       .EXT_sample_locations = true,
       .EXT_shader_atomic_float = true,
@@ -202,6 +211,7 @@ kk_get_device_extensions(const struct kk_instance *instance,
       .KHR_external_semaphore_fd = true,
 
       .AMD_shader_image_load_store_lod = true,
+      .AMD_buffer_marker = true,
    };
 }
 
@@ -425,9 +435,18 @@ kk_get_device_features(
       /* VK_EXT_blend_operation_advanced */
       .advancedBlendCoherentOperations = true,
 
+      /* VK_EXT_border_color_swizzle */
+      .borderColorSwizzle = supported_extensions->EXT_border_color_swizzle,
+      .borderColorSwizzleFromImage = false,
+
       /* VK_EXT_conditional_rendering */
       .conditionalRendering = true,
       .inheritedConditionalRendering = true,
+
+      /* VK_EXT_custom_border_color */
+      .customBorderColors = supported_extensions->EXT_custom_border_color,
+      .customBorderColorWithoutFormat =
+         supported_extensions->EXT_custom_border_color,
 
       /* VK_EXT_custom_resolve */
       .customResolve = true,
@@ -435,16 +454,29 @@ kk_get_device_features(
       /* VK_EXT_depth_clip_control */
       .depthClipControl = true,
 
+      /* VK_EXT_depth_clip_enable */
+      .depthClipEnable = true,
+
       /* VK_EXT_extended_dynamic_state3 */
       .extendedDynamicState3DepthClampEnable = true,
+      .extendedDynamicState3DepthClipEnable = true,
       .extendedDynamicState3DepthClipNegativeOneToOne = true,
       .extendedDynamicState3LineRasterizationMode = true,
+      .extendedDynamicState3ProvokingVertexMode = true,
       .extendedDynamicState3SampleLocationsEnable = true,
       .extendedDynamicState3TessellationDomainOrigin = true,
 
       /* EXT_image_2d_view_of_3d */
       .image2DViewOf3D = true,
       .sampler2DViewOf3D = true,
+
+      /* VK_EXT_image_view_min_lod */
+      .minLod = supported_extensions->EXT_image_view_min_lod,
+
+      /* VK_EXT_map_memory_placed */
+      .memoryMapPlaced = true,
+      .memoryMapRangePlaced = false,
+      .memoryUnmapReserve = true,
 
       /* VK_EXT_multi_draw */
       .multiDraw = true,
@@ -460,6 +492,9 @@ kk_get_device_features(
       /* VK_EXT_primitive_topology_list_restart */
       .primitiveTopologyListRestart = true,
       .primitiveTopologyPatchListRestart = false,
+
+      /* VK_EXT_provoking_vertex */
+      .provokingVertexLast = true,
 
       /* VK_EXT_shader_replicated_composites */
       .shaderReplicatedComposites = true,
@@ -947,61 +982,11 @@ kk_physical_device_free_disk_cache(struct kk_physical_device *pdev)
 }
 
 static uint64_t
-kk_get_sysmem_heap_size(void)
+kk_get_sysmem_heap_size(struct kk_physical_device *pdev)
 {
-   /* Report the total amount of system memory as the actual heap size */
-   uint64_t sysmem_size_B = 0;
-   if (!os_get_total_physical_memory(&sysmem_size_B))
-      return 0;
-
-   return sysmem_size_B;
-}
-
-static uint64_t
-kk_get_sysmem_heap_budget(struct kk_physical_device *pdev)
-{
-   /* From the Vulkan 1.3.278 spec:
-    *
-    *    "heapBudget is an array of VK_MAX_MEMORY_HEAPS VkDeviceSize
-    *    values in which memory budgets are returned, with one
-    *    element for each memory heap. A heap’s budget is a rough
-    *    estimate of how much memory the process can allocate from
-    *    that heap before allocations may fail or cause performance
-    *    degradation. The budget includes any currently allocated
-    *    device memory."
-    *
-    * and
-    *
-    *    "The heapBudget value must be less than or equal to
-    *    VkMemoryHeap::size for each heap."
-    *
-    * From Metal documentation for recommendedMaxWorkingSetSize:
-    *
-    *     An approximation of how much memory, in bytes, this GPU device can
-    *     allocate without affecting its runtime performance.
-    *
-    * From Metal documentation for currentAllocatedSize:
-    *
-    *     The total amount of memory, in bytes, the GPU device is using for all
-    *     of its resources.
-    *
-    * First, determine the total and available system memory to calculate the
-    * amount of used memory. Then, subtract this from the Metal-defined budget,
-    * and add back the current used memory by this device.
-    */
-   uint64_t sysmem_size_B = 0;
-   uint64_t sysmem_available_B = 0;
-   if (!os_get_total_physical_memory(&sysmem_size_B) ||
-       !os_get_available_system_memory(&sysmem_available_B))
-      return 0;
-
-   uint64_t sysmem_used_B = sysmem_size_B - sysmem_available_B;
-   uint64_t sysmem_budget_B =
-      mtl_device_recommended_max_working_set_size(pdev->mtl_dev_handle);
-   uint64_t remaining_budget_B =
-      sysmem_budget_B > sysmem_used_B ? sysmem_budget_B - sysmem_used_B : 0u;
-   return remaining_budget_B +
-          mtl_device_current_allocated_size(pdev->mtl_dev_handle);
+   /* Report the recommended Metal working set size as the GPU heap size. This
+    * is a fixed percent of the total available system memory. */
+   return mtl_device_recommended_max_working_set_size(pdev->mtl_dev_handle);
 }
 
 static uint64_t
@@ -1023,6 +1008,19 @@ kk_get_sysmem_heap_used(struct kk_physical_device *pdev)
     * allocated size
     */
    return mtl_device_current_allocated_size(pdev->mtl_dev_handle);
+}
+
+static uint64_t
+kk_get_sysmem_heap_budget(struct kk_physical_device *pdev)
+{
+   uint64_t heap_size = kk_get_sysmem_heap_size(pdev);
+   uint64_t used = kk_get_sysmem_heap_used(pdev);
+
+   /* Budget is calculated using the default Mesa logic, based on available
+    * system memory. Available memory is reduced to 90% to avoid thrashing. */
+   const float available_percent = 0.9f;
+   return vk_physical_device_heap_budget_from_system(
+      &pdev->vk, available_percent, heap_size, used);
 }
 
 static void
@@ -1063,6 +1061,45 @@ get_metal_limits(struct kk_physical_device *pdev)
    assert(pdev->info.supported_sample_counts <= (KK_MAX_SAMPLES << 1) - 1);
 }
 
+static void
+kk_parse_environment_options(struct kk_physical_device *pdev)
+{
+   struct kk_env_settings *settings = &pdev->settings;
+
+   settings->gpu_capture_enabled =
+      debug_get_bool_option("MESA_KK_GPU_CAPTURE", false);
+
+   const char *list = debug_get_option("MESA_KK_DISABLE_WORKAROUNDS", "");
+   const char *all_workarounds = "all";
+   const size_t all_len = strlen(all_workarounds);
+   for (unsigned n; n = strcspn(list, ","), *list; list += MAX2(1, n)) {
+      if (n == all_len && !strncmp(list, all_workarounds, n)) {
+         settings->disabled_workarounds = UINT64_MAX;
+         break;
+      }
+
+      int index = atoi(list);
+      settings->disabled_workarounds |= BITFIELD64_BIT(index);
+   }
+
+   /* Workarounds resolved on macOS 27 */
+   if (ns_is_os_version_at_least(27, 0, 0)) {
+      /* 1-6 */
+      settings->disabled_workarounds |= BITFIELD64_MASK(7);
+
+      settings->disabled_workarounds |= BITFIELD64_BIT(8);
+      settings->disabled_workarounds |= BITFIELD64_BIT(11);
+      settings->disabled_workarounds |= BITFIELD64_BIT(12);
+      settings->disabled_workarounds |= BITFIELD64_BIT(17);
+   }
+   /* M5-only workarounds */
+   if (pdev->info.gpu_apple_family < 10) {
+      settings->disabled_workarounds |= BITFIELD64_BIT(16);
+   } else {
+      settings->disabled_workarounds &= ~BITFIELD64_BIT(2);
+   }
+}
+
 VkResult
 kk_enumerate_physical_devices(struct vk_instance *_instance)
 {
@@ -1083,6 +1120,7 @@ kk_enumerate_physical_devices(struct vk_instance *_instance)
       goto fail_alloc;
    }
    get_metal_limits(pdev);
+   kk_parse_environment_options(pdev);
 
    struct vk_physical_device_dispatch_table dispatch_table;
    vk_physical_device_dispatch_table_from_entrypoints(
@@ -1091,7 +1129,7 @@ kk_enumerate_physical_devices(struct vk_instance *_instance)
       &dispatch_table, &wsi_physical_device_entrypoints, false);
 
    struct vk_device_extension_table supported_extensions;
-   kk_get_device_extensions(instance, &supported_extensions);
+   kk_get_device_extensions(instance, &pdev->settings, &supported_extensions);
 
    struct vk_features supported_features;
    kk_get_device_features(&supported_extensions, &supported_features);
@@ -1109,7 +1147,7 @@ kk_enumerate_physical_devices(struct vk_instance *_instance)
 
    kk_physical_device_init_pipeline_cache(pdev);
 
-   uint64_t sysmem_size_B = kk_get_sysmem_heap_size();
+   uint64_t sysmem_size_B = kk_get_sysmem_heap_size(pdev);
    if (sysmem_size_B == 0) {
       result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
                          "Failed to query total system memory");

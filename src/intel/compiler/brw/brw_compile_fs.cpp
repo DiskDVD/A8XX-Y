@@ -882,6 +882,8 @@ brw_nir_populate_fs_prog_data(nir_shader *shader,
    calculate_urb_setup(devinfo, key, prog_data, shader, prev_stage_vue_map,
                        mue_map, per_primitive_offsets);
    brw_compute_flat_inputs(prog_data, shader);
+
+   prog_data->prefer_simd32 = key->prefer_simd32;
 }
 
 /* From the SKL PRM, Volume 16, Workarounds:
@@ -1338,7 +1340,7 @@ brw_compile_fs(const struct brw_compiler *compiler,
    const bool debug_enabled =
       brw_should_print_shader(nir, params->base.debug_flag ?
                                    params->base.debug_flag : DEBUG_WM,
-                                   params->base.source_hash);
+                                   prog_data->base.source_hash);
 
    brw_prog_data_init(&prog_data->base, &params->base);
 

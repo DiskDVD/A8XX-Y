@@ -1,5 +1,5 @@
 /*
- * © Copyright2018-2019 Alyssa Rosenzweig
+ * © Copyright 2018-2019 Alyssa Rosenzweig
  * SPDX-License-Identifier: MIT
  */
 
@@ -209,11 +209,11 @@ void pan_resource_modifier_convert(struct panfrost_context *ctx,
                                    struct panfrost_resource *rsrc,
                                    uint64_t modifier, bool copy_resource,
                                    const char *reason);
+void pan_resource_modifier_legalize(struct panfrost_context *ctx,
+                                    struct panfrost_resource *rsrc,
+                                    enum pipe_format format, bool write,
+                                    bool discard);
 
-void pan_legalize_format(struct panfrost_context *ctx,
-                         struct panfrost_resource *rsrc,
-                         enum pipe_format format, bool write,
-                         bool discard);
 void pan_dump_resource(struct panfrost_context *ctx,
                        struct panfrost_resource *rsc);
 

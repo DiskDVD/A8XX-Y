@@ -129,6 +129,7 @@ anv_device_init_blorp(struct anv_device *device)
       .use_unrestricted_depth_range =
          device->vk.enabled_extensions.EXT_depth_range_unrestricted,
       .use_cached_dynamic_states = true,
+      .enable_tbimr = device->physical->instance->drirc.debug.tbimr,
    };
 
    blorp_init_brw(&device->blorp.context, device, &device->isl_dev,
@@ -136,7 +137,6 @@ anv_device_init_blorp(struct anv_device *device)
    device->blorp.context.get_fp64_nir = get_fp64_nir;
    device->blorp.context.lookup_shader = lookup_blorp_shader;
    device->blorp.context.upload_shader = upload_blorp_shader;
-   device->blorp.context.enable_tbimr = device->physical->instance->drirc.debug.tbimr;
    device->blorp.context.get_surface_address = blorp_get_surface_address;
    device->blorp.context.exec = anv_genX(device->info, blorp_exec);
    device->blorp.context.upload_dynamic_state = upload_dynamic_state;

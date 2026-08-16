@@ -21,19 +21,27 @@ extern "C" {
 #define JAY_DBG_STRICT      BITFIELD_BIT(6)
 extern int jay_debug;
 
+
+struct jay_fs_perprim_data {
+   int32_t per_primitive_offsets[VARYING_SLOT_MAX];
+   const struct brw_mue_map *mue;
+};
+
 bool jay_nir_lower_bool(nir_shader *nir);
-bool jay_nir_lower_fsign(nir_shader *nir);
+bool jay_nir_lower_fsign(nir_shader *nir, unsigned verx10);
 bool jay_nir_lower_bfloat_math(nir_shader *nir);
 
 void jay_populate_prog_data(const struct intel_device_info *devinfo,
                             nir_shader *nir,
                             union brw_any_prog_data *prog_data,
-                            union brw_any_prog_key *key);
+                            union brw_any_prog_key *key,
+                            struct jay_fs_perprim_data *fs_perprim);
 void jay_process_nir(const struct intel_device_info *devinfo,
                      nir_shader *nir,
                      union brw_any_prog_data *prog_data,
                      union brw_any_prog_key *key,
-                     debug_archiver *archiver);
+                     debug_archiver *archiver,
+                     struct jay_fs_perprim_data *fs_perprim);
 unsigned jay_select_simd(const struct intel_device_info *, nir_shader *nir);
 void jay_process_nir_for_simd(const struct intel_device_info *devinfo,
                               nir_shader *nir,

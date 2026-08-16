@@ -66,8 +66,10 @@ static void
 predicate_if(jay_function *f, jay_block *if_block, jay_inst *if_)
 {
    /* If's fallthrough to the then and branch to the else */
-   jay_block *then_block = if_block->logical_succs[0],
-             *else_block = if_block->logical_succs[1];
+   assert(jay_num_successors(if_block, GPR) == 2);
+   struct util_dynarray *succs = jay_successors(if_block, GPR);
+   jay_block *then_block = *util_dynarray_element(succs, jay_block *, 0),
+             *else_block = *util_dynarray_element(succs, jay_block *, 1);
    assert(then_block == jay_next_block(if_block) && "successors for if");
 
    jay_builder b = jay_init_builder(f, jay_before_inst(if_));

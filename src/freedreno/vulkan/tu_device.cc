@@ -358,6 +358,10 @@ get_device_extensions(const struct tu_physical_device *device,
       .EXT_host_image_copy = true,
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
+      .EXT_image_compression_control = true,
+#ifdef TU_USE_WSI_PLATFORM
+      .EXT_image_compression_control_swapchain = true,
+#endif
       .EXT_image_drm_format_modifier = true,
       .EXT_image_robustness = true,
       .EXT_image_view_min_lod = true,
@@ -789,6 +793,14 @@ tu_get_features(struct tu_physical_device *pdevice,
    /* VK_EXT_image_2d_view_of_3d  */
    features->image2DViewOf3D = true;
    features->sampler2DViewOf3D = true;
+
+   /* VK_EXT_image_compression_control */
+   features->imageCompressionControl = true;
+
+#ifdef TU_USE_WSI_PLATFORM
+   /* VK_EXT_image_compression_control_swapchain */
+   features->imageCompressionControlSwapchain = true;
+#endif
 
    /* VK_EXT_image_view_min_lod */
    features->minLod = true;

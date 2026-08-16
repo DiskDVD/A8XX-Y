@@ -38,6 +38,7 @@
 #include "pan_job.h"
 #include "pan_pool.h"
 #include "pan_precomp.h"
+#include "libpan_copy.h"
 #include "pan_resource.h"
 #include "pan_samples.h"
 #include "pan_shader.h"
@@ -3960,6 +3961,58 @@ panfrost_afbc_pack(struct panfrost_batch *batch, struct panfrost_resource *src,
    LAUNCH_AFBC_CONV_SHADER(pack, batch, src, consts, nr_sblocks);
 }
 
+#if PAN_ARCH >= 6
+static void
+panfrost_compute_copy_buffer(struct pipe_context *pctx,
+                             struct panfrost_resource *dst,
+                             unsigned dst_offset,
+                             struct panfrost_resource *src,
+                             unsigned src_offset, unsigned size)
+{
+   PAN_TRACE_FUNC(PAN_TRACE_GL_CMDSTREAM);
+
+   struct panfrost_context *ctx = pan_context(pctx);
+
+   uint64_t src_addr = src->plane.base + src_offset;
+   uint64_t dst_addr = dst->plane.base + dst_offset;
+
+   /* The caller guarantees at least 4-byte alignment of both offsets and the
+    * size, and buffer allocations are at least 4-byte aligned. */
+   assert((size % 4) == 0 && (src_addr % 4) == 0 && (dst_addr % 4) == 0);
+
+   /* The kernel copies PANLIB_COPY_MEM_CHUNK_SIZE bytes per thread plus an
+    * up-to-3 word tail, and each thread strides over the buffer, so a capped
+    * workgroup count still covers the whole copy. */
+   uint32_t chunks = DIV_ROUND_UP(size, PANLIB_COPY_MEM_CHUNK_SIZE);
+   uint32_t wgs = DIV_ROUND_UP(chunks, PANLIB_COPY_MEM_WG_SIZE);
+
+   /* Mirror panfrost_launch_grid's barrier semantics: flush pending work
+    * before and after so the copy is ordered against other batches. */
+   panfrost_flush_all_batches(ctx, "Compute buffer copy pre-barrier");
+
+   struct panfrost_batch *batch = panfrost_get_batch_for_fbo(ctx);
+
+   panfrost_batch_read_rsrc(batch, src, MESA_SHADER_COMPUTE);
+   panfrost_batch_write_rsrc(batch, dst, MESA_SHADER_COMPUTE);
+
+   /* PANLIB_BARRIER_JM_BARRIER only takes effect on the JM path (v6-v9);
+    * panfrost_launch_precomp ignores the barrier argument on CSF (v10+).
+    * Ordering against other batches is guaranteed on all archs by the
+    * panfrost_flush_all_batches() pre/post-barriers around this dispatch, so
+    * the copy is correct regardless of whether the flag is honored. */
+   panlib_copy_mem(batch, panlib_1d(wgs), PANLIB_BARRIER_JM_BARRIER, dst_addr,
+                   src_addr, size);
+
+   /* panfrost_launch_precomp only queues the job into the batch's job chain;
+    * the caller must account for the compute work so panfrost_batch_submit
+    * does not treat the batch as empty and skip it (mirrors what
+    * panfrost_launch_grid_on_batch does). */
+   batch->compute_count++;
+
+   panfrost_flush_all_batches(ctx, "Compute buffer copy post-barrier");
+}
+#endif
+
 static void
 panfrost_mtk_detile_compute(struct panfrost_context *ctx, struct pipe_blit_info *info)
 {
@@ -4360,7 +4413,8 @@ panfrost_create_sampler_view(struct pipe_context *pctx,
       rzalloc(pctx, struct panfrost_sampler_view);
    struct panfrost_resource *ptexture = pan_resource(texture);
 
-   pan_legalize_format(ctx, ptexture, template->format, false, false);
+   pan_resource_modifier_legalize(ctx, ptexture, template->format, false,
+                                  false);
    pipe_reference(NULL, &texture->reference);
 
    so->base = *template;
@@ -4861,6 +4915,9 @@ GENX(panfrost_cmdstream_screen_init)(struct panfrost_screen *screen)
    screen->vtbl.afbc_size = panfrost_afbc_size;
    screen->vtbl.afbc_pack = panfrost_afbc_pack;
    screen->vtbl.mtk_detile = panfrost_mtk_detile_compute;
+#if PAN_ARCH >= 6
+   screen->vtbl.compute_copy_buffer = panfrost_compute_copy_buffer;
+#endif
    screen->vtbl.emit_write_timestamp = emit_write_timestamp;
    screen->vtbl.emit_trace_ts = emit_trace_ts;
 #if PAN_ARCH >= 10

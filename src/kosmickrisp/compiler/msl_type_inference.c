@@ -425,6 +425,9 @@ infer_types_from_intrinsic(struct hash_table *types, nir_intrinsic_instr *instr)
       set_type(types, &instr->src[1], TYPE_UINT); // coords
       set_type(types, &instr->src[3], TYPE_UINT); // level
       break;
+   case nir_intrinsic_bindless_image_levels:
+      set_type(types, &instr->def, TYPE_UINT);
+      break;
    case nir_intrinsic_bindless_image_store:
       set_type(types, &instr->src[1], TYPE_UINT); // coords
       set_type(types, &instr->src[3],

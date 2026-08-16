@@ -22,6 +22,7 @@
 #include "radv_shader_args.h"
 #include "radv_shader_info.h"
 #include "vk_nir_lower_descriptor_heaps.h"
+#include "vk_pipeline.h"
 #include "vk_pipeline_cache.h"
 
 #include "nir/nir_shader_compiler_options.h"
@@ -37,7 +38,6 @@ struct radv_shader_abort_data;
 struct radv_shader_args;
 struct radv_shader_args;
 struct radv_serialized_shader_arena_block;
-struct vk_pipeline_robustness_state;
 struct nir_parameter;
 typedef struct nir_parameter nir_parameter;
 
@@ -82,8 +82,6 @@ struct radv_shader_stage_key {
    uint8_t storage_robustness2 : 1;
    uint8_t uniform_robustness2 : 1;
    uint8_t vertex_robustness1 : 1;
-   uint8_t coop_matrix_storage_robustness : 1;
-   uint8_t coop_matrix_uniform_robustness : 1;
 
    uint8_t optimisations_disabled : 1;
    uint8_t keep_statistic_info : 1;
@@ -101,12 +99,11 @@ struct radv_shader_stage_key {
    /* Whether the shader is used with indirect pipeline binds. */
    uint8_t indirect_bindable : 1;
 
-   uint32_t reserved : 14;
+   uint32_t reserved : 16;
 };
 
 struct radv_ps_epilog_key {
    uint32_t spi_shader_col_format;
-   uint32_t spi_shader_z_format;
 
    /* Bitmasks, each bit represents one of the 8 MRTs. */
    uint8_t color_is_int8;
@@ -118,14 +115,17 @@ struct radv_ps_epilog_key {
 
    uint32_t colors_written;
    uint8_t color_map[MAX_RTS];
-   bool mrt0_is_dual_src;
-   bool export_depth;
-   bool export_stencil;
-   bool export_sample_mask;
-   bool alpha_to_coverage_via_mrtz;
-   bool alpha_to_one;
-
-   uint16_t reserved;
+   uint8_t spi_shader_z_format : 4;
+   bool mrt0_is_dual_src : 1;
+   bool has_depth_output : 1;
+   bool has_stencil_output : 1;
+   bool has_sample_mask_output : 1;
+   bool ignore_depth_output : 1;
+   bool ignore_stencil_output : 1;
+   bool lower_1bit_sample_mask_to_discard : 1;
+   bool alpha_to_coverage_via_mrtz : 1;
+   bool alpha_to_one : 1;
+   uint32_t reserved : 19;
 };
 
 struct radv_spirv_to_nir_options {
@@ -141,10 +141,9 @@ struct radv_graphics_state_key {
    uint32_t adjust_frag_coord_z : 1;
    uint32_t dynamic_rasterization_samples : 1;
    uint32_t dynamic_provoking_vtx_mode : 1;
-   uint32_t dynamic_line_rast_mode : 1;
-   uint32_t enable_remove_point_size : 1;
+   uint32_t smooth_lines_may_be_enabled : 1;
    uint32_t dcc_decompress_gfx11 : 1;
-   uint32_t reserved : 12;
+   uint32_t reserved : 13;
 
    struct {
       uint8_t topology;
@@ -175,7 +174,9 @@ struct radv_graphics_state_key {
    struct {
       bool sample_shading_enable : 1;
       bool max_sample_shading_enable : 1;
-      bool alpha_to_coverage_via_mrtz : 1; /* GFX11+ */
+      bool alpha_to_coverage_unknown : 1;
+      bool alpha_to_coverage_enable : 1;
+      bool alpha_to_one_enable : 1;
       uint8_t rasterization_samples;
       uint8_t ps_iter_samples; /* 0 if dynamic */
    } ms;
@@ -187,8 +188,10 @@ struct radv_graphics_state_key {
    struct {
       struct radv_ps_epilog_key epilog;
       bool force_vrs_enabled;
-      bool exports_mrtz_via_epilog;
-      bool has_epilog;
+      bool color_outputs_need_epilog;
+      bool depth_output_needs_epilog;
+      bool stencil_output_needs_epilog;
+      bool sample_mask_output_needs_epilog;
       bool mrt0_alpha_is_dead;
    } ps;
 };
@@ -247,11 +250,11 @@ struct radv_llvm_compiler_options {
 
 #define PS_STATE_NUM_SAMPLES__SHIFT             0
 #define PS_STATE_NUM_SAMPLES__MASK              0xf
-#define PS_STATE_LINE_RAST_MODE__SHIFT          4
-#define PS_STATE_LINE_RAST_MODE__MASK           0x3
-#define PS_STATE_PS_ITER_MASK__SHIFT            6
+#define PS_STATE_SMOOTH_LINES__SHIFT            4
+#define PS_STATE_SMOOTH_LINES__MASK             0x1
+#define PS_STATE_PS_ITER_MASK__SHIFT            5
 #define PS_STATE_PS_ITER_MASK__MASK             0xff
-/* gap: bits 14:21 */
+/* gap: bits 13:21 */
 #define PS_STATE_RAST_PRIM__SHIFT               22
 #define PS_STATE_RAST_PRIM__MASK                0x3
 #define PS_STATE_USE_FLOAT_FRAG_COORD_XY__SHIFT 24
@@ -378,6 +381,7 @@ struct radv_shader_part_binary {
    struct {
       uint32_t spi_shader_col_format;
       uint32_t cb_shader_mask;
+      uint32_t db_shader_control;
       uint32_t spi_shader_z_format;
    } info;
 
@@ -490,6 +494,7 @@ struct radv_shader_part {
    bool nontrivial_divisors;
    uint32_t spi_shader_col_format;
    uint32_t cb_shader_mask;
+   uint32_t db_shader_control;
    uint32_t spi_shader_z_format;
    uint32_t inst_pref_size;
    uint64_t upload_seq;
@@ -550,7 +555,6 @@ struct radv_compiler_info {
       uint32_t use_fmask : 1;
       uint32_t force_64_byte_sampled_image : 1;
       uint32_t robust_buffer_access : 1; /* Only used by LLVM. */
-      uint32_t coop_matrix_robust_buffer_access : 1;
       uint32_t mitigate_smem_oob : 1;
       uint32_t mitigate_smem_with_null_prt : 1;
       uint32_t bvh8 : 1;
@@ -570,7 +574,7 @@ struct radv_compiler_info {
       uint32_t no_implicit_varying_subgroup_size : 1;
       uint32_t force_nan_preserve_min_max : 1;
       uint32_t nir_debug_info : 1;
-      uint32_t padding : 28;
+      uint32_t padding : 29;
 
       int32_t force_aniso;
 
@@ -629,7 +633,7 @@ struct radv_compiler_info {
    uint32_t buffer_descriptor_alignment;
 
    /* Shader features, included as part of the pipeline key */
-   const struct vk_pipeline_robustness_state *device_robustness_state;
+   struct vk_pipeline_robustness_state device_robustness_state;
    bool smooth_lines;
    bool force_vrs_enabled;
 

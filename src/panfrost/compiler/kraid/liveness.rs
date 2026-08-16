@@ -100,29 +100,58 @@ impl LiveSet {
         instr: &Instr,
         bl: &L,
     ) -> LiveBytes {
-        let mut extra: LiveBytes = Default::default();
-        for ssa in instr.iter_ssa_defs() {
-            // For sub-register destinations, we assume that they
-            // instantaneously use an entire register.  See also
-            // BlockLiveness::get_instr_pressure().
-            if bl.is_live_after_ip(ssa, ip) {
-                *extra.get_mut(ssa.is_mem()) +=
-                    4_u32.saturating_sub(ssa.bytes().into());
-                self.insert(*ssa);
-            } else {
-                *extra.get_mut(ssa.is_mem()) += 4;
+        if let Op::Copy(op) = &instr.op {
+            // Copy is a special case and we always lower it to something
+            // that has exact copy semantics and is able to fully handle
+            // 8 and 16-bit destinations.  As such, we can treat it as
+            // killing its sources before making its destinaion live.
+            for ssa in op.iter_ssa_uses() {
+                if !bl.is_live_after_ip(ssa, ip) {
+                    self.remove(ssa);
+                }
             }
-        }
-
-        let live = self.bytes + extra;
-
-        for ssa in instr.iter_ssa_uses() {
-            if !bl.is_live_after_ip(ssa, ip) {
-                self.remove(ssa);
+            let mut extra: LiveBytes = Default::default();
+            for ssa in op.iter_ssa_defs() {
+                if bl.is_live_after_ip(ssa, ip) {
+                    self.insert(*ssa);
+                } else {
+                    *extra.get_mut(ssa.is_mem()) += u32::from(ssa.bytes());
+                }
             }
-        }
+            self.bytes + extra
+        } else {
+            let mut extra: LiveBytes = Default::default();
+            for ssa in instr.iter_ssa_defs() {
+                // For sub-register destinations, we assume that they
+                // instantaneously use an entire register.  See also
+                // BlockLiveness::get_instr_pressure().
+                if bl.is_live_after_ip(ssa, ip) {
+                    *extra.get_mut(ssa.is_mem()) +=
+                        4_u32.saturating_sub(ssa.bytes().into());
+                    self.insert(*ssa);
+                } else {
+                    *extra.get_mut(ssa.is_mem()) += 4;
+                }
+            }
 
-        live
+            let live = self.bytes + extra;
+
+            for ssa in instr.iter_ssa_uses() {
+                if !bl.is_live_after_ip(ssa, ip) {
+                    self.remove(ssa);
+                }
+            }
+
+            live
+        }
+    }
+}
+
+impl std::fmt::Debug for LiveSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut vec: Vec<_> = self.set.iter().cloned().collect();
+        vec.sort_by_key(|ssa| ssa.idx());
+        write!(f, "{vec:?}")
     }
 }
 
@@ -168,17 +197,32 @@ pub trait BlockLiveness {
         self.live_out_set().contains(val.idx())
     }
 
-    fn get_instr_pressure(&self, _ip: usize, instr: &Instr) -> u8 {
+    fn get_instr_pressure(&self, ip: usize, instr: &Instr) -> u8 {
         let mut bytes = 0_u8;
-        for dst in instr.dsts() {
-            if let DstRef::SSA(vec) = &dst.dst_ref {
-                // For sub-register destinations, we assume that they
-                // instantaneously use an entire register.  This restriction is
-                // only really needed for message instructions but the increase
-                // in pressure of 1/2 or 3/4 of a register isn't important and
-                // we have don't have access to the model here to be able to
-                // tell the difference.
-                bytes += vec.comps() * 4;
+        if let Op::Copy(op) = &instr.op {
+            // Copy is a special case and we always lower it to something
+            // that has exact copy semantics and is able to fully handle
+            // 8 and 16-bit destinations.  As such, we can treat it as
+            // killing its sources before making its destinaion live.
+            for ssa in op.iter_ssa_defs() {
+                bytes += ssa.bytes();
+            }
+            for ssa in op.iter_ssa_uses() {
+                if !self.is_live_after_ip(ssa, ip) {
+                    bytes = bytes.saturating_sub(ssa.bytes());
+                }
+            }
+        } else {
+            // For sub-register destinations, we assume that they
+            // instantaneously use an entire register.  This restriction is
+            // only really needed for message instructions but the increase
+            // in pressure of 1/2 or 3/4 of a register isn't important and
+            // we have don't have access to the model here to be able to
+            // tell the difference.
+            for dst in instr.dsts() {
+                if let DstRef::SSA(vec) = &dst.dst_ref {
+                    bytes += vec.comps() * 4;
+                }
             }
         }
         bytes

@@ -1075,7 +1075,8 @@ update_ps(struct anv_gfx_dynamic_state *hw_state,
 
 ALWAYS_INLINE static void
 update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
-                   const struct anv_cmd_graphics_state *gfx)
+                   const struct anv_cmd_graphics_state *gfx,
+                   const struct anv_device *device)
 {
    const struct brw_fs_prog_data *fs_prog_data = get_gfx_fs_prog_data(gfx);
 
@@ -1097,8 +1098,10 @@ update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
 
    SET(PS_EXTRA, ps_extra.InputCoverageMaskState, InputCoverageMaskState);
 
-   SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample,
-                 fs_prog_data->persample_dispatch);
+   bool is_per_sample =
+      fs_prog_data->persample_dispatch;
+
+   SET(PS_EXTRA, ps_extra.PixelShaderIsPerSample, is_per_sample);
 #if GFX_VER >= 11
    SET(PS_EXTRA, ps_extra.PixelShaderIsPerCoarsePixel, uses_coarse_pixel);
 #endif
@@ -1106,7 +1109,9 @@ update_ps_extra_wm(struct anv_gfx_dynamic_state *hw_state,
    /* TODO: We should only require this when the last geometry shader uses a
     *       fragment shading rate that is not constant.
     */
-   SET(PS_EXTRA, ps_extra.EnablePSDependencyOnCPsizeChange, uses_coarse_pixel);
+   SET(PS_EXTRA, ps_extra.EnablePSDependencyOnCPsizeChange,
+       intel_needs_workaround(device->info, 16030144090) ?
+       is_per_sample : uses_coarse_pixel);
 #endif
 
    SET(WM, wm.BarycentricInterpolationMode,
@@ -2354,7 +2359,7 @@ cmd_buffer_flush_gfx_runtime_state(struct anv_gfx_dynamic_state *hw_state,
    if ((gfx->dirty & ANV_CMD_DIRTY_PS) ||
        BITSET_TEST(hw_state->pack_dirty, ANV_GFX_STATE_FS_CONFIG)) {
       update_ps(hw_state, device, dyn, gfx);
-      update_ps_extra_wm(hw_state, gfx);
+      update_ps_extra_wm(hw_state, gfx, device);
    }
 
    if (gfx->dirty &
@@ -3682,7 +3687,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
     */
 
    if (IS_DIRTY(TESS_CONFIG)) {
-      push_consts->gfx.tess_config = hw_state->tess_config;
+      push_consts->drv_data.gfx.tess_config = hw_state->tess_config;
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
                                                 VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
       gfx->base->push_constants_state = ANV_STATE_NULL;
@@ -3696,14 +3701,14 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
 #endif
 
    if (IS_DIRTY(FS_CONFIG)) {
-      push_consts->gfx.fs_config = hw_state->fs_config;
+      push_consts->drv_data.gfx.fs_config = hw_state->fs_config;
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_FRAGMENT_BIT;
       gfx->base->push_constants_state = ANV_STATE_NULL;
    }
 
 #if INTEL_WA_18019110168_GFX_VER
    if (IS_DIRTY(WA_18019110168)) {
-      push_consts->gfx.wa_18019110168 = hw_state->wa_18019110168;
+      push_consts->drv_data.gfx.wa_18019110168 = hw_state->wa_18019110168;
       cmd_buffer->state.push_constants_dirty |= VK_SHADER_STAGE_MESH_BIT_EXT |
                                                 VK_SHADER_STAGE_FRAGMENT_BIT;
       gfx->base->push_constants_state = ANV_STATE_NULL;

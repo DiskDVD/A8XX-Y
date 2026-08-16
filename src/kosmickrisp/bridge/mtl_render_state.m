@@ -22,7 +22,7 @@ mtl_render_pass_descriptor *
 mtl_new_render_pass_descriptor(void)
 {
    @autoreleasepool {
-      return [[MTL4RenderPassDescriptor new] init];
+      return [MTL4RenderPassDescriptor new];
    }
 }
 
@@ -215,7 +215,7 @@ mtl_stencil_descriptor *
 mtl_new_stencil_descriptor()
 {
    @autoreleasepool {
-      return [[MTLStencilDescriptor new] init];
+      return [MTLStencilDescriptor new];
    }
 }
 
@@ -305,7 +305,7 @@ mtl_depth_stencil_descriptor *
 mtl_new_depth_stencil_descriptor()
 {
    @autoreleasepool {
-      return [[MTLDepthStencilDescriptor new] init];
+      return [MTLDepthStencilDescriptor new];
    }
 }
 

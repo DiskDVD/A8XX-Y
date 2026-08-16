@@ -645,6 +645,7 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
                     break;
                 }
                 live.insert(ssa);
+                debug_assert!(live.bytes().reg <= limit);
             }
 
             // If we still have room, consider values which aren't used
@@ -663,6 +664,7 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
                         break;
                     }
                     live.insert(ssa);
+                    debug_assert!(live.bytes().reg <= limit);
                 }
             }
 
@@ -702,6 +704,7 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
             for idx in extra.iter() {
                 live.remove(&s.ssa_alloc.lookup_by_idx(idx));
             }
+            debug_assert!(live.bytes().reg <= limit);
 
             let mut heap = BinaryHeap::new();
 
@@ -718,10 +721,13 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
                     break;
                 }
                 live.insert(ssa);
+                debug_assert!(live.bytes().reg <= limit);
             }
 
             live
         };
+
+        debug_assert!(live.bytes().reg <= limit);
 
         assert!(live_in.len() == b_idx);
         live_in.push(live.clone());
@@ -813,7 +819,8 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
                         next_use_map.set(ssa.idx(), dist);
                     }
 
-                    live.insert_instr_top_down(ip, &instr, bl);
+                    let max = live.insert_instr_top_down(ip, &instr, bl);
+                    debug_assert!(max.reg <= limit);
 
                     // We add the actual spill instructions later
                     let mut instrs = fills;
@@ -822,6 +829,8 @@ fn spill(s: &mut Shader, live: impl Liveness, limit: u32) {
                 }
             }
         });
+
+        debug_assert!(live.bytes().reg <= limit);
 
         live_out.push(live);
     }

@@ -1877,7 +1877,13 @@ panvk_per_arch(CmdDrawIndexedIndirect)(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
    VK_FROM_HANDLE(panvk_buffer, buffer, _buffer);
 
-   if (drawCount == 0)
+   /* Because we don't currently advertise nullDescriptor for JM, it is only
+    * valid to draw with a null index buffer if the draw accesses 0 indices.
+    * For direct draws, this is covered by checks on instancedCount and
+    * indexCount. For indirect draws we need to add an additional check, under
+    * the assumption that if the index buffer is null, the draw must be empty.
+    */
+   if (drawCount == 0 || cmdbuf->state.gfx.ib.size == 0)
       return;
 
    /* We cannot support arbitrary draw count on JM */

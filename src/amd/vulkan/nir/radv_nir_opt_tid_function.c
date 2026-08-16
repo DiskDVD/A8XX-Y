@@ -442,6 +442,14 @@ try_opt_bitwise_mask(nir_builder *b, nir_def *def, struct shuffle_info *shuffle)
       return nir_undef(b, def->num_components, def->bit_size);
    } else if (and_mask == 0x7f && xor_mask == 0) {
       return def;
+   } else if (shuffle->ctx->options->use_quad_swap_broadcast && and_mask == 0x7f && xor_mask == 0x1) {
+      return nir_quad_swap_horizontal(b, def);
+   } else if (shuffle->ctx->options->use_quad_swap_broadcast && and_mask == 0x7f && xor_mask == 0x2) {
+      return nir_quad_swap_vertical(b, def);
+   } else if (shuffle->ctx->options->use_quad_swap_broadcast && and_mask == 0x7f && xor_mask == 0x3) {
+      return nir_quad_swap_diagonal(b, def);
+   } else if (shuffle->ctx->options->use_quad_swap_broadcast && and_mask == 0x7c && xor_mask <= 0x3) {
+      return nir_quad_broadcast(b, def, nir_imm_int(b, xor_mask));
    } else if (shuffle->ctx->options->use_shuffle_xor && and_mask == 0x7f) {
       return nir_shuffle_xor(b, def, nir_imm_int(b, xor_mask));
    } else if (shuffle->ctx->options->use_masked_swizzle_amd && (and_mask & 0x60) == 0x60 && xor_mask <= 0x1f) {
@@ -542,6 +550,81 @@ try_opt_dpp16_shift(nir_builder *b, nir_intrinsic_instr *intrin, struct shuffle_
    return res;
 }
 
+static nir_def *
+try_opt_permute(nir_builder *b, nir_def *def, struct shuffle_info *shuffle)
+{
+   unsigned cluster_sizes = 0;
+   if (shuffle->ctx->options->use_masked_swizzle_amd)
+      cluster_sizes |= BITFIELD_BIT(4);
+   if (shuffle->ctx->options->use_dpp8_swizzle_amd)
+      cluster_sizes |= BITFIELD_BIT(8);
+   if (shuffle->ctx->options->use_permute16_amd)
+      cluster_sizes |= BITFIELD_BIT(16);
+
+   u_foreach_bit (csize, cluster_sizes) {
+      uint8_t permute[16];
+      memset(permute, 0xff, sizeof(permute));
+
+      bool any_valid = false;
+      bool valid_permute = true;
+      bool x16 = false;
+
+      for (unsigned i = 0; i < shuffle->shader->info.max_subgroup_size; i++) {
+         unsigned read = shuffle->src_invoc[i];
+         if (read >= shuffle->shader->info.max_subgroup_size)
+            continue;
+
+         if (!any_valid && csize == 16)
+            x16 = (read & 0x10) != (i & 0x10);
+
+         if (x16)
+            read ^= 0x10;
+
+         unsigned cmask = csize - 1;
+         bool oob = (read & ~cmask) != (i & ~cmask);
+         bool match = permute[i & cmask] == 0xff || permute[i & cmask] == (read & cmask);
+
+         if (oob || !match) {
+            valid_permute = false;
+            break;
+         }
+
+         permute[i & cmask] = (read & cmask);
+         any_valid = true;
+      }
+
+      if (!valid_permute)
+         continue;
+
+      uint64_t swizzle_mask = 0;
+      for (unsigned i = 0; i < csize; i++) {
+         if (permute[i] == 0xff)
+            continue;
+         assert(permute[i] < csize);
+         swizzle_mask |= (uint64_t)permute[i] << (i * (ffs(csize) - 1));
+      }
+
+      switch (csize) {
+      case 4:
+         return nir_quad_swizzle_amd(b, def, swizzle_mask, .fetch_inactive = true);
+      case 8:
+         return nir_dpp8_swizzle_amd(b, def, swizzle_mask);
+      case 16: {
+         nir_def *sel_lo = nir_imm_int(b, (uint32_t)swizzle_mask);
+         nir_def *sel_hi = nir_imm_int(b, (uint32_t)(swizzle_mask >> 32));
+         if (x16)
+            return nir_lane_permute_x16_amd(b, def, sel_lo, sel_hi);
+         else
+            return nir_lane_permute_16_amd(b, def, sel_lo, sel_hi);
+      }
+      default:
+         UNREACHABLE("unknown permute size");
+      }
+   }
+
+   return NULL;
+}
+
 static bool
 init_fotid_shuffle(struct fotid_context *ctx, nir_intrinsic_instr *instr, struct shuffle_info *shuffle)
 {
@@ -598,6 +681,8 @@ opt_fotid_shuffle(nir_intrinsic_instr *instr, struct shuffle_info *shuffle)
       res = try_opt_bitwise_mask(b, instr->src[0].ssa, shuffle);
    if (!res && shuffle->ctx->options->use_clustered_rotate)
       res = try_opt_rotate(b, instr->src[0].ssa, shuffle);
+   if (!res)
+      res = try_opt_permute(b, instr->src[0].ssa, shuffle);
 
    if (res) {
       nir_def_replace(&instr->def, res);

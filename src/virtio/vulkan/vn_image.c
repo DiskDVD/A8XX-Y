@@ -10,11 +10,11 @@
 
 #include "vn_image.h"
 
-#include "venus-protocol/vn_protocol_driver_image.h"
-#include "venus-protocol/vn_protocol_driver_image_view.h"
-#include "venus-protocol/vn_protocol_driver_sampler.h"
-#include "venus-protocol/vn_protocol_driver_sampler_ycbcr_conversion.h"
 #include "vk_format.h"
+#include "vn_protocol_driver_image.h"
+#include "vn_protocol_driver_image_view.h"
+#include "vn_protocol_driver_sampler.h"
+#include "vn_protocol_driver_sampler_ycbcr_conversion.h"
 
 #include "vn_android.h"
 #include "vn_device.h"

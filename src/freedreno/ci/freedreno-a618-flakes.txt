@@ -359,3 +359,5 @@ dEQP-VK.*.custom_resolve.*.fdm_subsampled
 
 # See this entry in the VKCTS 1.4.5.3 -> 1.4.6.1 uprev fails list.
 dEQP-VK.*.custom_resolve.*.fdm_nonsubsampled
+
+spec@!opengl 1.1@getteximage-depth@GL_TEXTURE_1D_ARRAY-GL_DEPTH_COMPONENT

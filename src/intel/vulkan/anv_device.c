@@ -485,21 +485,6 @@ anv_state_pools_init(struct anv_device *device)
 {
    VkResult result;
 
-   /* Because scratch is also relative to General State Base Address, we leave
-    * the base address 0 and start the pool memory at an offset.  This way we
-    * get the correct offsets in the anv_states that get allocated from it.
-    */
-   result = anv_state_pool_init(&device->general_state_pool, device,
-                                &(struct anv_state_pool_params) {
-                                   .name         = "general pool",
-                                   .base_address = 0,
-                                   .start_offset = device->physical->va.general_state_pool.addr,
-                                   .block_size   = 16384,
-                                   .max_size     = device->physical->va.general_state_pool.size
-                                });
-   if (result != VK_SUCCESS)
-      goto fail_batch_bo_pool;
-
    result = anv_state_pool_init(&device->dynamic_state_pool, device,
                                 &(struct anv_state_pool_params) {
                                    .name         = "dynamic pool",
@@ -508,7 +493,7 @@ anv_state_pools_init(struct anv_device *device)
                                    .max_size     = anv_physical_device_get_dynamic_state_pool_va(device->physical)->size,
                                 });
    if (result != VK_SUCCESS)
-      goto fail_general_state_pool;
+      goto fail_batch_bo_pool;
 
    /* The border color pointer is limited to 24 bits, so we need to make
     * sure that any such color used at any point in the program doesn't
@@ -674,8 +659,6 @@ fail_custom_border_color_pool:
    anv_state_reserved_array_pool_finish(&device->custom_border_colors);
 fail_dynamic_state_pool:
    anv_state_pool_finish(&device->dynamic_state_pool);
-fail_general_state_pool:
-   anv_state_pool_finish(&device->general_state_pool);
 fail_batch_bo_pool:
    return result;
 }
@@ -700,7 +683,6 @@ anv_state_pools_finish(struct anv_device *device)
 
    anv_shader_heap_finish(&device->shader_heap);
    anv_state_pool_finish(&device->dynamic_state_pool);
-   anv_state_pool_finish(&device->general_state_pool);
 }
 
 VkResult anv_CreateDevice(
@@ -929,7 +911,7 @@ VkResult anv_CreateDevice(
 
    if (intel_needs_workaround(device->info, 14019708328)) {
       result = anv_device_alloc_bo(device, "dummy_aux", 4096,
-                                   0 /* alloc_flags */,
+                                   ANV_BO_ALLOC_INTERNAL /* alloc_flags */,
                                    0 /* explicit_address */,
                                    &device->dummy_aux_bo);
       ANV_DMR_BO_ALLOC(&device->vk.base, device->dummy_aux_bo, result);
@@ -948,8 +930,8 @@ VkResult anv_CreateDevice(
     */
    if (device->info->verx10 >= 200) {
       result = anv_device_alloc_bo(device, "mem_fence", 4096,
-                                   ANV_BO_ALLOC_NO_LOCAL_MEM, 0,
-                                   &device->mem_fence_bo);
+                                   ANV_BO_ALLOC_NO_LOCAL_MEM | ANV_BO_ALLOC_INTERNAL,
+                                   0, &device->mem_fence_bo);
       ANV_DMR_BO_ALLOC(&device->vk.base, device->mem_fence_bo, result);
       if (result != VK_SUCCESS)
          goto fail_alloc_device_bo;
@@ -1241,6 +1223,9 @@ VkResult anv_CreateDevice(
          if (result != VK_SUCCESS)
             goto fail_queues;
 
+         device->view_queues |=
+            device->queues[device->queue_count].family->queueFlags &
+            (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
          device->queue_count++;
       }
    }
@@ -1382,10 +1367,16 @@ void anv_DestroyDevice(
    /* Do TRTT batch garbage collection before destroying queues. */
    anv_device_finish_trtt(device);
 
-   if (device->accel_struct_build.radix_sort) {
-      radix_sort_vk_destroy(device->accel_struct_build.radix_sort,
+   if (device->accel_struct_build.radix_sort_64) {
+      radix_sort_vk_destroy(device->accel_struct_build.radix_sort_64,
                             _device, &device->vk.alloc);
    }
+
+   if (device->accel_struct_build.radix_sort_96) {
+      radix_sort_vk_destroy(device->accel_struct_build.radix_sort_96,
+                            _device, &device->vk.alloc);
+   }
+
    vk_meta_device_finish(&device->vk, &device->meta_device);
 
    anv_device_utrace_finish(device);

@@ -6,6 +6,7 @@
 #include "util/hash_table.h"
 #include "util/lut.h"
 #include "util/macros.h"
+#include "util/sparse_bitset.h"
 #include "util/u_math.h"
 #include "jay_builder.h"
 #include "jay_builder_opcodes.h"
@@ -204,6 +205,39 @@ lower_bf16_restrictions(jay_inst *I, jay_function *f)
    }
 }
 
+/*
+ * If multiple phis in a block read the same source, RA will need to insert at
+ * least one copy regardless, but the messy resulting phi webs means RA will end
+ * up inserting many copies (or even swaps). Instead, we lower away repeated
+ * sources pre-RA by inserting that single copy preemptively, allowing RA's phi
+ * web heuristics to do their job.
+ *
+ * This is less heavyhanded than a full CSSA lowering.
+ */
+static void
+lower_repeated_phi_srcs(jay_function *f,
+                        jay_block *block,
+                        struct u_sparse_bitset *seen)
+{
+   jay_foreach_phi_src_in_block(block, phi) {
+      unsigned idx = jay_index(phi->src[0]);
+      if (u_sparse_bitset_test(seen, idx)) {
+         jay_builder b = jay_init_builder(f, jay_after_block_logical(block));
+         jay_def repl = jay_alloc_def(&b, phi->src[0].file, 1);
+         jay_inst *mov = jay_MOV(&b, repl, phi->src[0]);
+         if (jay_is_flag(phi->src[0])) {
+            mov->type = jay_flag_type(f);
+         }
+
+         jay_replace_src(&phi->src[0], repl);
+      } else {
+         u_sparse_bitset_set(seen, idx);
+      }
+   }
+
+   u_sparse_bitset_clear_all(seen);
+}
+
 void
 jay_lower_pre_ra(jay_shader *s)
 {
@@ -216,6 +250,9 @@ jay_lower_pre_ra(jay_shader *s)
        * this heuristic can hopefully go away but it helps a lot right now.
        */
       _mesa_hash_table_u64_clear(constants);
+
+      struct u_sparse_bitset phi_srcs;
+      u_sparse_bitset_init(&phi_srcs, f->ssa_alloc, NULL);
 
       jay_foreach_block(f, block) {
          if (f->prioritize_pressure) {
@@ -235,7 +272,7 @@ jay_lower_pre_ra(jay_shader *s)
                b.cursor = jay_before_inst(I);
                jay_def copy = jay_alloc_def(&b, FLAG, 1);
                jay_MOV(&b, copy, I->src[I->num_srcs - 1])->type =
-                  JAY_TYPE_U | s->dispatch_width;
+                  jay_flag_type(f);
                assert(jay_defs_equivalent(I->src[I->num_srcs - 1],
                                           I->src[I->num_srcs - 2]));
                jay_replace_src(&I->src[I->num_srcs - 1], copy);
@@ -258,7 +295,11 @@ jay_lower_pre_ra(jay_shader *s)
                                                 jay_before_function(f);
             lower_immediates(&b, I, constants);
          }
+
+         lower_repeated_phi_srcs(f, block, &phi_srcs);
       }
+
+      u_sparse_bitset_free(&phi_srcs);
    }
 
    _mesa_hash_table_u64_destroy(constants);

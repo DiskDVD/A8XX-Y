@@ -9,6 +9,7 @@
 
 #include "compiler/nir/nir.h"
 #include "panfrost/compiler/pan_compiler.h"
+#include "panfrost/compiler/pan_nir.h"
 #include "util/u_dynarray.h"
 
 void midgard_preprocess_nir(nir_shader *nir, uint64_t gpu_id);
@@ -21,6 +22,8 @@ void midgard_compile_shader_nir(nir_shader *nir,
                                 const struct pan_compile_inputs *inputs,
                                 struct util_dynarray *binary,
                                 struct pan_shader_info *info);
+
+uint32_t midgard_get_compiler_flags(void);
 
 /* NIR options are shared between the standalone compiler and the online
  * compiler. Defining it here is the simplest, though maybe not the Right
@@ -83,10 +86,9 @@ static const nir_shader_compiler_options midgard_nir_options = {
       (nir_var_shader_in | nir_var_shader_out | nir_var_function_temp),
    .lower_int64_options = nir_lower_imul_2x32_64,
    .lower_doubles_options = nir_lower_dmod,
-   .support_indirect_inputs = BITFIELD_BIT(MESA_SHADER_TESS_CTRL) |
-                              BITFIELD_BIT(MESA_SHADER_TESS_EVAL) |
-                              BITFIELD_BIT(MESA_SHADER_FRAGMENT),
+   .support_indirect_inputs = 0 /* TODO support indirect varyings */,
    .max_samples = 16,
+   .lower_mediump_io = pan_nir_lower_mediump_io,
 };
 
 #endif

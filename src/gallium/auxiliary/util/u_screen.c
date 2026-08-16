@@ -44,6 +44,7 @@ u_init_pipe_screen_caps(struct pipe_screen *pscreen, int accel)
 
    caps->accelerated = accel;
    caps->graphics = true;
+   caps->fragment_shader_depth = true;
    caps->gl_clamp = true;
    caps->max_render_targets = true;
    caps->mixed_colorbuffer_formats = true;

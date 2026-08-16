@@ -27,7 +27,16 @@ lower_fsign = [
     (('u2f32', ('extract_u16', a, 0)), ('u2f32', ('u2u16', a))),
     (('i2f32', ('extract_i8', a, 0)), ('i2f32', ('i2i8', a))),
     (('i2f32', ('extract_i16', a, 0)), ('i2f32', ('i2i16', a))),
+]
 
+for s in range(1, 31):
+    mask = 0xffffffff << s
+    lower_fsign.extend([
+        (('iadd', ('ishl', 'a@32', s), ('iand', 'b@32', ~mask)),
+         ('bfi', mask, a, b))
+    ])
+
+lower_fsign.extend([
     # Late multiplication handling
     (('iadd', ('imul_32x16(is_only_used_by_iadd)', a, b), c),
      ('imad_32x16_intel', a, b, c)),
@@ -43,9 +52,15 @@ lower_fsign = [
      ('umad_32x16_intel', a, ('iand', b, 0xffff),
       ('umul_32x16', ('iand', b, 0xffff0000), a))),
 
+    # Xe2 has MACL which is more efficient for multiplication with no constants.
+    # On older platforms without MACL, use the above rule as the lowering.
+    (('imul', 'a@32', b),
+     ('umad_32x16_intel', a, b, ('umul_32x16', ('iand', b, 0xffff0000), a)),
+     'verx10 < 200'),
+
     (('pack_half_2x16_split', a, b),
      ('pack_32_2x16_split', ('f2f16', a), ('f2f16', b))),
-]
+])
 
 for i in range(2, 15):
     lower_fsign.extend([
@@ -109,7 +124,8 @@ def main() -> None:
         f.write('#include "jay_private.h"')
 
         f.write(nir_algebraic.AlgebraicPass(
-            "jay_nir_lower_fsign", lower_fsign).render())
+            "jay_nir_lower_fsign", lower_fsign,
+            [("unsigned", "verx10")]).render())
         f.write(nir_algebraic.AlgebraicPass(
             "jay_nir_lower_bool", lower_bool).render())
         f.write(nir_algebraic.AlgebraicPass(

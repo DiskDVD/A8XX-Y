@@ -1825,7 +1825,7 @@ bool pco_nir_lower_fs_intrinsics(nir_shader *shader);
 bool pco_nir_lower_vs_intrinsics(nir_shader *shader);
 bool pco_nir_lower_images(nir_shader *shader, pco_data *data, pco_ctx *ctx);
 bool pco_nir_lower_interpolation(nir_shader *shader, pco_fs_data *fs);
-bool pco_nir_lower_io(nir_shader *shader);
+bool pco_nir_lower_io(nir_shader *shader, pco_data *data);
 bool pco_nir_lower_shared_io_to_global(nir_shader *shader, unsigned usc_slots);
 bool pco_nir_lower_subgroups(nir_shader *shader);
 bool pco_nir_lower_tex(nir_shader *shader, pco_data *data, pco_ctx *ctx);
@@ -2155,6 +2155,25 @@ static inline unsigned pco_ref_get_reg_index(pco_ref ref)
    unsigned index = pco_ref_is_idx_reg(ref) ? ref.idx_reg.offset : ref.val;
 
    return index;
+}
+
+/**
+ * \brief Sets the register index of a reference ref.
+ *
+ * \param[in] ref Reference ref.
+ * \param[in] index New index.
+ * \return Updated ref.
+ */
+static inline pco_ref pco_ref_set_reg_index(pco_ref ref, unsigned index)
+{
+   assert(pco_ref_is_reg(ref) || pco_ref_is_idx_reg(ref));
+
+   if (pco_ref_is_idx_reg(ref))
+      ref.idx_reg.offset = index;
+   else
+      ref.val = index;
+
+   return ref;
 }
 
 /**

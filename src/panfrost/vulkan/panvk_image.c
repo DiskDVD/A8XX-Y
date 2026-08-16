@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2026 NXP
  * Copyright © 2025 Arm Ltd.
  * Copyright © 2021 Collabora Ltd.
  * Copyright © 2026 Google LLC
@@ -322,7 +323,6 @@ panvk_image_get_explicit_mod(
 
    assert(!vk_format_is_depth_or_stencil(image->vk.format));
    assert(image->vk.samples == 1);
-   assert(image->vk.array_layers == 1);
    assert(image->vk.image_type != VK_IMAGE_TYPE_3D);
    assert(panvk_image_can_use_mod(image, iusage, mod, false));
 
@@ -484,6 +484,7 @@ panvk_image_init_layouts(struct panvk_image *image,
          plane_layout = (struct pan_image_layout_constraints){
             .offset_B = explicit_info->pPlaneLayouts[plane].offset,
             .wsi_row_pitch_B = explicit_info->pPlaneLayouts[plane].rowPitch,
+            .wsi_array_pitch_B = explicit_info->pPlaneLayouts[plane].arrayPitch,
             .strict = use_strict_import,
          };
       }

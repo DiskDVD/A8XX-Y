@@ -2789,7 +2789,7 @@ fdm_apply_viewports(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
        */
       VkOffset2D tile_start = common_bin_offset;
       if (state->custom_resolve && !binning) {
-         if (tile->subsampled)
+         if (tile->custom_resolve_subsampled)
             tile_start = tile->subsampled_pos[view].offset;
          else
             tile_start = bin.offset;
@@ -2800,7 +2800,8 @@ fdm_apply_viewports(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
        * this, so we have to keep applying the transform for binning.
        */
       if (state->custom_resolve &&
-          !(tile->subsampled_views & (1u << view)) && !binning) {
+          (!(tile->subsampled_views & (1u << view)) ||
+           !tile->custom_resolve_subsampled) && !binning) {
          frag_area = (VkExtent2D) {1, 1};
       }
 
@@ -2919,7 +2920,7 @@ fdm_apply_scissors(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
 
       VkOffset2D tile_start = common_bin_offset;
       if (state->custom_resolve && !binning) {
-         if (tile->subsampled)
+         if (tile->custom_resolve_subsampled)
             tile_start = tile->subsampled_pos[view].offset;
          else
             tile_start = bin.offset;
@@ -2929,7 +2930,8 @@ fdm_apply_scissors(struct tu_cmd_buffer *cmd, struct tu_cs *cs, void *data,
        * and not in the binning pass, because we use framebuffer coordinates.
        */
       if (state->custom_resolve &&
-          !(tile->subsampled_views & (1u << view)) && !binning) {
+          (!(tile->subsampled_views & (1u << view)) ||
+           !tile->custom_resolve_subsampled) && !binning) {
          frag_area = (VkExtent2D) {1, 1};
       }
 
@@ -3545,8 +3547,9 @@ tu6_emit_rast(struct tu_cs *cs,
       .stream = rs->rasterization_stream,
       .discard = rs->rasterizer_discard_enable));
    if (CHIP == A6XX) {
-      tu_cs_emit_regs(cs, VPC_UNKNOWN_9107(CHIP,
-         .raster_discard = rs->rasterizer_discard_enable));
+      tu_cs_emit_regs(cs, PC_RAST_STREAM_CNTL(CHIP,
+         .stream = rs->rasterization_stream,
+         .discard = rs->rasterizer_discard_enable));
    } else {
       if (CHIP == A7XX) {
          tu_cs_emit_regs(cs, VPC_RAST_STREAM_CNTL_V2(CHIP,

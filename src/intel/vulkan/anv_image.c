@@ -638,18 +638,12 @@ add_aux_state_tracking_buffer(struct anv_device *device,
     * The indirect clear color BO requires 64B-alignment on gfx11+. If we're
     * using a modifier with clear color, then some kernels might require a 4k
     * alignment.
-    *
-    * If it's an aliased image, we can't use private bindings either since
-    * aliased images with the same parameters should be consistent (e.g., they
-    * can't have separate clear colors).
     */
    enum anv_image_memory_binding binding = ANV_IMAGE_MEMORY_BINDING_PRIVATE;
    uint32_t clear_color_alignment = 64;
    if (mod_info && mod_info->supports_clear_color) {
       binding = ANV_IMAGE_MEMORY_BINDING_PLANE_0 + plane;
       clear_color_alignment = 4096;
-   } else if (image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) {
-      binding = ANV_IMAGE_MEMORY_BINDING_PLANE_0 + plane;
    }
 
    return image_binding_grow(device, image, binding,
@@ -960,7 +954,8 @@ add_video_buffers(struct anv_device *device,
    /* Doesn't work for av1 without provided profiles */
    if (!independent_profile) {
       for (unsigned i = 0; i < profile_list->profileCount; i++) {
-         if (profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR) {
+         if (profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR ||
+             profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR) {
             ok = image_binding_grow(device, image, ANV_IMAGE_MEMORY_BINDING_PRIVATE,
                                     ANV_OFFSET_IMPLICIT, size, 4096, &image->av1_cdf_table);
          }
@@ -1038,6 +1033,7 @@ memory_range_is_aligned(struct anv_image_memory_range memory_range)
 {
    return util_is_aligned(memory_range.offset, memory_range.alignment);
 }
+#endif
 
 static bool MUST_CHECK
 memory_ranges_equal(struct anv_image_memory_range a,
@@ -1048,7 +1044,6 @@ memory_ranges_equal(struct anv_image_memory_range a,
           a.size == b.size &&
           a.offset == b.offset;
 }
-#endif
 
 struct check_memory_range_params {
    struct anv_image_memory_range *accum_ranges;
@@ -1114,16 +1109,6 @@ check_memory_bindings(const struct anv_device *device,
          ? ANV_IMAGE_MEMORY_BINDING_PLANE_0 + p
          : ANV_IMAGE_MEMORY_BINDING_MAIN;
 
-      /* Aliasing is incompatible with the private binding because it does not
-       * live in a VkDeviceMemory.  The exception is either swapchain images or
-       * that the private binding is for a video motion vector buffer or a
-       * video CDF table.
-       */
-      assert(!(image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) ||
-             image->from_wsi ||
-             (plane->primary_surface.isl.usage & ISL_SURF_USAGE_VIDEO_DECODE_BIT) ||
-             image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE].memory_range.size == 0);
-
       /* Check primary surface */
       check_memory_range(accum_ranges,
                          .test_surface = &plane->primary_surface,
@@ -1163,14 +1148,11 @@ check_memory_bindings(const struct anv_device *device,
             isl_drm_modifier_get_info(image->vk.drm_format_mod);
 
          /* If the image is created with a drm modifier that supports clear
-          * color it will be exported along with main surface. If the image is
-          * aliased, it cannot be private since it must be consistent among
-          * all aliases. Otherwise, place the aux-tracking state in a
-          * separate, suballocated buffer to achieve better memory
-          * utilization.
+          * color it will be exported along with main surface. Otherwise,
+          * place the aux-tracking state in a separate, suballocated buffer to
+          * achieve better memory utilization.
           */
-         if (!(mod_info && mod_info->supports_clear_color) &&
-             !(image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT))
+         if (!(mod_info && mod_info->supports_clear_color))
             binding = ANV_IMAGE_MEMORY_BINDING_PRIVATE;
 
          /* The indirect clear color BO requires 64B-alignment on gfx11+. */
@@ -1978,30 +1960,17 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
    if ((image->vk.aspects & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) &&
        !vk_format_is_block_compressed(image->vk.format) &&
        image->vk.samples == 1) {
-      if (image->n_planes != 1) {
+      if (image->n_planes != 1 ||
+          (image->vk.create_flags & VK_IMAGE_CREATE_DISJOINT_BIT)) {
          /* Multiplanar images seem to hit a sampler bug with CCS and R16G16
           * format. (Putting the clear state a page/4096bytes further fixes
-          * the issue).
+          * the issue). Since we're banning CCS on these images, we must also
+          * ban it on any image which may alias a plane of a multiplanar
+          * image.
           */
          anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
                        "Disabling aux: "
                        "multiplanar color workaround");
-         isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
-      }
-
-      if ((image->vk.create_flags & VK_IMAGE_CREATE_ALIAS_BIT) &&
-          !image->from_wsi) {
-         /* The image may alias a plane of a multiplanar image. Above we ban
-          * CCS on multiplanar images.
-          *
-          * We must also reject aliasing of any image that uses
-          * ANV_IMAGE_MEMORY_BINDING_PRIVATE. Since we're already rejecting
-          * all aliasing here, there's no need to further analyze if the image
-          * needs a private binding.
-          */
-         anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
-                       "Disabling aux: "
-                       "aliased image not from WSI");
          isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
       }
 
@@ -3294,6 +3263,43 @@ anv_bind_image_memory(struct anv_device *device,
    if (image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE].address.bo != NULL &&
        !image->device_registered) {
       pthread_mutex_lock(&device->mutex);
+
+      /* For the purpose of enabling compression with
+       * VK_IMAGE_CREATE_ALIAS_BIT, try to replace the image's private BO with
+       * one from a device-registered image. If the app intends the two images
+       * to alias each other, the attempt will succeed.
+       */
+      list_for_each_entry(struct anv_image, list_image,
+                          &device->image_private_objects, link) {
+         assert(!image->disjoint);
+         const struct anv_image_binding *img_main_binding =
+            &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+         const struct anv_image_binding *list_img_main_binding =
+            &list_image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+         const bool main_binding_aliased =
+            img_main_binding->address64 ==
+            list_img_main_binding->address64 &&
+            img_main_binding->memory_range.size ==
+            list_img_main_binding->memory_range.size;
+
+         struct anv_image_binding *img_priv_binding =
+            &image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE];
+         struct anv_image_binding *list_img_priv_binding =
+            &list_image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE];
+         const bool priv_binding_aliased =
+            img_priv_binding->address.bo == list_img_priv_binding->address.bo;
+
+         if (main_binding_aliased && !priv_binding_aliased &&
+             memory_ranges_equal(img_priv_binding->memory_range,
+                                 list_img_priv_binding->memory_range)) {
+            ANV_DMR_BO_FREE(&image->vk.base, img_priv_binding->address.bo);
+            anv_device_release_bo(device, img_priv_binding->address.bo);
+            img_priv_binding->address.bo =
+               anv_bo_ref(list_img_priv_binding->address.bo);
+            break;
+         }
+      }
+
       list_addtail(&image->link, &device->image_private_objects);
       pthread_mutex_unlock(&device->mutex);
       image->device_registered = true;

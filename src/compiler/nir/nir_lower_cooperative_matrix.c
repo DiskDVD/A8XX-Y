@@ -364,7 +364,9 @@ split_cmat_transpose(nir_builder *b,
       nir_deref_instr *dst_deref = recreate_derefs(b, &intr->src[0], dst_split->split_vars[out_idx]);
       nir_deref_instr *src_deref = recreate_derefs(b, &intr->src[1], src_split->split_vars[i]);
       b->cursor = nir_before_instr(instr);
-      nir_cmat_transpose(b, &dst_deref->def, &src_deref->def, .fp_math_ctrl = nir_intrinsic_fp_math_ctrl(intr));
+      nir_cmat_transpose(b, &dst_deref->def, &src_deref->def, .saturate = nir_intrinsic_saturate(intr),
+                         .cmat_signed_mask = nir_intrinsic_cmat_signed_mask(intr),
+                         .fp_math_ctrl = nir_intrinsic_fp_math_ctrl(intr));
    }
    nir_instr_remove(instr);
    return true;
@@ -551,6 +553,34 @@ split_cmat_muladd(nir_builder *b,
    }
 
    nir_instr_remove(instr);
+   return true;
+}
+
+static bool
+split_cmat_get_coordinate(nir_builder *b,
+                          nir_intrinsic_instr *intr,
+                          struct split_info *info)
+{
+   struct glsl_cmat_description desc = nir_intrinsic_cmat_desc(intr);
+   struct split_box box;
+
+   if (!split_desc(&desc, info, &box))
+      return false;
+
+   nir_def *length = nir_cmat_length(b, .cmat_desc = desc);
+   nir_def *rem_def = nir_umod(b, intr->src[0].ssa, length);
+   nir_def *split_idx = nir_udiv(b, intr->src[0].ssa, length);
+
+   nir_def *adds[2];
+   adds[0] = nir_udiv_imm(b, split_idx, box.outer_cols);
+   adds[1] = nir_umod_imm(b, split_idx, box.outer_cols);
+   nir_def *def = nir_cmat_get_coordinate(b, rem_def, .cmat_desc = desc);
+
+   adds[0] = nir_imul_imm(b, adds[0], desc.cols);
+   adds[1] = nir_imul_imm(b, adds[1], desc.cols);
+   nir_def *add_vec = nir_vec(b, adds, 2);
+   def = nir_iadd(b, def, add_vec);
+   nir_def_replace(&intr->def, def);
    return true;
 }
 
@@ -926,6 +956,9 @@ split_matrix_impl(nir_function_impl *impl, struct split_info *info)
             case nir_intrinsic_cmat_load:
             case nir_intrinsic_cmat_store:
                progress |= split_cmat_load_store(&b, intr, info);
+               break;
+            case nir_intrinsic_cmat_get_coordinate:
+               progress |= split_cmat_get_coordinate(&b, intr, info);
                break;
             default:
                break;

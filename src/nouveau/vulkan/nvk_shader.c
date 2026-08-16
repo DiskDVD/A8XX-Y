@@ -1,5 +1,9 @@
 /*
  * Copyright © 2022 Collabora Ltd. and Red Hat Inc.
+ * Copyright 2023 Advanced Micro Devices, Inc.
+ * Copyright 2018 Intel Corporation
+ * Copyright 2025 Alyssa Rosenzweig
+ * Copyright 2026 Valve Corporation
  * SPDX-License-Identifier: MIT
  */
 #include "nvk_shader.h"
@@ -161,6 +165,12 @@ nvk_preprocess_nir(struct vk_physical_device *vk_pdev,
 {
    const struct nvk_physical_device *pdev =
       container_of(vk_pdev, struct nvk_physical_device, vk);
+
+   /* Lower primitive id to varyings to prepare for nir_opt_varyings_bulk */
+   struct nir_lower_sysvals_to_varyings_options sysvals_opts = {
+      .primitive_id = nir->info.stage == MESA_SHADER_FRAGMENT,
+   };
+   nir_lower_sysvals_to_varyings(nir, &sysvals_opts);
 
    nak_preprocess_nir(nir, pdev->nak);
 
@@ -477,7 +487,16 @@ nvk_lower_nir(struct nvk_device *dev, nir_shader *nir,
                shared_var_info);
       NIR_PASS(_, nir, nir_lower_explicit_io, var_modes,
                nir_address_format_32bit_offset);
+   }
 
+   nak_lower_nir_before_linking(nir, pdev->nak);
+   nir->info.io_lowered = true;
+}
+
+static void
+nvk_lower_nir_late(nir_shader *nir, VkShaderCreateFlagsEXT shader_flags)
+{
+   if (mesa_shader_stage_uses_workgroup(nir->info.stage)) {
       if (nir->info.stage == MESA_SHADER_TASK)
          NIR_PASS(_, nir, nvk_nir_lower_task_shader);
       else if (nir->info.stage == MESA_SHADER_MESH)
@@ -1108,7 +1127,8 @@ nvk_compile_shader(struct nvk_device *dev,
                    struct vk_shader_compile_info *info,
                    const struct vk_graphics_pipeline_state *state,
                    const VkAllocationCallbacks* pAllocator,
-                   struct vk_shader **shader_out)
+                   struct vk_shader **shader_out,
+                   struct nvk_cbuf_map *cbuf_map)
 {
    struct nvk_shader *shader;
    VkResult result;
@@ -1123,9 +1143,14 @@ nvk_compile_shader(struct nvk_device *dev,
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   nvk_lower_nir(dev, nir, info->flags, info->robustness,
-                 info->set_layout_count, info->set_layouts,
-                 &shader->cbuf_map);
+   if (!nir->info.io_lowered) {
+      nvk_lower_nir(dev, nir, info->flags, info->robustness,
+                  info->set_layout_count, info->set_layouts,
+                  cbuf_map);
+   }
+
+   nvk_lower_nir_late(nir, info->flags);
+   shader->cbuf_map = *cbuf_map;
 
    struct nak_fs_key fs_key_tmp, *fs_key = NULL;
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -1195,13 +1220,46 @@ nvk_compile_nir_shader(struct nvk_device *dev, nir_shader *nir,
    };
 
    struct vk_shader *shader = NULL;
-   VkResult result = nvk_compile_shader(dev, &info, NULL, alloc, &shader);
+   struct nvk_cbuf_map cbuf_map = {0};
+   VkResult result = nvk_compile_shader(dev, &info, NULL, alloc, &shader, &cbuf_map);
    if (result != VK_SUCCESS)
       return result;
 
    *shader_out = container_of(shader, struct nvk_shader, vk);
 
    return VK_SUCCESS;
+}
+
+static void
+nir_opts(nir_shader *nir, void *data)
+{
+   bool progress;
+
+   do {
+      progress = false;
+
+      NIR_PASS(progress, nir, nir_opt_loop);
+      NIR_PASS(progress, nir, nir_opt_copy_prop);
+      NIR_PASS(progress, nir, nir_opt_remove_phis);
+      NIR_PASS(progress, nir, nir_opt_dce);
+
+      NIR_PASS(progress, nir, nir_opt_if, 0);
+      NIR_PASS(progress, nir, nir_opt_dead_cf);
+      NIR_PASS(progress, nir, nir_opt_cse);
+
+      NIR_PASS(progress, nir, nir_opt_peephole_select,
+               &(nir_opt_peephole_select_options){
+                  .limit = 0,
+                  .discard_ok = true,
+               });
+
+      NIR_PASS(progress, nir, nir_opt_phi_precision);
+      NIR_PASS(progress, nir, nir_opt_algebraic);
+      NIR_PASS(progress, nir, nir_opt_constant_folding);
+
+      NIR_PASS(progress, nir, nir_opt_undef);
+      NIR_PASS(progress, nir, nir_opt_loop_unroll);
+   } while (progress);
 }
 
 static VkResult
@@ -1215,9 +1273,56 @@ nvk_compile_shaders(struct vk_device *vk_dev,
 {
    struct nvk_device *dev = container_of(vk_dev, struct nvk_device, vk);
 
+   nir_shader *mesh_shader = NULL;
+   nir_shader *shaders[shader_count];
+   struct nvk_cbuf_map cbuf_maps[shader_count];
+   memset(cbuf_maps, 0, sizeof(cbuf_maps));
+
+   /* Lower shaders, notably lowering I/O. This is a prerequisite for
+    * intershader optimization.
+    */
+   for (uint32_t i = 0; i < shader_count; i++) {
+      const struct vk_shader_compile_info *info = &infos[i];
+      nir_shader *nir = info->nir;
+
+      if (nir->info.stage == MESA_SHADER_MESH)
+         mesh_shader = nir;
+
+      if (nir->info.stage == MESA_SHADER_FRAGMENT && mesh_shader) {
+         nir_foreach_shader_in_variable(var, nir) {
+            /* These variables are implicitly per-primitive when used with
+             * mesh->fragment stages and this can't be determined with only the
+             * FS. nir_opt_varyings relies on inputs and outputs agreeing on
+             * per-primitive.
+             */
+            if (var->data.location == VARYING_SLOT_PRIMITIVE_ID ||
+                var->data.location == VARYING_SLOT_VIEWPORT ||
+                var->data.location == VARYING_SLOT_LAYER) {
+               var->data.per_primitive = true;
+            }
+         }
+      }
+
+      nvk_lower_nir(dev, nir, info->flags, info->robustness,
+                    info->set_layout_count, info->set_layouts,
+                    &cbuf_maps[i]);
+
+      if (nir->xfb_info) {
+         /* Fold constant offset srcs for IO. */
+         NIR_PASS(_, nir, nir_opt_constant_folding);
+
+         nir_io_add_intrinsic_xfb_info(nir);
+      }
+
+      shaders[i] = nir;
+   }
+
+   nir_opt_varyings_bulk(shaders, shader_count, true, UINT32_MAX, UINT32_MAX,
+                         nir_opts, NULL);
+
    for (uint32_t i = 0; i < shader_count; i++) {
       VkResult result = nvk_compile_shader(dev, &infos[i], state,
-                                           pAllocator, &shaders_out[i]);
+                                           pAllocator, &shaders_out[i], &cbuf_maps[i]);
       if (result != VK_SUCCESS) {
          /* Clean up all the shaders before this point */
          for (uint32_t j = 0; j < i; j++)
@@ -1488,6 +1593,18 @@ nvk_shader_get_executable_statistics(
                 "Size of shader local (scratch) memory, in bytes");
       stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
       stat->value.u64 = shader->info.slm_size;
+   }
+
+   uint16_t smem_size = 0;
+   if (shader->info.stage == MESA_SHADER_COMPUTE)
+      smem_size = shader->info.cs.smem_size;
+
+   vk_outarray_append_typed(VkPipelineExecutableStatisticKHR, &out, stat) {
+      WRITE_STR(stat->name, "Shared size");
+      WRITE_STR(stat->description,
+                "Size of shader shared memory, in bytes");
+      stat->format = VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR;
+      stat->value.u64 = smem_size;
    }
 
    return vk_outarray_status(&out);

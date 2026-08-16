@@ -13,6 +13,7 @@
 #include "brw_eu.h"
 #include "brw_shader.h"
 #include "brw_cfg.h"
+#include "common/intel_common.h"
 #include "dev/intel_debug.h"
 #include "util/ralloc.h"
 #include "util/mesa-blake3.h"
@@ -1527,6 +1528,52 @@ brw_generator::generate_code(const brw_shader &s,
          if (devinfo->ver == 9)
             current_state()->align16 = true;
 
+         if (devinfo->verx10 == 90) {
+            /* On Gfx9, there are no bits in the instruction to store the
+             * destination register file. It must be GRF.
+             */
+            assert(dst.file == FIXED_GRF);
+         }
+
+         if (devinfo->verx10 == 110) {
+            /* On Gfx11, things are more complicated. Page 475 (page 481 of
+             * the PDF) of the Ice Lake PRM Volume 9: Render Engine says:
+             *
+             *    The 3-source instructions have the following restrictions:
+             *
+             *    - Only GRF registers can be sources and only GRF registers
+             *      can be the destination.
+             *
+             * Which is cool and all, but page 496 (page 502 of the PDF) of
+             * the Ice Lake PRM Volume 9: Render Engine says:
+             *
+             *    DstRegfile
+             *        0 - GRF
+             *        1 - ARF (Restriction : Only valid ARF type is Accumulator)
+             *
+             * The Bspec also shows examples of using MAD with accumulator
+             * source and destination as a replacement for PLN. In commit
+             * 432674ce93ce, this driver made use of this feature!
+             */
+            assert(dst.file == FIXED_GRF || inst->dst.is_accumulator());
+         }
+
+         if (devinfo->verx10 == 110 || devinfo->verx10 == 120) {
+            /* No supporting documentation has been found in the Bspec or
+             * the PRMs. However, the TGL simulator will produce the warning:
+             *
+             *    Source modifier is not allowed if source is an accumulator
+             *    for 3 src instructions.
+             *
+             * It has been experimentally determined that Gfx11 has the same
+             * restriction.
+             */
+            for (int i = 0; i < 3; i++) {
+               assert(!src[i].is_accumulator() ||
+                      (!src[i].abs && !src[i].negate));
+            }
+         }
+
          append(inst->opcode, dst, src[0], src[1], src[2]);
 	 break;
 
@@ -2162,7 +2209,7 @@ brw_generator::generate_code(const brw_shader &s,
       FILE *files[2] = { NULL, NULL };
 
       if (debug_flag && (!intel_shader_dump_filter ||
-                         (intel_shader_dump_filter && intel_shader_dump_filter == params->source_hash)))
+                         (intel_shader_dump_filter && intel_shader_dump_filter == prog_data->source_hash)))
          files[0] = stderr;
 
       if (params->archiver) {
@@ -2179,9 +2226,8 @@ brw_generator::generate_code(const brw_shader &s,
                  "scheduled with mode %s. "
                  "Promoted %u constants. "
                  "GRF registers: %u. "
-                 "Non-SSA regs (after NIR): %u. "
                  "Compacted %d to %d bytes (%.0f%%)\n",
-                 shader_name, params->source_hash, blake3buf,
+                 shader_name, prog_data->source_hash, blake3buf,
                  dispatch_width,
                  before_size / 16 - nop_count - sync_nop_count,
                  loop_count, perf.latency,
@@ -2191,7 +2237,6 @@ brw_generator::generate_code(const brw_shader &s,
                  shader_stats.scheduler_mode,
                  shader_stats.promoted_constants,
                  s.grf_used,
-                 shader_stats.non_ssa_registers_after_nir,
                  before_size, after_size,
                  100.0f * (before_size - after_size) / before_size);
 
@@ -2244,9 +2289,12 @@ brw_generator::generate_code(const brw_shader &s,
       stats->fills = shader_stats.fill_count;
       stats->scratch_memory_size = prog_data->total_scratch;
       stats->max_live_registers = shader_stats.max_register_pressure;
-      stats->non_ssa_regs_after_nir = shader_stats.non_ssa_registers_after_nir;
       stats->source_hash = prog_data->source_hash;
       stats->grf_registers = devinfo->ver >= 30 ? s.grf_used : 0;
+      stats->vrt_size =
+         intel_vrt_register_file_size(devinfo, stats->grf_registers);
+      stats->vrt_threads =
+         intel_max_vrt_threads(devinfo, stats->vrt_size);
 
       switch (stage) {
       case MESA_SHADER_VERTEX:
@@ -2509,7 +2557,7 @@ brw_bsr(const struct intel_device_info *devinfo,
    assert(simd_size == 8 || simd_size == 16);
    assert(local_arg_offset % 8 == 0);
 
-   return ((uint64_t)ptl_register_blocks(grf_used) << 60) |
+   return ((uint64_t)intel_register_blocks(devinfo, grf_used) << 60) |
           offset |
           SET_BITS(simd_size == 8, 4, 4) |
           SET_BITS(local_arg_offset / 8, 2, 0);

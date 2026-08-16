@@ -45,8 +45,8 @@ fn remat_src(
         }
 
         *ssa = match ssa.bits() {
-            8 => b.copy_i8(Src::imm_u8(*u as u8)),
-            16 => b.copy_i16(Src::imm_u16(*u as u16)),
+            8 => b.copy_i8(Src::from(*u as u8)),
+            16 => b.copy_i16(Src::from(*u as u16)),
             32 => b.copy_i32(Src::from(*u)),
             bits => panic!("Invalid SSAValue size: {bits}"),
         };

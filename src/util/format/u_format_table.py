@@ -95,6 +95,7 @@ def has_access(format):
         'y10_u10v10_420_unorm',
         'y10_u10v10_422_unorm',
         'x6y10_x6u10x6v10_420_unorm',
+        'x6y10_x6u10x6v10_422_unorm',
         'x4y12_x4u12x4v12_420_unorm',
         'y16_u16v16_420_unorm',
         'y10y10y10x2_u10v10u10x2v10u10v10x2_420_unorm',

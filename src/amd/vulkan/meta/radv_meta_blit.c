@@ -411,9 +411,14 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
    if (src_image->vk.image_type == VK_IMAGE_TYPE_3D)
       depth_center_offset = 0.5 / (dst_end - dst_start) * (src_end - src_start);
 
+   unsigned src_layer_start = src_start;
+   int src_layer_step = 1;
+
    if (flip_z) {
       src_start = src_end;
       src_z_step *= -1;
+      src_layer_start = src_end - 1;
+      src_layer_step *= -1;
       depth_center_offset *= -1;
    }
 
@@ -465,7 +470,8 @@ blit_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_image, VkI
       const uint32_t dst_array_slice = dst_start + i;
 
       /* 3D images have just 1 layer */
-      const uint32_t src_array_slice = src_image->vk.image_type == VK_IMAGE_TYPE_3D ? 0 : src_start + i;
+      const uint32_t src_array_slice =
+         src_image->vk.image_type == VK_IMAGE_TYPE_3D ? 0 : src_layer_start + i * src_layer_step;
 
       const VkImageViewUsage2CreateInfoKHR dst_iview_usage_info = {
          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_2_CREATE_INFO_KHR,

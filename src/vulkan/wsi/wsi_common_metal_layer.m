@@ -144,7 +144,7 @@ VkResult
 wsi_metal_layer_configure(const CAMetalLayer *metal_layer,
    uint32_t width, uint32_t height, uint32_t image_count,
    VkFormat format, VkColorSpaceKHR color_space,
-   bool enable_opaque, bool enable_immediate)
+   bool enable_opaque, bool enable_immediate, bool framebuffer_only)
 {
    @autoreleasepool {
       MTLPixelFormat metal_format;
@@ -163,11 +163,9 @@ wsi_metal_layer_configure(const CAMetalLayer *metal_layer,
 
       /* So acquire timeout works */
       metal_layer.allowsNextDrawableTimeout = YES;
-      /* So we can blit to the drawable */
-      metal_layer.framebufferOnly = NO;
+      metal_layer.framebufferOnly = framebuffer_only;
 
-      /* Force recommended 3 drawables for smoother presentation */
-      metal_layer.maximumDrawableCount = 3u;
+      metal_layer.maximumDrawableCount = image_count;
       metal_layer.drawableSize = (CGSize){.width = width, .height = height};
       metal_layer.opaque = enable_opaque;
       metal_layer.displaySyncEnabled = !enable_immediate;
@@ -374,7 +372,7 @@ wsi_metal_layer_make_queue_resident(const CAMetalLayer *metal_layer,
    void *mtl4_command_queue)
 {
 /* Metal4 was introduced in macOS26 */
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_26_0
+#if defined(MAC_OS_VERSION_26_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_26_0
    @autoreleasepool {
       id<MTL4CommandQueue> queue = (id<MTL4CommandQueue>)mtl4_command_queue;
       [queue addResidencySet:metal_layer.residencySet];
@@ -388,7 +386,7 @@ wsi_metal_layer_remove_queue_resident(const CAMetalLayer *metal_layer,
    void *mtl4_command_queue)
 {
 /* Metal4 was introduced in macOS26 */
-#if __MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_26_0
+#if defined(MAC_OS_VERSION_26_0) && __MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_26_0
    @autoreleasepool {
       id<MTL4CommandQueue> queue = (id<MTL4CommandQueue>)mtl4_command_queue;
       [queue removeResidencySet:metal_layer.residencySet];

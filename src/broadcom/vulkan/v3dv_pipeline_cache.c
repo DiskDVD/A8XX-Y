@@ -371,8 +371,11 @@ v3dv_pipeline_shared_data_destroy(struct v3dv_device *device,
       }
    }
 
-   if (shared_data->assembly_bo)
-      v3dv_bo_free(device, shared_data->assembly_bo);
+   if (shared_data->assembly_bo){
+      shared_data->assembly_bo->report_obj_type = shared_data->owner_type;
+      shared_data->assembly_bo->report_obj_handle = shared_data->owner_handle;
+      v3dv_bo_free(device, shared_data->assembly_bo, 0);
+   }
 
    vk_free(&device->vk.alloc, shared_data);
 }
@@ -406,8 +409,13 @@ v3dv_pipeline_shared_data_new(struct v3dv_pipeline_cache *cache,
       new_entry->variants[stage] = variants[stage];
    }
 
+   new_entry->owner_type = VK_OBJECT_TYPE_PIPELINE_CACHE;
+   new_entry->owner_handle = vk_object_to_u64_handle(&cache->base);
+
    struct v3dv_bo *bo = v3dv_bo_alloc(cache->device, total_assembly_size,
-                                      "pipeline shader assembly", true);
+                                      "pipeline shader assembly", true,
+                                      new_entry->owner_type,
+                                      new_entry->owner_handle);
    if (!bo) {
       mesa_loge("failed to allocate memory for shaders assembly\n");
       goto fail;
@@ -458,6 +466,10 @@ pipeline_cache_upload_shared_data(struct v3dv_pipeline_cache *cache,
    }
 
    v3dv_pipeline_shared_data_ref(shared_data);
+
+   shared_data->owner_type = VK_OBJECT_TYPE_PIPELINE_CACHE;
+   shared_data->owner_handle = vk_object_to_u64_handle(&cache->base);
+
    _mesa_hash_table_insert(cache->cache, shared_data->blake3_key, shared_data);
    cache->stats.count++;
    if (debug_cache) {
@@ -846,6 +858,10 @@ v3dv_MergePipelineCaches(VkDevice device,
             continue;
 
          v3dv_pipeline_shared_data_ref(cache_entry);
+
+         cache_entry->owner_type = VK_OBJECT_TYPE_PIPELINE_CACHE;
+         cache_entry->owner_handle = vk_object_to_u64_handle(&dst->base);
+
          _mesa_hash_table_insert(dst->cache, cache_entry->blake3_key, cache_entry);
 
          dst->stats.count++;

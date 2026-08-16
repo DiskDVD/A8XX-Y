@@ -1862,8 +1862,24 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
 
         case nir_op_fsat:
                 assert(v3d_device_has_unpack_sat(c->devinfo));
-                result = vir_FMOV(c, src[0]);
-                vir_set_unpack(c->defs[result.index], 0, V3D71_QPU_UNPACK_SAT);
+                if (instr->def.bit_size == 16) {
+                        /* The SAT unpack saturates a 32-bit float, so it
+                         * would misinterpret f16 bits. nir_opt_algebraic can
+                         * form a 16-bit fsat from native f16 fmin/fmax after
+                         * the last bit-size lowering.
+                         */
+                        struct qreg f32 = vir_FMOV(c, src[0]);
+                        vir_set_unpack(c->defs[f32.index], 0,
+                                       V3D_QPU_UNPACK_L);
+                        result = vir_FMOV(c, f32);
+                        vir_set_unpack(c->defs[result.index], 0,
+                                       V3D71_QPU_UNPACK_SAT);
+                        vir_set_pack(c->defs[result.index], V3D_QPU_PACK_L);
+                } else {
+                        result = vir_FMOV(c, src[0]);
+                        vir_set_unpack(c->defs[result.index], 0,
+                                       V3D71_QPU_UNPACK_SAT);
+                }
                 break;
 
         case nir_op_fsat_signed:

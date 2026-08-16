@@ -39,6 +39,10 @@ struct kk_root_descriptor_table {
 
          float blend_constant[4];
          float clip_z_coeff;
+
+         float viewport_z_range[KK_MAX_VIEWPORTS * 2];
+         bool emulate_depth_clamp;
+         bool emulate_viewport_z;
       } draw;
       struct {
          uint32_t base_group[3];

@@ -38,6 +38,7 @@
         - src/amd/ci/$GPU_VERSION-vkd3d-fails.txt
         - src/amd/ci/$GPU_VERSION-vkd3d-flakes.txt
         - src/amd/ci/$GPU_VERSION-vkd3d-skips.txt
+        - src/amd/ci/radv-validate-cache.sh
         - src/amd/common/**/*
         - src/amd/common/nir/**/*
         - src/amd/compiler/**/*
@@ -233,7 +234,7 @@
     # Force fixed 6.6 kernel, amdgpu doesn't revcover from GPU resets on 6.13
     # https://gitlab.freedesktop.org/drm/amd/-/issues/3861
     # https://gitlab.freedesktop.org/mesa/mesa/-/issues/12676
-    KERNEL_TAG: "v6.6.21-mesa-1978"
+    KERNEL_TAG: "v6.6.21-mesa-c236"
 
 # Status: https://lava.collabora.dev/scheduler/device_type/lenovo-TPad-C13-Yoga-zork
 .lava-lenovo-TPad-C13-Yoga-zork:x86_64:
@@ -250,7 +251,7 @@
     # Force fixed 6.6 kernel, amdgpu doesn't revcover from GPU resets on 6.13
     # https://gitlab.freedesktop.org/drm/amd/-/issues/3861
     # https://gitlab.freedesktop.org/mesa/mesa/-/issues/12676
-    KERNEL_TAG: "v6.6.21-mesa-1978"
+    KERNEL_TAG: "v6.6.21-mesa-c236"
 
 # Status: https://lava.collabora.dev/scheduler/device_type/hp-x360-14a-cb0001xx-zork
 .lava-hp-x360-14a-cb0001xx-zork:x86_64:
@@ -267,7 +268,7 @@
     # Force fixed 6.6 kernel, amdgpu doesn't revcover from GPU resets on 6.13
     # https://gitlab.freedesktop.org/drm/amd/-/issues/3861
     # https://gitlab.freedesktop.org/mesa/mesa/-/issues/12676
-    KERNEL_TAG: "v6.6.21-mesa-1978"
+    KERNEL_TAG: "v6.6.21-mesa-c236"
 
 # Status: https://lava.collabora.dev/scheduler/device_type/dell-latitude-3445-7520c-skyrim
 .lava-dell-latitude-3445-7520c-skyrim:x86_64:
@@ -299,7 +300,7 @@
     VK_DRIVER: radeon
     LAVA_FIRMWARE: amdgpu
     # Force fixed 6.6 kernel
-    KERNEL_TAG: "v6.6.21-mesa-1978"
+    KERNEL_TAG: "v6.6.21-mesa-c236"
 
 
 ############### LAVA

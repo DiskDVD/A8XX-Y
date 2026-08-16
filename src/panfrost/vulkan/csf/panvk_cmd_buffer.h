@@ -339,6 +339,21 @@ cs_subqueue_ctx_reg(struct cs_builder *b)
    return cs_reg64(b, PANVK_CS_REG_SUBQUEUE_CTX_START);
 }
 
+static inline void PRINTFLIKE(2, 3)
+   cs_debug_string(struct cs_builder *b, const char *format, ...)
+{
+   if (PANVK_DEBUG(DUMP) || PANVK_DEBUG(TRACE)) {
+      char string_buf[CS_DBG_STR_MAX_LEN];
+
+      va_list ap;
+      va_start(ap, format);
+      vsnprintf(string_buf, sizeof(string_buf), format, ap);
+      va_end(ap);
+
+      cs_dbg_str(b, string_buf);
+   }
+}
+
 static inline struct cs_index
 cs_progress_seqno_reg(struct cs_builder *b, enum panvk_subqueue_id subqueue)
 {

@@ -154,8 +154,10 @@ static const struct {
 
    /* GFX register numbers. */
    { "mov (4) r127 r127",        VALID,                                                      { .lt = 200 } },
-   { "mov (4) r128 r1",          "Destination GRF register number 128 exceeds maximum 127.", { .lt = 200 } },
-   { "mov (4) r0 r128",          "Source 0 GRF register number 128 exceeds maximum 127.",    { .lt = 200 } },
+   { "mov (4) r128 r1",          "Destination GRF register number 128 exceeds maximum 127.", { .lt = 125 } },
+   { "mov (4) r0 r128",          "Source 0 GRF register number 128 exceeds maximum 127.",    { .lt = 125 } },
+   { "mov (4) r256 r1",          "Destination GRF register number 256 exceeds maximum 255.", { .ge = 125 } },
+   { "mov (4) r0 r256",          "Source 0 GRF register number 256 exceeds maximum 255.",    { .ge = 125 } },
    { "mov (4) r[a0.0 + 128] r1", VALID,                                                      { .lt = 200 } },
    { "mov (4) r0 r[a0.0 + 128]", VALID,                                                      { .lt = 200 } },
 

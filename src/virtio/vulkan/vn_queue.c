@@ -10,8 +10,8 @@
 
 #include "vn_queue.h"
 
-#include "venus-protocol/vn_protocol_driver_queue.h"
-#include "venus-protocol/vn_protocol_driver_transport.h"
+#include "vn_protocol_driver_queue.h"
+#include "vn_protocol_driver_transport.h"
 
 #include "vn_command_buffer.h"
 #include "vn_device.h"

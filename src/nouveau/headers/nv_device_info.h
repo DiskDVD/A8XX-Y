@@ -55,6 +55,7 @@ struct nv_device_info {
    uint16_t tpc_count;
    uint8_t mp_per_tpc;
    uint8_t max_warps_per_mp;
+   uint8_t max_blocks_per_mp;
 
    bool has_transfer_queue;
 

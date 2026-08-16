@@ -25,8 +25,8 @@ set -x
 
 DEQP_MAIN_COMMIT=634a3fc62d82c34de68c3b1add25e6b7f5777524
 DEQP_VK_VERSION=1.4.6.1
-DEQP_GL_VERSION=4.6.8.0
-DEQP_GLES_VERSION=3.2.14.0
+DEQP_GL_VERSION=4.6.8.1
+DEQP_GLES_VERSION=3.2.14.1
 
 # Patches to VulkanCTS may come from commits in their repo (listed in
 # cts_commits_to_backport) or patch files stored in our repo (in the patch
@@ -66,15 +66,19 @@ vk_cts_patch_files=(
 gl_cts_commits_to_backport=(
   # android: Implement headless WSI fallback using AImageReader
   6368ee8503dd9ca46eabfa2df293075d9034a214
+  # Fix a memory leak with the atomic counter tests
+  e39758bc9262f8593cf0fddf1364179c1fedf756
+  # Fix a memory leak with the direct state access texture tests
+  fe92180156795a641b684722a199bdb64c69bf2a
+  # Fix a memory leak with the sparse buffer storage tests
+  bf307df9e5c6c27499c2c799409d17554d39cafc
+  # Fix a memory leak with the texture image sample tests
+  5d392ccf4fa09d38d06ca66875a2aaac4fde2b11
 )
 
 # shellcheck disable=SC2034
 gl_cts_patch_files=(
   build-deqp-gl_Build-Don-t-build-Vulkan-utilities-for-GL-builds.patch
-  build-deqp-Fix-a-memory-leak-with-the-atomic-counter-tests.patch
-  build-deqp-Fix-a-memory-leak-with-the-direct-state-access-textu.patch
-  build-deqp-Fix-a-memory-leak-with-the-sparse-buffer-storage-tes.patch
-  build-deqp-Fix-a-memory-leak-with-the-texture-image-sample-test.patch
 )
 
 # shellcheck disable=SC2034
@@ -82,19 +86,21 @@ gl_cts_patch_files=(
 gles_cts_commits_to_backport=(
   # Fix EGL render tests for rgba16 and rgb16 unorm fixed point
   b5ed8718f19492781f8e9be3eb9d3346e961efa9
-  # Fix glGetnUniform* error codes when bufSize < 0
-  34259553e0cc77061465ae0c4bcd4c4658a0fb4a
   # android: Implement headless WSI fallback using AImageReader
   6368ee8503dd9ca46eabfa2df293075d9034a214
+  # Fix a memory leak with the atomic counter tests
+  e39758bc9262f8593cf0fddf1364179c1fedf756
+  # Fix a memory leak with the direct state access texture tests
+  fe92180156795a641b684722a199bdb64c69bf2a
+  # Fix a memory leak with the sparse buffer storage tests
+  bf307df9e5c6c27499c2c799409d17554d39cafc
+  # Fix a memory leak with the texture image sample tests
+  5d392ccf4fa09d38d06ca66875a2aaac4fde2b11
 )
 
 # shellcheck disable=SC2034
 gles_cts_patch_files=(
   build-deqp-gl_Build-Don-t-build-Vulkan-utilities-for-GL-builds.patch
-  build-deqp-Fix-a-memory-leak-with-the-atomic-counter-tests.patch
-  build-deqp-Fix-a-memory-leak-with-the-direct-state-access-textu.patch
-  build-deqp-Fix-a-memory-leak-with-the-sparse-buffer-storage-tes.patch
-  build-deqp-Fix-a-memory-leak-with-the-texture-image-sample-test.patch
 )
 
 

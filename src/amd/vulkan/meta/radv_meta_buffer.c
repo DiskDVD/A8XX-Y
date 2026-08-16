@@ -240,8 +240,12 @@ radv_prefer_compute_or_cp_dma(const struct radv_device *device, uint64_t size, V
    if (pdev->info.gfx_level >= GFX10 && pdev->info.has_dedicated_vram) {
       if (!(src_copy_flags & VK_ADDRESS_COPY_DEVICE_LOCAL_BIT_KHR) ||
           !(dst_copy_flags & VK_ADDRESS_COPY_DEVICE_LOCAL_BIT_KHR)) {
-         /* Prefer CP DMA for GTT on dGPUS due to slow PCIe. */
-         use_compute = false;
+         /* For GTT/host memory on dGPUs, CP DMA avoids occupying the compute
+          * units. But CP DMA is a serial engine that badly underperforms a
+          * compute copy for large transfers, even over PCIe: keep CP DMA only
+          * for small GTT copies and use a compute copy for large ones. */
+         if (size <= RADV_BUFFER_OPS_GTT_CP_DMA_MAX_BYTES)
+            use_compute = false;
       }
    }
 

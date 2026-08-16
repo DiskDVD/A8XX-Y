@@ -675,9 +675,6 @@ struct gen_encoder {
          if constexpr (E::TYPE == GEN_ENCODING_XE)
             set(E::ACC_WR_CONTROL, inst->acc_wr_control);
 
-         set(E::SRC0_ADDRESS_MODE, inst->src[0].indirect);
-         set(E::SRC0_NEGATE,       inst->src[0].negate);
-         set(E::SRC0_ABS,          inst->src[0].abs);
          if constexpr (E::TYPE < GEN_ENCODING_XE3P) {
             set(E::SRC0_TYPE, encode_type(inst->src[0].file,
                                           inst->src[0].type));
@@ -694,9 +691,11 @@ struct gen_encoder {
 
          if (inst->src[0].file == GEN_IMM) {
             imm_src = 0;
-            set(E::SRC0_IS_IMM, 1);
-
+            set(E::SRC0_IS_IMM,       1);
          } else {
+            set(E::SRC0_ADDRESS_MODE, inst->src[0].indirect);
+            set(E::SRC0_NEGATE,       inst->src[0].negate);
+            set(E::SRC0_ABS,          inst->src[0].abs);
             if (inst->src[0].indirect)
                encode_indirect_operand(E::SRC0_OPERAND, inst->src[0]);
             else
@@ -713,17 +712,16 @@ struct gen_encoder {
          }
 
          if (desc->format == GEN_FORMAT_BASIC_TWO_SRC) {
-            set(E::SRC1_ADDRESS_MODE, inst->src[1].indirect);
-            set(E::SRC1_NEGATE,       inst->src[1].negate);
-            set(E::SRC1_ABS,          inst->src[1].abs);
-            set(E::SRC1_TYPE,         encode_type(inst->src[1].file, inst->src[1].type));
+            set(E::SRC1_TYPE, encode_type(inst->src[1].file, inst->src[1].type));
 
             if (inst->src[1].file == GEN_IMM) {
                assert(imm_src == -1);
                imm_src = 1;
                set(E::SRC1_IS_IMM, 1);
-
             } else {
+               set(E::SRC1_ADDRESS_MODE, inst->src[1].indirect);
+               set(E::SRC1_NEGATE,       inst->src[1].negate);
+               set(E::SRC1_ABS,          inst->src[1].abs);
                if (inst->src[1].indirect)
                   encode_indirect_operand(E::SRC1_OPERAND, inst->src[1]);
                else
@@ -1286,16 +1284,14 @@ struct gen_decoder {
          if constexpr (E::TYPE == GEN_ENCODING_XE)
             inst->acc_wr_control = get(E::ACC_WR_CONTROL);
 
-         inst->src[0].indirect     = get(E::SRC0_ADDRESS_MODE);
-         inst->src[0].negate       = get(E::SRC0_NEGATE);
-         inst->src[0].abs          = get(E::SRC0_ABS);
-
          int imm_src = -1;
          if (get(E::SRC0_IS_IMM)) {
             imm_src = 0;
-            inst->src[0].file = GEN_IMM;
-
+            inst->src[0].file     = GEN_IMM;
          } else {
+            inst->src[0].indirect = get(E::SRC0_ADDRESS_MODE);
+            inst->src[0].negate   = get(E::SRC0_NEGATE);
+            inst->src[0].abs      = get(E::SRC0_ABS);
             if (inst->src[0].indirect) {
                decode_indirect_operand(E::SRC0_OPERAND, inst->src[0]);
                inst->src[0].file = GEN_GRF;
@@ -1329,20 +1325,16 @@ struct gen_decoder {
             }
          }
 
-         if (desc->format == GEN_FORMAT_BASIC_TWO_SRC)
-            inst->src[1].type = decode_type(inst->src[1].file, get(E::SRC1_TYPE));
-         else
-            inst->src[1].file = GEN_BAD_FILE;
-
          if (desc->format == GEN_FORMAT_BASIC_TWO_SRC) {
-            inst->src[1].indirect = get(E::SRC1_ADDRESS_MODE);
-
             if (get(E::SRC1_IS_IMM)) {
                assert(imm_src == - 1);
                imm_src = 1;
                inst->src[1].file = GEN_IMM;
+            }
+            inst->src[1].type = decode_type(inst->src[1].file, get(E::SRC1_TYPE));
 
-            } else {
+            if (inst->src[1].file != GEN_IMM) {
+               inst->src[1].indirect = get(E::SRC1_ADDRESS_MODE);
                inst->src[1].negate   = get(E::SRC1_NEGATE);
                inst->src[1].abs      = get(E::SRC1_ABS);
 
@@ -1373,6 +1365,8 @@ struct gen_decoder {
                   inst->src[1].region.hstride = 0;
                }
             }
+         } else {
+            inst->src[1].file = GEN_BAD_FILE;
          }
 
          if (imm_src != -1) {

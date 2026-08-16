@@ -1,6 +1,7 @@
 // Copyright © 2026 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
+use crate::bitview::BitViewable;
 pub use crate::data_type::DataType;
 use crate::data_type::PartialDataType;
 use crate::debug::{DEBUG, DebugFlags};
@@ -302,6 +303,53 @@ impl fmt::Display for PreloadReg {
             FrameArgHigh => "FRAME_ARG_HI",
         };
         write!(f, "{name}")
+    }
+}
+
+/// Handle referencing an external resource (e.g. sampler, texture, attribute,
+/// uniform buffer...).  It is just a pair of indices, one selecting a "table",
+/// the other selecting a descriptor within the table.  Tables are either lists
+/// of descriptors stored in memory or a "virtual" table for hardware-controlled
+/// resources
+pub struct ResHandle {
+    /// The resource table index or special table enumerant specifying
+    /// which table is being referenced
+    pub table: u32,
+    /// The index into the table at which to find the descriptor
+    pub index: u32,
+}
+
+impl ResHandle {
+    pub fn from_bits(imm: u32) -> Self {
+        ResHandle {
+            table: imm.get_bit_range_u64(24..32) as u32,
+            index: imm.get_bit_range_u64(0..24) as u32,
+        }
+    }
+
+    /// Returns true if the handle can be encoded in an immediate
+    pub fn fits_imm_op(&self, index_bits: u8) -> bool {
+        let table = self.table;
+        let table_valid = table <= 11 || (table >= 60 && table <= 63);
+        let index_valid = self.index < (1 << index_bits);
+
+        table_valid && index_valid
+    }
+}
+
+impl TryFrom<&Src> for ResHandle {
+    type Error = &'static str;
+
+    fn try_from(value: &Src) -> Result<Self, Self::Error> {
+        u32::try_from(&value.src_ref)
+            .map(ResHandle::from_bits)
+            .map_err(|_| "Not an immediate")
+    }
+}
+
+impl fmt::Display for ResHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.table, self.index)
     }
 }
 
@@ -821,7 +869,7 @@ impl Src {
         if let Some(swizzle_word) = self.swizzle.word(word) {
             use SwizzleWord::*;
             match swizzle_word {
-                Zero => 0.into(),
+                Zero => 0_u32.into(),
                 Word0 => Src::from(self.src_ref.word(0)),
                 Word1 => Src::from(self.src_ref.word(1)),
                 Sign0 => Src::from(self.src_ref.word(0)).swizzle(Swizzle::S3),
@@ -836,7 +884,7 @@ impl Src {
             } else {
                 let swizzle = self.swizzle.swizzle(Swizzle::S3).unwrap();
                 if swizzle.is_zero() {
-                    0.into()
+                    0_u32.into()
                 } else {
                     Src { swizzle, ..self }
                 }
@@ -844,21 +892,17 @@ impl Src {
         }
     }
 
-    pub fn imm_u8(u: u8) -> Src {
-        Src::from(u32::from(u)).byte(0)
-    }
-
-    pub fn imm_u16(u: u16) -> Src {
-        Src::from(u32::from(u)).half(0)
+    pub fn zero(bits: u8) -> Src {
+        match bits {
+            8 => Src::from(0_u8),
+            16 => Src::from(0_u16),
+            32 => Src::from(0_u32),
+            _ => panic!("Invalid float bit size"),
+        }
     }
 
     pub fn fneg_zero(bits: u8) -> Src {
-        let zero = match bits {
-            16 => Src::imm_u16(0),
-            32 => Src::from(0),
-            _ => panic!("Invalid float bit size"),
-        };
-        zero.fneg()
+        Src::zero(bits).fneg()
     }
 
     pub fn modify(mut self, src_mod: SrcMod) -> Src {
@@ -959,6 +1003,18 @@ impl<T: Into<SrcRef>> From<T> for Src {
             src_mod: Default::default(),
             last_use: false,
         }
+    }
+}
+
+impl From<u16> for Src {
+    fn from(u: u16) -> Src {
+        Src::from(u32::from(u)).half(0)
+    }
+}
+
+impl From<u8> for Src {
+    fn from(u: u8) -> Src {
+        Src::from(u32::from(u)).byte(0)
     }
 }
 
@@ -1070,6 +1126,9 @@ pub enum DstLanes {
     /// register assignment.
     AnyH,
 
+    /// Narrow to F16, using either half.
+    AnyHF,
+
     // Bytes
     B0,
     B1,
@@ -1079,6 +1138,10 @@ pub enum DstLanes {
     // Halves
     H0,
     H1,
+
+    // Narrow to F16, choosing H0 or H1
+    HF0,
+    HF1,
 }
 
 pub type DstLanesSet = U8EnumSet<DstLanes, 1>;
@@ -1090,12 +1153,15 @@ impl fmt::Display for DstLanes {
             DstLanes::All => Ok(()),
             DstLanes::AnyB => write!(f, ".any_b"),
             DstLanes::AnyH => write!(f, ".any_h"),
+            DstLanes::AnyHF => write!(f, ".any_hf"),
             DstLanes::B0 => write!(f, ".b0"),
             DstLanes::B1 => write!(f, ".b1"),
             DstLanes::B2 => write!(f, ".b2"),
             DstLanes::B3 => write!(f, ".b3"),
             DstLanes::H0 => write!(f, ".h0"),
             DstLanes::H1 => write!(f, ".h1"),
+            DstLanes::HF0 => write!(f, ".hf0"),
+            DstLanes::HF1 => write!(f, ".hf1"),
         }
     }
 }
@@ -1133,6 +1199,14 @@ impl DstLanes {
         ])
     };
 
+    pub const ALL_HF: DstLanesSet = unsafe {
+        DstLanesSet::from_u8_array([
+            DstLanes::AnyHF as u8,
+            DstLanes::HF0 as u8,
+            DstLanes::HF1 as u8,
+        ])
+    };
+
     pub fn byte(byte: u8) -> DstLanes {
         match byte {
             0 => DstLanes::B0,
@@ -1156,7 +1230,7 @@ impl DstLanes {
         match self {
             None => 0,
             All => dst_bytes,
-            AnyH | H0 | H1 => 2,
+            AnyH | AnyHF | H0 | H1 | HF0 | HF1 => 2,
             AnyB | B0 | B1 | B2 | B3 => 1,
         }
     }
@@ -1166,13 +1240,13 @@ impl DstLanes {
             DstLanes::None => (0, 0),
             DstLanes::All => (4, 0),
             DstLanes::AnyB => (1, 0),
-            DstLanes::AnyH => (2, 0),
+            DstLanes::AnyH | DstLanes::AnyHF => (2, 0),
             DstLanes::B0 => (4, 0),
             DstLanes::B1 => (4, 1),
             DstLanes::B2 => (4, 2),
             DstLanes::B3 => (4, 3),
-            DstLanes::H0 => (4, 0),
-            DstLanes::H1 => (4, 2),
+            DstLanes::H0 | DstLanes::HF0 => (4, 0),
+            DstLanes::H1 | DstLanes::HF1 => (4, 2),
         }
     }
 
@@ -1184,18 +1258,22 @@ impl DstLanes {
         DstLanes::ALL_H.contains(*self)
     }
 
+    pub fn is_f16_narrow(&self) -> bool {
+        DstLanes::ALL_HF.contains(*self)
+    }
+
     pub fn u32_mask(&self) -> Option<u32> {
         match self {
             DstLanes::None => Some(0),
             DstLanes::All => Some(!0_u32),
             DstLanes::AnyB => None,
-            DstLanes::AnyH => None,
+            DstLanes::AnyH | DstLanes::AnyHF => None,
             DstLanes::B0 => Some(0x000000ff),
             DstLanes::B1 => Some(0x0000ff00),
             DstLanes::B2 => Some(0x00ff0000),
             DstLanes::B3 => Some(0xff000000),
-            DstLanes::H0 => Some(0x0000ffff),
-            DstLanes::H1 => Some(0xffff0000),
+            DstLanes::H0 | DstLanes::HF0 => Some(0x0000ffff),
+            DstLanes::H1 | DstLanes::HF1 => Some(0xffff0000),
         }
     }
 
@@ -1204,13 +1282,13 @@ impl DstLanes {
             DstLanes::None => Some(0..0),
             DstLanes::All => Some(0..4),
             DstLanes::AnyB => None,
-            DstLanes::AnyH => None,
+            DstLanes::AnyH | DstLanes::AnyHF => None,
             DstLanes::B0 => Some(0..1),
             DstLanes::B1 => Some(1..2),
             DstLanes::B2 => Some(2..3),
             DstLanes::B3 => Some(3..4),
-            DstLanes::H0 => Some(0..2),
-            DstLanes::H1 => Some(2..4),
+            DstLanes::H0 | DstLanes::HF0 => Some(0..2),
+            DstLanes::H1 | DstLanes::HF1 => Some(2..4),
         }
     }
 }
@@ -1434,6 +1512,14 @@ pub trait Opcode:
         FmtSrc {
             src,
             src_type: self.src_type(src),
+        }
+    }
+
+    fn fmt_handle_src(&self, src: &Src) -> String {
+        if let Ok(descr) = ResHandle::try_from(src) {
+            descr.to_string()
+        } else {
+            self.fmt_src(src).to_string()
         }
     }
 
@@ -1772,12 +1858,17 @@ impl Shader<'_> {
         }
     }
 
-    pub fn run_pass(&mut self, name: &str, pass: impl FnOnce(&mut Self)) {
-        pass(self);
+    pub fn run_pass<R>(
+        &mut self,
+        name: &str,
+        pass: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let res = pass(self);
         if DEBUG.contains(DebugFlags::PRINT) {
             eprintln!("Kraid shader after {name}:\n{self}");
         }
         self.validate();
+        res
     }
 }
 

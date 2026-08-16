@@ -156,6 +156,10 @@ struct wsi_device {
       /* Does not transfer the ownership to the command buffer. The command
        * buffer must retain the drawable to ensure lifespan. */
       void (*encode_drawable_present)(VkCommandBuffer cmd, void *drawable);
+      /* Required to work around Metal4 presentation bug. */
+      void (*cmd_blit_image)(VkCommandBuffer cmd,
+                             const VkBlitImageInfo2 *blit_info,
+                             bool opaque_alpha);
    } metal;
 
 

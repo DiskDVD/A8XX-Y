@@ -654,16 +654,22 @@ intrinsic("masked_swizzle_amd", src_comp=[0], dest_comp=0, bit_sizes=src0,
           indices=[SWIZZLE_MASK, FETCH_INACTIVE],
           flags=SUBGROUP_FLAGS)
 intrinsic("write_invocation_amd", src_comp=[0, 0, 1], dest_comp=0, bit_sizes=src0,
-          flags=[CAN_ELIMINATE])
+          flags=SUBGROUP_FLAGS)
 # src = [ mask, addition ]
 intrinsic("mbcnt_amd", src_comp=[1, 1], dest_comp=1, bit_sizes=[32], flags=[CAN_REORDER, CAN_ELIMINATE])
 # Compiled to v_permlane16_b32. src = [ value, lanesel_lo, lanesel_hi ]
-intrinsic("lane_permute_16_amd", src_comp=[1, 1, 1], dest_comp=1, bit_sizes=src0, flags=[CAN_ELIMINATE])
+intrinsic("lane_permute_16_amd", src_comp=[1, 1, 1], dest_comp=1, bit_sizes=src0, flags=SUBGROUP_FLAGS)
+# Compiled to v_permlanex16_b32. src = [ value, lanesel_lo, lanesel_hi ]
+intrinsic("lane_permute_x16_amd", src_comp=[1, 1, 1], dest_comp=1, bit_sizes=src0, flags=SUBGROUP_FLAGS)
 # subgroup shuffle up/down with cluster size 16.
 # base in [-15, -1]: DPP_ROW_SR
 # base in [  1, 15]: DPP_ROW_SL, otherwise invalid.
 # Returns zero for invocations that try to read out of bounds
-intrinsic("dpp16_shift_amd", src_comp=[0], dest_comp=0, bit_sizes=src0, indices=[BASE], flags=[CAN_ELIMINATE])
+intrinsic("dpp16_shift_amd", src_comp=[0], dest_comp=0, bit_sizes=src0, indices=[BASE], flags=SUBGROUP_FLAGS)
+
+# Like quad_swizzle_amd, but in groups of 8
+intrinsic("dpp8_swizzle_amd", src_comp=[0], dest_comp=0, bit_sizes=src0,
+          indices=[SWIZZLE_MASK], flags=SUBGROUP_FLAGS)
 
 # Basic Geometry Shader intrinsics.
 #
@@ -1280,6 +1286,22 @@ intrinsic("deref_texture_src", src_comp=[1], dest_comp=1,
 intrinsic("load_fs_input_interp_deltas", src_comp=[1], dest_comp=3,
           indices=[BASE, COMPONENT, IO_SEMANTICS], flags=[CAN_ELIMINATE, CAN_REORDER])
 
+# For any given polygon, its barycentric coordinates and rhw (reciprocal
+# homogeneous W) can be calculated for any screen-space coordinate using a plane
+# equation. polygon_plane_eqn_coefficients_intel returns coefficients of this
+# plane equation, which can then be used to calculate barys and rhw like so:
+# 
+#   vec2 pos = gl_FragCoord.xy - xy_origin /* + offset for interpolateAtOffset */
+#   float result = dot(plane_eqn_*_intel, vec3(pos.xy, 1.0))
+for name in ["bary1", "bary2", "rhw"]:
+    intrinsic(f"plane_eqn_{name}_intel", src_comp=[], dest_comp=3,
+              flags=[CAN_ELIMINATE, CAN_REORDER], indices=[INTERP_MODE],
+              bit_sizes=[32])
+
+# Floating-point screen-space origin for plane coordinates.
+intrinsic("plane_eqn_origin_intel", src_comp=[], dest_comp=2,
+          flags=[CAN_ELIMINATE, CAN_REORDER], indices=[INTERP_MODE], bit_sizes=[32])
+
 # Load operations pull data from some piece of GPU memory.  All load
 # operations operate in terms of offsets into some piece of theoretical
 # memory.  Loads from externally visible memory (UBO and SSBO) simply take a
@@ -1505,7 +1527,8 @@ intrinsic("cmat_bitcast", src_comp=[-1, -1])
 intrinsic("cmat_extract", src_comp=[-1, 1], dest_comp=1)
 intrinsic("cmat_insert", src_comp=[-1, 1, -1, 1])
 intrinsic("cmat_copy", src_comp=[-1, -1])
-intrinsic("cmat_transpose", src_comp=[-1, -1], indices=[FP_MATH_CTRL])
+intrinsic("cmat_transpose", src_comp=[-1, -1], indices=[SATURATE, CMAT_SIGNED_MASK, FP_MATH_CTRL])
+intrinsic("cmat_get_coordinate", src_comp=[1], dest_comp=2, indices=[CMAT_DESC], bit_sizes=[32])
 
 # src[] = { deref }.
 load("buffer_ptr_deref", [-1], [ACCESS, RESOURCE_TYPE],
@@ -1713,26 +1736,26 @@ intrinsic("prefetch_ubo_ir3", [1], indices=[ACCESS], flags=[CAN_REORDER])
 
 intrinsic("resbase_ir3", src_comp=[1], dest_comp=2, flags=[CAN_ELIMINATE, CAN_REORDER])
 
-# Panfrost-specific intrinsic for loading vertex attributes. Takes explicit
-# vertex and instance IDs which we need in order to implement vertex attribute
-# divisor with non-zero base instance on v9+.
-# src[] = { vertex_id, instance_id, offset }
-load("attribute_pan", [1, 1, 1], [BASE, COMPONENT, DEST_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
+# This maps directly to Mali's LOAD_ATTR[_IMM] instructions
+# src[] = { vertex_id, instance_id, handle }
+load("attr_pan", [1, 1, 1], [DEST_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
 
 # src[] = { idx, bary }
-load("var_pan", [1, 2], [DEST_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
+# FLAGS is enum pan_bi_sample_loc
+load("var_pan", [1, 1], [DEST_TYPE, IO_SEMANTICS, FLAGS], [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { idx }
 load("var_flat_pan", [1], [DEST_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { offset, bary }
-load("var_buf_pan", [1, 2], [SRC_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
+# FLAGS is enum pan_bi_sample_loc
+load("var_buf_pan", [1, 1], [SRC_TYPE, IO_SEMANTICS, FLAGS], [CAN_ELIMINATE, CAN_REORDER])
 # src[] = { offset }
 load("var_buf_flat_pan", [1], [SRC_TYPE, IO_SEMANTICS], [CAN_ELIMINATE, CAN_REORDER])
 
 # Panfrost-specific intrinsic to load special varyings, can load point coords
 # and frag_[zw] at specific barycentric coordinates.
 # src[] = { barycoord }
-# FLAGS is enum bi_varying_name
-intrinsic("load_var_special_pan", src_comp=[2], dest_comp=0, bit_sizes=[32],
+# FLAGS is enum pan_bi_var_special_flags
+intrinsic("load_var_special_pan", src_comp=[1], dest_comp=0, bit_sizes=[32],
           indices=[FLAGS], flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # Panfrost-specific intrinsic to load the shader_output special-FAU value on 5th Gen.
@@ -1747,6 +1770,14 @@ intrinsic("load_shader_output_pan", dest_comp=1, src_comp=[], bit_sizes=[32],
 # vertex ID in the index buffer range covered by the draw
 system_value("raw_vertex_id", 1)
 system_value("raw_vertex_offset", 1)
+
+# 4x4 cooperative matrix multiply-accumulate (MMUL). The matrices are spread
+# across the subgroup with one element (or packed group) per lane, so each
+# source is one 32-bit register per lane: src0 = A, src1 = B, src2 = C,
+# result = A * B + C. src_type is the multiplicand (A/B) type and selects the
+# MMUL variant: float32 -> f32, float16 -> v2f16, int8 -> v4s8, uint8 -> v4u8.
+intrinsic("cmat_muladd_pan", src_comp=[1, 1, 1], dest_comp=1, bit_sizes=[32],
+          indices=[SRC_TYPE], flags=SUBGROUP_FLAGS)
 
 # Intrinsics used by the Midgard/Bifrost blend pipeline. These are defined
 # within a blend shader to read/write the raw value from the tile buffer,
@@ -1893,6 +1924,12 @@ load("clear_value_pan", [], [IO_SEMANTICS, DEST_TYPE],
 # Cumulative coverage mask, the start of the atest/zt/blend chain
 system_value("cumulative_coverage_pan", 1, bit_sizes=[32])
 system_value("blend_descriptor_pan", 1, bit_sizes=[64], indices=[BASE])
+# Bundle of system values that v9+ architectures always package together
+# in a preloaded register:
+# 0 ..16: Rasterizer coverage bitmap
+# 16..24: Sample ID
+# 24..32: Centroid sample ID
+system_value("raster_sample_centroid_pan", 1, bit_sizes=[32])
 
 load("blend_input_pan", [], [IO_SEMANTICS, DEST_TYPE],
      [CAN_ELIMINATE, CAN_REORDER])
@@ -2867,7 +2904,7 @@ store("urb_vec4_intel", [1, 1, 1], [BASE])
 # add a constant offset ("base") to the total offset.
 #
 # src[] = { value, address }.
-store("urb_lsc_intel", [1], [BASE])
+store("urb_lsc_intel", [1], [BASE, ACCESS])
 
 # Load from indirect address delivered in the thread payloads in compute, mesh
 # & task shaders on Gfx12.5+
@@ -3269,3 +3306,9 @@ intrinsic("load_sampler_handle_kk", [1], 1, [],
 image("fence_kk")
 # Store clip distance to vertex output.
 store("clip_distance_kk", [], [BASE])
+# System value indicating whether to emulate depth clamp.
+system_value("is_depth_clamp_emulated_kk", 1, bit_sizes=[1])
+# System value indicating whether to emulate the viewport Z transform.
+system_value("is_viewport_z_transform_emulated_kk", 1, bit_sizes=[1])
+# Loads the viewport Z range for a given viewport index.
+load("viewport_z_range_kk", [1], [], [CAN_ELIMINATE, CAN_REORDER])

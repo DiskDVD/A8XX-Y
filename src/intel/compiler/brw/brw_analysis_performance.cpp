@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "common/intel_common.h"
 #include "brw_eu.h"
 #include "brw_shader.h"
 #include "brw_cfg.h"
@@ -607,9 +608,9 @@ namespace {
                                      30 /* XXX */, 0,
                                      10 /* XXX */, 300 /* XXX */, 0, 0, 0, 0);
             default:
-               if (devinfo->ver >= 30)
+               if (devinfo->ver >= 20)
                   return calculate_desc(info, EU_UNIT_DP_RC, 2, 0, 0,
-                                        0, 400 /* XXX */,
+                                        0, 300 /* XXX */,
                                         10 /* XXX */, 300 /* XXX */, 0, 0,
                                         0, 0);
                else
@@ -1036,7 +1037,7 @@ namespace {
             grf_used = DIV_ROUND_UP(max_regs_live, reg_unit(s->devinfo));
          }
 
-         return 32 / MAX2(3, ptl_register_blocks(grf_used) + 1);
+         return 32 / MAX2(3, intel_register_blocks(s->devinfo, grf_used) + 1);
       } else {
          return s->devinfo->num_thread_per_eu;
       }

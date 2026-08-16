@@ -261,7 +261,7 @@ ac_create_clear_copy_buffer_cs(struct ac_cs_clear_copy_buffer_options *options,
             nir_def *last_dword = nir_channel(&b, value, num_dwords);
 
             if (num_dwords) {
-               nir_def *dwords = nir_channels(&b, value, BITFIELD_MASK(num_dwords));
+               nir_def *dwords = nir_channels(&b, value, nir_component_mask(num_dwords));
                nir_store_ssbo(&b, dwords, dst_buf, offset, .access = ACCESS_RESTRICT);
             }
 

@@ -69,6 +69,8 @@ op('xor', 2, 'u1 u16 u32', Props.NEGATE | Props.CMOD | Props.COMMUTATIVE)
 
 op('add',   2, 'u32 s32 u64 s64 f32 f64 f16 bf16 u16 s16',
    Props.SAT | Props.CMOD | Props.COMMUTATIVE | Props.NEGATE)
+op('add_rtne',   2, 'f32 f64',
+   Props.SAT | Props.CMOD | Props.COMMUTATIVE | Props.NEGATE)
 op('add3',  3, 'u32 s32 u64 s64 u16 s16', Props.SAT |
    Props.CMOD | Props.COMMUTATIVE | Props.NEGATE)
 op('asr',   2, 's32 s64 s16', Props.CMOD | Props.NEGATE0)
@@ -120,7 +122,8 @@ op('dp4a_su',    3, 's32', Props.SAT)
 op('rndd',       1, 'f16 f32 f64', Props.NEGATE | Props.SAT)
 op('rndz',       1, 'f16 f32 f64', Props.NEGATE | Props.SAT)
 op('rnde',       1, 'f16 f32 f64', Props.NEGATE | Props.SAT)
-op('math', 1, 'f16 f32',     Props.NEGATE | Props.SAT, ['enum jay_math op'])
+op('math', 1, 'f16 f32',     Props.NEGATE | Props.SAT,
+   ['enum jay_math op', 'uint8_t sbid'])
 
 op('rol', 2, 'u32 u64 u16 s16 s32 s64', Props.CMOD)
 op('ror', 2, 'u32 u64 u16 s16 s32 s64', Props.CMOD)
@@ -130,6 +133,7 @@ op('shr', 2, 'u32 u64 u16 s16 s32 s64', Props.CMOD | Props.NEGATE0)
 op('quad_swizzle', 1, 'u1 u32', 0, ['enum jay_quad_swizzle swizzle'])
 op('sync', 1, 'u32', Props.NO_DEST, ['enum tgl_sync_function op'])
 op('schedule_barrier', 0, None, Props.NO_DEST)
+op('check_tdr', 0, None, Props.NO_DEST)
 
 for n in ['brd', 'illegal', 'goto', 'join', 'if', 'else',
           'endif', 'while', 'break', 'cont', 'call', 'calla', 'jmpi', 'ret',
@@ -169,7 +173,7 @@ op('zip_ugpr16', 2, 'u32')
 op('extract_byte_per_8lanes', 2, 'u32')
 op('shr_odd_subspans_by_4', 1, 'u16')
 op('and_u32_u16', 2, 'u32')
-op('and_s32_sN', 2, 's32', 0, ['unsigned n'])
+op('and_sN_s32', 2, 's32', 0, ['unsigned n'])
 
 # Pixel coord calculations. expand_quad replicates out the per-2x2 values from
 # its source g0.[10...13] and - in the case of SIMD32 - g1.[10...13] into a

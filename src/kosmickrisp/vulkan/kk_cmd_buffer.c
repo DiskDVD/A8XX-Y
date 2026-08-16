@@ -76,6 +76,9 @@ kk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
       container_of(vk_cmd_buffer, struct kk_cmd_buffer, vk);
    struct kk_cmd_pool *pool = kk_cmd_buffer_pool(cmd);
 
+   if (cmd->drawable)
+      mtl_release(cmd->drawable);
+
    mtl_release(cmd->argument_table);
    kk_destroy_encoder_state(&cmd->cmp[0]);
    kk_destroy_encoder_state(&cmd->cmp[1]);
@@ -819,7 +822,8 @@ kk_CmdEndConditionalRenderingEXT(VkCommandBuffer commandBuffer)
    cmd->state.cond_render.enabled = false;
 }
 
-void kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store)
+void
+kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store)
 {
    if (!cmd->gfx.encoder)
       return;
@@ -832,18 +836,22 @@ void kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store)
    for (uint32_t i = 0; i < render->color_att_count; i++) {
       uint32_t logical_index = cmd->state.gfx.render.color_map[i];
 
-      if (render->color_att[i].iview && logical_index != MESA_VK_ATTACHMENT_UNUSED) {
-         bool resolve = render->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE;
-         bool retain = (render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_LOAD
-            || render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_NONE)
-            && render->color_att[i].store_op == VK_ATTACHMENT_STORE_OP_NONE;
+      if (render->color_att[i].iview &&
+          logical_index != MESA_VK_ATTACHMENT_UNUSED) {
+         bool resolve =
+            render->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE;
+         bool retain =
+            (render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_LOAD ||
+             render->color_att[i].load_op == VK_ATTACHMENT_LOAD_OP_NONE) &&
+            render->color_att[i].store_op == VK_ATTACHMENT_STORE_OP_NONE;
 
-         enum mtl_store_action store_action = force_store
-            || resolve
-            || retain
-            ? MTL_STORE_ACTION_STORE
-            : vk_attachment_store_op_to_mtl_store_action(render->color_att[i].store_op);
-         mtl_render_set_color_store_action(encoder, store_action, logical_index);
+         enum mtl_store_action store_action =
+            force_store || resolve || retain
+               ? MTL_STORE_ACTION_STORE
+               : vk_attachment_store_op_to_mtl_store_action(
+                    render->color_att[i].store_op);
+         mtl_render_set_color_store_action(encoder, store_action,
+                                           logical_index);
       }
    }
    if (render->depth_att.iview) {
@@ -852,24 +860,47 @@ void kk_apply_attachment_store_ops(struct kk_cmd_buffer *cmd, bool force_store)
                      render->depth_att.load_op == VK_ATTACHMENT_LOAD_OP_NONE) &&
                     render->depth_att.store_op == VK_ATTACHMENT_STORE_OP_NONE;
 
-      enum mtl_store_action store_action = force_store
-            || resolve
-            || retain
+      enum mtl_store_action store_action =
+         force_store || resolve || retain
             ? MTL_STORE_ACTION_STORE
-            : vk_attachment_store_op_to_mtl_store_action(render->depth_att.store_op);
+            : vk_attachment_store_op_to_mtl_store_action(
+                 render->depth_att.store_op);
       mtl_render_set_depth_store_action(encoder, store_action);
    }
    if (render->stencil_att.iview) {
       bool resolve = render->stencil_att.resolve_mode != VK_RESOLVE_MODE_NONE;
-      bool retain = (render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_LOAD
-         || render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_NONE)
-         && render->stencil_att.store_op == VK_ATTACHMENT_STORE_OP_NONE;
+      bool retain =
+         (render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_LOAD ||
+          render->stencil_att.load_op == VK_ATTACHMENT_LOAD_OP_NONE) &&
+         render->stencil_att.store_op == VK_ATTACHMENT_STORE_OP_NONE;
 
-      enum mtl_store_action store_action = force_store
-            || resolve
-            || retain
+      enum mtl_store_action store_action =
+         force_store || resolve || retain
             ? MTL_STORE_ACTION_STORE
-            : vk_attachment_store_op_to_mtl_store_action(render->stencil_att.store_op);
+            : vk_attachment_store_op_to_mtl_store_action(
+                 render->stencil_att.store_op);
       mtl_render_set_stencil_store_action(encoder, store_action);
    }
+}
+
+/* VK_AMD_buffer_marker */
+
+VKAPI_ATTR void VKAPI_CALL
+kk_CmdWriteMarkerToMemoryAMD(VkCommandBuffer commandBuffer,
+                             const VkMemoryMarkerInfoAMD *pInfo)
+{
+   VK_FROM_HANDLE(kk_cmd_buffer, cmd_buffer, commandBuffer);
+   struct libkk_imm_write write;
+
+   /* If we are not in a render, we can just insert a cheap barrier */
+   if (!cmd_buffer->gfx.encoder) {
+      mtl_barrier_after_encoder_stages(cs_get_compute(cmd_buffer, true),
+                                       MTL_STAGE_DISPATCH | MTL_STAGE_BLIT,
+                                       MTL_STAGE_DISPATCH | MTL_STAGE_BLIT);
+   } else
+      cs_end(cmd_buffer);
+
+   write.value = pInfo->marker;
+   write.address = pInfo->dstRange.address;
+   kk_cmd_write(cmd_buffer, write);
 }

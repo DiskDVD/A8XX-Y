@@ -247,7 +247,7 @@ add_copy(struct util_dynarray *copies, jay_reg dst, jay_reg src)
 {
    if (dst != src) {
       assert(r_file(dst) == r_file(src));
-      util_dynarray_append(copies, ((struct jay_parallel_copy) { dst, src }));
+      util_dynarray_append(copies, ((struct jay_parallel_copy){ dst, src }));
    }
 }
 
@@ -335,10 +335,9 @@ mov(jay_builder *b, jay_def dst, jay_def src, struct jay_temp_regs temps)
       jay_MOV(b, dst, temp)->type = acc_dst ? JAY_TYPE_F32 : JAY_TYPE_U32;
       pop_temp(b, temp, backing);
    } else {
-      jay_MOV(b, dst, src)->type =
-         (acc_src || acc_dst) ? JAY_TYPE_F32 :
-         dst.file == FLAG     ? JAY_TYPE_U | b->shader->dispatch_width :
-                                JAY_TYPE_U32;
+      jay_MOV(b, dst, src)->type = (acc_src || acc_dst) ? JAY_TYPE_F32 :
+                                   dst.file == FLAG ? jay_flag_type(b->func) :
+                                                      JAY_TYPE_U32;
    }
 }
 
@@ -638,7 +637,7 @@ find_temp_regs(jay_ra_state *ra)
    /* For efficiency we only bother using stride=4 temporaries */
    jay_reg gpr = try_find_free_reg(ra, GPR, ~0, true);
 
-   return (struct jay_temp_regs) {
+   return (struct jay_temp_regs){
       .gpr = gpr,
       .ugpr = try_find_free_reg(ra, UGPR, ~0, false),
       .gpr2 = try_find_free_reg(ra, GPR, gpr, true),
@@ -765,7 +764,7 @@ pick_regs(jay_ra_state *ra,
           bool is_src)
 {
    struct jay_partition *partition = &ra->b.shader->partition;
-   bool eot = jay_is_early_eot_send(ra->b.shader, I);
+   bool eot = jay_is_early_eot_send(ra->b.shader, I) && file != FLAG;
 
    /* If possible, keep sources in place to avoid shuffles. */
    if (is_src && jay_channel(var, 0) != 0) {
@@ -914,7 +913,7 @@ assign_regs_for_inst(jay_ra_state *ra, jay_inst *I)
             BITSET_SET(ra->sources[r_file(reg)], r_reg(reg));
 
             eviction_indices[nr_copies] = index;
-            copies[nr_copies++] = (struct jay_parallel_copy) { .src = reg };
+            copies[nr_copies++] = (struct jay_parallel_copy){ .src = reg };
             release_reg(ra, reg);
          }
       }
@@ -954,7 +953,10 @@ assign_regs_for_inst(jay_ra_state *ra, jay_inst *I)
       jay_def var = *(vars[i]);
       unsigned size = jay_num_values(var);
       unsigned alignment =
-         I->op == JAY_OPCODE_EXPAND_QUAD ? 1 : util_next_power_of_two(size);
+         I->op == JAY_OPCODE_EXPAND_QUAD ||
+               (I->op == JAY_OPCODE_VECTOR_EXTRACT && is_src) ?
+            1 :
+            util_next_power_of_two(size);
       enum jay_file file = var.file;
       enum jay_stride min_stride = JAY_STRIDE_2, max_stride = JAY_STRIDE_8;
 
@@ -1243,7 +1245,7 @@ static void
 construct_phi_webs(struct phi_web_node *web, jay_function *f)
 {
    for (unsigned i = 0; i < f->ssa_alloc; ++i) {
-      web[i] = (struct phi_web_node) { .parent = i, .reg = NO_REG };
+      web[i] = (struct phi_web_node){ .parent = i, .reg = NO_REG };
    }
 
    jay_foreach_block(f, block) {
@@ -1370,7 +1372,7 @@ jay_register_allocate_function(jay_function *f)
             ra.affinities[index].nr = MIN2(jay_num_values(I->src[s]), 15);
          }
 
-         if (jay_is_early_eot_send(shader, I)) {
+         if (jay_is_early_eot_send(shader, I) && I->src[s].file != FLAG) {
             ra.affinities[index].eot = true;
          }
 

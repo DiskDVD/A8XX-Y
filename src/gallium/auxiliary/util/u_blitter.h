@@ -292,7 +292,8 @@ void util_blitter_generate_mipmap(struct blitter_context *blitter,
                                   struct pipe_resource *tex,
                                   enum pipe_format format,
                                   unsigned base_level, unsigned last_level,
-                                  unsigned first_layer, unsigned last_layer);
+                                  unsigned first_layer, unsigned last_layer,
+                                  unsigned num_downscales);
 
 /**
  * Helper function to initialize a view for copy_texture_view.

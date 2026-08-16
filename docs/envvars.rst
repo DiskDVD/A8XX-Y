@@ -1467,8 +1467,6 @@ RADV driver environment variables
       disable primitive binning
    ``nocache``
       disable shaders cache
-   ``nocompute``
-      disable compute queue
    ``nodcc``
       disable Delta Color Compression (DCC) on images
    ``nodisplaydcc``
@@ -1626,10 +1624,6 @@ RADV driver environment variables
       enable wave64 for ray tracing shaders (GFX10+)
    ``sam``
       enable optimizations to move more driver internal objects to VRAM.
-
-   Note that bfloat16, emulate_rt, hic, sparse, transfer_queue, video_decode
-   and video_encode are deprecated and RADV_EXPERIMENTAL should be
-   used instead.
 
 .. envvar:: RADV_EXPERIMENTAL
 
@@ -1961,6 +1955,14 @@ RadeonSI driver environment variables
    ``export_modifier``
       Export real modifier instead of DRM_FORMAT_MOD_INVALID to user. For example
       by eglExportDMABUFImageQueryMESA.
+   ``safe``
+      Disable basic optimizations.
+   ``safer``
+      Disable basic and medium optimizations.
+   ``safest``
+      Disable all optimizations.
+   ``ibcachesflush``
+      Flush all caches at the beginning of IBs.
 
 r600 driver environment variables
 ---------------------------------

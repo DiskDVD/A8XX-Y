@@ -93,7 +93,7 @@ setup_exit_block(jay_builder *b, struct ctx *ctx)
       uint64_t desc = brw_fb_write_desc(b->shader->devinfo, 0, op, true, false);
       uint64_t ex_desc = (1 << 20) /* null rt */;
 
-      send = jay_SEND(b, .sfid = GEN_SFID_RENDER_CACHE, .check_tdr = true,
+      send = jay_SEND(b, .sfid = GEN_SFID_RENDER_CACHE,
                       .msg_desc = desc | (ex_desc << 32), .nr_srcs = 1,
                       .srcs = &dummy, .type = JAY_TYPE_U32, .eot = true);
       send = jay_add_predicate(b, send, jay_negate(ctx->helper_flag));
@@ -149,15 +149,21 @@ process_block(struct ctx *ctx, jay_builder *b, jay_block *block)
             /* The split block either falls through or jumps to the exit */
             for (unsigned file = GPR; file <= UGPR; ++file) {
                jay_foreach_predecessor(block, pred, file) {
-                  jay_block **succs = jay_successors(*pred, file);
-                  unsigned idx = succs[0] == block ? 0 : 1;
-                  succs[idx] = split;
+                  jay_foreach_successor(*pred, succ, file) {
+                     if (block == *succ) {
+                        *succ = split;
+                        break;
+                     }
+                  }
                }
             }
-            typed_memcpy(&split->physical_preds, &block->physical_preds, 1);
-            typed_memcpy(&split->logical_preds, &block->logical_preds, 1);
-            util_dynarray_init(&block->physical_preds, block);
-            util_dynarray_init(&block->logical_preds, block);
+
+            util_dynarray_append_dynarray(jay_predecessors(split, UGPR),
+                                          jay_predecessors(block, UGPR));
+            util_dynarray_append_dynarray(jay_predecessors(split, GPR),
+                                          jay_predecessors(block, GPR));
+            util_dynarray_clear(jay_predecessors(block, UGPR));
+            util_dynarray_clear(jay_predecessors(block, GPR));
 
             jay_block_add_successor(split, block, GPR);
             jay_block_add_successor(split, jay_last_block(b->func), GPR);
@@ -166,13 +172,13 @@ process_block(struct ctx *ctx, jay_builder *b, jay_block *block)
       } else if (I->op == JAY_OPCODE_IS_HELPER) {
          jay_inst *mov = jay_MOV(b, I->dst, ctx->helper_flag);
          mov->uniform = true;
-         mov->type = JAY_TYPE_U | b->shader->dispatch_width;
+         mov->type = jay_flag_type(b->func);
          jay_remove_instruction(I);
       } else if (I->op == JAY_OPCODE_SEND && jay_send_skip_helpers(I)) {
          if (jay_is_no_mask(I)) {
             /* I->cond_flag has been reserved for our use */
             jay_inst *not = jay_NOT(b, jay_null(), ctx->helper_flag);
-            not->type = JAY_TYPE_U | b->shader->dispatch_width;
+            not->type = jay_flag_type(b->func);
             not->uniform = true;
             jay_set_conditional_mod(b, not, I->cond_flag, GEN_CONDITION_NE);
             jay_add_predicate(b, I, I->cond_flag);
@@ -199,8 +205,7 @@ jay_lower_helpers(jay_shader *shader)
    /* Initialize the helper flag sensibly based on the dispatch mask (sr0.2) */
    jay_def sr0_2 = jay_scalar(J_ARF, GEN_ARF_STATE);
    sr0_2.reg = 2;
-   jay_NOT(&b, ctx.helper_flag, sr0_2)->type =
-      JAY_TYPE_U | shader->dispatch_width;
+   jay_NOT(&b, ctx.helper_flag, sr0_2)->type = jay_flag_type(entry);
 
    jay_foreach_block_rev(entry, block) {
       process_block(&ctx, &b, block);

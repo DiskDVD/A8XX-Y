@@ -784,7 +784,7 @@ panvk_per_arch(cmd_meta_resolve_attachments)(struct panvk_cmd_buffer *cmdbuf)
 
 #define COPY_MEM_INDIRECT_MAX_WG 16
 #define COPY_MEM_INDIRECT_WG_BYTES                                            \
-   (PANLIB_COPY_MEM_INDIRECT_WG_SIZE * PANLIB_COPY_MEM_INDIRECT_CHUNK_SIZE)
+   (PANLIB_COPY_MEM_WG_SIZE * PANLIB_COPY_MEM_CHUNK_SIZE)
 
 /* Turn the 64-bit byte size at size_addr into a workgroup count in
  * JOB_SIZE_X, capped at COPY_MEM_INDIRECT_MAX_WG. Pre-v13 archs have no CS

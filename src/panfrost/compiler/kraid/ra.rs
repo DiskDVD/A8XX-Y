@@ -261,8 +261,41 @@ fn widen_lanes(lanes: DstLanes) -> DstLanes {
         All => panic!("Everything supports ALL"),
         AnyB => AnyH,
         AnyH | H0 | H1 => All,
+        AnyHF | HF0 | HF1 => panic!("DstLanes::HF* cannot be widened"),
         B0 | B1 => H0,
         B2 | B3 => H1,
+    }
+}
+
+fn fold_lanes(alloc_lanes: DstLanes, dst_lanes: DstLanes) -> DstLanes {
+    use DstLanes::*;
+    match alloc_lanes {
+        All => {
+            // F16 narrows have to map to map to a HF lanes
+            assert!(!matches!(dst_lanes, AnyHF | HF0 | HF1));
+            alloc_lanes
+        }
+        AnyB | B0 | B1 | B2 | B3 => {
+            assert!(dst_lanes == AnyB || dst_lanes == alloc_lanes);
+            alloc_lanes
+        }
+        AnyH => {
+            assert!(dst_lanes == AnyH);
+            AnyH
+        }
+        H0 => match dst_lanes {
+            AnyHF | HF0 => HF0,
+            AnyB | AnyH | B0 | B1 | H0 => H0,
+            _ => panic!("Invalid dst_lanes: {dst_lanes}"),
+        },
+        H1 => match dst_lanes {
+            AnyHF | HF1 => HF1,
+            AnyB | AnyH | B2 | B3 | H1 => H1,
+            _ => panic!("Invalid dst_lanes: {dst_lanes}"),
+        },
+        None | AnyHF | HF0 | HF1 => {
+            panic!("Invalid alloc_lanes: {alloc_lanes}");
+        }
     }
 }
 
@@ -904,7 +937,10 @@ impl LocalRegAlloc<'_> {
                 let i = usize::try_from(src_dst.mask.trailing_zeros()).unwrap();
 
                 // Assign the dst to the whole byte range
-                instr.dsts_mut()[i] = self.arena.dst_for_bytes(bytes);
+                let dst = &mut instr.dsts_mut()[i];
+                let ra_dst = self.arena.dst_for_bytes(bytes);
+                dst.dst_ref = ra_dst.dst_ref;
+                dst.lanes = fold_lanes(ra_dst.lanes, dst.lanes);
             }
         }
 
@@ -1636,6 +1672,9 @@ fn ra_trivial(s: &mut Shader) {
                         DstLanes::All => debug_assert_eq!(lanes, DstLanes::All),
                         DstLanes::AnyB => debug_assert!(lanes.is_byte()),
                         DstLanes::AnyH => debug_assert!(lanes.is_half()),
+                        DstLanes::AnyHF => debug_assert!(lanes.is_half()),
+                        DstLanes::HF0 => debug_assert_eq!(lanes, DstLanes::H0),
+                        DstLanes::HF1 => debug_assert_eq!(lanes, DstLanes::H1),
                         _ => debug_assert_eq!(lanes, alloc_lanes),
                     }
 
@@ -1686,7 +1725,9 @@ fn ra_trivial(s: &mut Shader) {
             for (dst, reg) in
                 instr.dsts_mut().iter_mut().zip(dst_regs.into_iter())
             {
-                *dst = reg.into();
+                let new_dst = Dst::from(reg);
+                dst.dst_ref = new_dst.dst_ref;
+                dst.lanes = fold_lanes(new_dst.lanes, dst.lanes);
             }
 
             block.instrs.push(instr);
@@ -1726,6 +1767,7 @@ impl Shader<'_> {
             // We don't validate before SSA repair
 
             pass!(self.repair_ssa());
+            pass!(self.opt_dce());
 
             live = SimpleLiveness::for_shader(self)
         }
@@ -1733,7 +1775,7 @@ impl Shader<'_> {
         let max_live = live.calc_max_live_bytes(self);
         assert!(
             max_live.reg <= u32::from(reg_limit),
-            "Not enough registers: max_live = {}",
+            "Not enough registers: max_live = {} B, should be <= {reg_limit} B",
             max_live.reg
         );
 

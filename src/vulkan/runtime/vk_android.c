@@ -1,4 +1,5 @@
 /*
+ * Copyright © 2026 NXP
  * Copyright © 2022 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -178,6 +179,17 @@ vk_gralloc_to_drm_explicit_layout(
       out_layouts[i].rowPitch = info.strides[i];
    }
 
+   /* Compute arrayPitch for multi-layer buffers. The gralloc HAL does not
+    * expose a per-layer stride directly, but we can derive it from the
+    * total allocation size and layer count. Disjoint multi-plane buffers
+    * are rejected above, so alloc_size / layer_count is valid here.
+    */
+   if (info.layer_count > 1 && info.alloc_size > 0) {
+      uint64_t array_pitch = info.alloc_size / info.layer_count;
+      for (size_t i = 0; i < info.num_planes; i++)
+         out_layouts[i].arrayPitch = array_pitch;
+   }
+
    if (info.drm_fourcc == DRM_FORMAT_YVU420) {
       /* Swap the U and V planes to match the
        * VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM */
@@ -305,6 +317,7 @@ vk_android_init_deferred_image(struct vk_device *device,
    /* collect all dynamic array infos */
    uint32_t queue_family_count = 0;
    uint32_t view_format_count = 0;
+   uint32_t fixed_rate_count = 0;
 
    if (pCreateInfo->sharingMode == VK_SHARING_MODE_CONCURRENT)
       queue_family_count = pCreateInfo->queueFamilyIndexCount;
@@ -314,15 +327,24 @@ vk_android_init_deferred_image(struct vk_device *device,
    if (raw_list)
       view_format_count = raw_list->viewFormatCount;
 
+   const VkImageCompressionControlEXT *raw_compress =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_COMPRESSION_CONTROL_EXT);
+   if (raw_compress &&
+       (raw_compress->flags & VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT))
+      fixed_rate_count = raw_compress->compressionControlPlaneCount;
+
    /* Extend below when drivers support more extensions that interact with ANB
-    * or AHB. e.g. VK_EXT_image_compression_control
+    * or AHB.
     */
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, VkImageCreateInfo, create_info, 1);
    VK_MULTIALLOC_DECL(&ma, VkImageFormatListCreateInfo, list_info, 1);
    VK_MULTIALLOC_DECL(&ma, VkImageStencilUsageCreateInfo, stencil_info, 1);
+   VK_MULTIALLOC_DECL(&ma, VkImageCompressionControlEXT, compress_info, 1);
    VK_MULTIALLOC_DECL(&ma, uint32_t, queue_families, queue_family_count);
    VK_MULTIALLOC_DECL(&ma, VkFormat, view_formats, view_format_count);
+   VK_MULTIALLOC_DECL(&ma, VkImageCompressionFixedRateFlagsEXT, fixed_rates,
+                      fixed_rate_count);
 
    if (!vk_multialloc_zalloc2(&ma, &device->alloc, pAllocator,
                               VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
@@ -374,6 +396,21 @@ vk_android_init_deferred_image(struct vk_device *device,
          .stencilUsage = image->stencil_usage,
       };
       __vk_append_struct(create_info, stencil_info);
+   }
+
+   /* VK_EXT_image_compression_control */
+   if (raw_compress) {
+      if (fixed_rate_count) {
+         typed_memcpy(fixed_rates, raw_compress->pFixedRateFlags,
+                      fixed_rate_count);
+      }
+      *compress_info = (VkImageCompressionControlEXT){
+         .sType = VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT,
+         .flags = raw_compress->flags,
+         .compressionControlPlaneCount = fixed_rate_count,
+         .pFixedRateFlags = fixed_rate_count ? fixed_rates : NULL,
+      };
+      __vk_append_struct(create_info, compress_info);
    }
 
    image->android_deferred_create_info = create_info;
@@ -842,6 +879,16 @@ vk_alloc_ahardware_buffer(const VkMemoryAllocateInfo *pAllocateInfo)
       format = image->ahb_format;
       usage = vk_image_usage_to_ahb_usage(image->create_flags,
                                           image->usage);
+
+      /* VK_IMAGE_COMPRESSION_DISABLED_EXT means the app doesn't want an
+       * implicit compressed/tiled layout for this image. Use
+       * CPU_WRITE_RARELY to implicitly force LINEAR, preventing gralloc from
+       * allocating a compressed buffer and silently violating
+       * VK_IMAGE_COMPRESSION_DISABLED_EXT.
+       */
+      if ((image->compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT) &&
+          !vk_format_is_depth_or_stencil(image->format))
+         usage |= AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY;
    } else {
       /* AHB export allocation for VkBuffer requires a valid allocationSize */
       assert(pAllocateInfo->allocationSize);
@@ -1175,6 +1222,19 @@ vk_android_get_ahb_image_properties(
 
       ahb_usage->androidHardwareBufferUsage =
          vk_image_usage_to_ahb_usage(image_flags, image_usage);
+
+      /* Keep this in sync with the usage bits vk_alloc_ahardware_buffer()
+       * actually requests for a dedicated allocation, so apps querying
+       * support see the same usage that will be used at allocation time.
+       */
+      const VkImageCompressionControlEXT *compression_control =
+         vk_find_struct_const(info->pNext, IMAGE_COMPRESSION_CONTROL_EXT);
+      if (compression_control &&
+          (compression_control->flags & VK_IMAGE_COMPRESSION_DISABLED_EXT) &&
+          !vk_format_is_depth_or_stencil(info->format)) {
+         ahb_usage->androidHardwareBufferUsage |=
+            AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY;
+      }
    }
 
    return VK_SUCCESS;

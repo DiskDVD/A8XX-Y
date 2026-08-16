@@ -275,10 +275,9 @@ afbcp-spec@khr_texture_compression_astc@sliced-3d-miptree-gl srgb-fp,Fail
 afbcp-spec@khr_texture_compression_astc@sliced-3d-miptree-gl srgb-fp@sRGB decode full precision,Fail
 
 # uprev Piglit in Mesa
-afbcp-spec@arb_texture_view@tex-view,Fail
 glx@glx-copy-sub-buffer,Fail
 spec@!opengl 1.1@large-tex,Fail
-spec@arb_texture_view@tex-view,Fail
+spec@arb_framebuffer_object@framebuffer-blit-oblong tall,Fail
 
 # Piglit tests require too much precision in alpha-to-coverage higher sample-counts
 spec@ext_framebuffer_multisample@alpha-to-coverage-dual-src-blend 6,Fail

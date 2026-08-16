@@ -168,6 +168,7 @@ struct gl_extensions
    GLboolean EXT_draw_buffers2;
    GLboolean EXT_EGL_image_storage;
    GLboolean EXT_float_blend;
+   GLboolean EXT_frag_depth;
    GLboolean EXT_framebuffer_multisample;
    GLboolean EXT_framebuffer_multisample_blit_scaled;
    GLboolean EXT_framebuffer_sRGB;

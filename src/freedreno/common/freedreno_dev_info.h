@@ -497,6 +497,14 @@ struct fd_dev_info {
 
       /* GMEM size in bytes */
       uint32_t gmem_size;
+
+      /* On a7xx alias.tex may hang when in between mova and (ul). */
+      bool alias_mova_quirk;
+
+      /* On some HW alias.tex may hang when predicated (i.e. between
+       * predt/predf and prede).
+       */
+      bool alias_predication_quirk;
    } props;
 };
 

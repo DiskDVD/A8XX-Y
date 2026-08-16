@@ -410,7 +410,7 @@ radv_ps_needs_state_sgpr(const struct radv_shader_info *info, const struct radv_
    if (info->ps.needs_sample_positions && gfx_state->dynamic_rasterization_samples)
       return true;
 
-   if (gfx_state->dynamic_line_rast_mode)
+   if (info->ps.needs_poly_line_smooth)
       return true;
 
    if (info->ps.reads_sample_mask_in && (info->ps.uses_sample_shading || gfx_state->ms.sample_shading_enable))
@@ -1045,11 +1045,11 @@ radv_declare_ps_epilog_args(const struct radv_compiler_info *compiler_info, cons
    radv_init_shader_args(compiler_info, &state, MESA_SHADER_FRAGMENT);
 
    /* Declare VGPR arguments for depth/stencil/sample exports. */
-   if (key->export_depth)
+   if (key->has_depth_output)
       RADV_ADD_ARG(&state, AC_ARG_VGPR, 1, AC_ARG_VALUE, depth);
-   if (key->export_stencil)
+   if (key->has_stencil_output)
       RADV_ADD_ARG(&state, AC_ARG_VGPR, 1, AC_ARG_VALUE, stencil);
-   if (key->export_sample_mask)
+   if (key->has_sample_mask_output)
       RADV_ADD_ARG(&state, AC_ARG_VGPR, 1, AC_ARG_VALUE, sample_mask);
 
    /* Declare VGPR arguments for color exports. */

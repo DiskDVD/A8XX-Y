@@ -198,8 +198,9 @@ set_io_mask(nir_shader *shader, nir_variable *var, int offset, int len,
             }
          }
 
-         if (shader->info.stage == MESA_SHADER_FRAGMENT &&
-             !is_output_read && var->data.index == 1)
+         if (shader->info.stage == MESA_SHADER_FRAGMENT && !is_output_read &&
+             (var->data.index == 1 ||
+              var->data.location == FRAG_RESULT_DUAL_SRC_BLEND))
             shader->info.fs.color_is_dual_source = true;
 
          if (var->data.per_view)
@@ -559,7 +560,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
    case nir_intrinsic_load_input_vertex:
    case nir_intrinsic_load_interpolated_input:
    case nir_intrinsic_load_per_primitive_input:
-   case nir_intrinsic_load_attribute_pan:
+   case nir_intrinsic_load_attr_pan:
       if (shader->info.stage == MESA_SHADER_TESS_EVAL &&
           instr->intrinsic == nir_intrinsic_load_input &&
           !is_patch_special) {

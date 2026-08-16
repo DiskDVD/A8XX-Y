@@ -239,7 +239,6 @@ get_sampler_desc(nir_builder *b, lower_descriptors_state *state, nir_deref_instr
 {
    nir_def *desc_ptr = NULL;
    uint32_t offset = 0;
-   bool indirect = false;
    uint32_t plane_offset;
 
    if (deref) {
@@ -247,15 +246,9 @@ get_sampler_desc(nir_builder *b, lower_descriptors_state *state, nir_deref_instr
       assert(var && !index);
       unsigned desc_set = var->data.descriptor_set;
       unsigned binding_index = var->data.binding;
-      indirect = nir_deref_instr_has_indirect(deref);
 
       struct radv_descriptor_set_layout *layout = state->layout->set[desc_set].layout;
       struct radv_descriptor_set_binding_layout *binding = &layout->binding[binding_index];
-
-      if (desc_type == AC_DESC_SAMPLER) {
-         /* Immutable/embedded samplers are lowered earlier. */
-         assert(!binding->immutable_samplers_offset || indirect);
-      }
 
       while (deref->deref_type != nir_deref_type_var) {
          assert(deref->deref_type == nir_deref_type_array);

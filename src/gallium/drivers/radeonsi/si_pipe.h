@@ -168,6 +168,7 @@ enum
    DBG_USERQ_NO_SHADOW_REGS,
    DBG_NO_FAST_DISPLAY_LIST,
    DBG_NO_DMA_SHADERS,
+   DBG_IB_CACHES_FLUSH,
 
    /* 3D engine options: */
    DBG_NO_NGG,
@@ -196,10 +197,16 @@ enum
    DBG_FORCE_FAST_CLEAR,
 
    DBG_EXTRA_METADATA,
+   DBG_USERQ_JOB_LOG,
 
    DBG_TMZ,
    DBG_SQTT,
    DBG_EXPORT_MODIFIER,
+
+   /* Meta options disabling more and more performance optimizations. */
+   DBG_SAFE,
+   DBG_SAFER,
+   DBG_SAFEST,
 
    DBG_COUNT
 };

@@ -2001,6 +2001,12 @@ radv_queue_init(struct radv_device *device, struct radv_queue *queue, int idx,
          goto fail;
    }
 
+   /* Use internal synchronization for UVD < 6.3 to prevent a possible
+    * race between application submissions and destroying the video session.
+    */
+   if (pdev->info.family < CHIP_POLARIS10 && queue->state.qf == RADV_QUEUE_VIDEO_DEC)
+      queue->vk.internally_synchronized = true;
+
    return VK_SUCCESS;
 fail:
    vk_queue_finish(&queue->vk);

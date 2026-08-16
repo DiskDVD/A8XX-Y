@@ -599,7 +599,8 @@ emit_urb_writes(nir_builder *b,
                 const struct intel_device_info *devinfo,
                 nir_scalar *outputs,
                 unsigned num_slots,
-                nir_def *offset)
+                nir_def *offset,
+                enum gl_access_qualifier access)
 {
    nir_def *undef = nir_undef(b, 1, 32);
 
@@ -628,7 +629,8 @@ emit_urb_writes(nir_builder *b,
       if (devinfo->ver >= 20) {
          nir_def *addr = nir_iadd(b, output_handle(b),
                                   nir_imul_imm(b, offset, 16));
-         nir_store_urb_lsc_intel(b, val, addr, .base = 16 * slot);
+         nir_store_urb_lsc_intel(b, val, addr, .base = 16 * slot,
+                                 .access = access);
       } else {
          nir_store_urb_vec4_intel(b, val, output_handle(b), offset,
                                   nir_imm_int(b, vec8 ? 0xff : 0xf),
@@ -651,6 +653,7 @@ brw_nir_lower_deferred_urb_writes(nir_shader *nir,
       .varying_to_slot = vue_map->varying_to_slot,
    };
    nir_scalar *outputs = calloc(vue_map->num_slots, 4 * sizeof(nir_scalar));
+   bool vs_pull_inputs = false;
 
    nir_function_impl *impl = nir_shader_get_entrypoint(nir);
 
@@ -661,6 +664,10 @@ brw_nir_lower_deferred_urb_writes(nir_shader *nir,
 
          nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
          switch (intrin->intrinsic) {
+         case nir_intrinsic_load_urb_input_handle_intel:
+            if (nir->info.stage == MESA_SHADER_VERTEX)
+               vs_pull_inputs = true;
+            break;
          case nir_intrinsic_store_output:
          case nir_intrinsic_store_per_view_output: {
             nir_src *view_index = nir_get_io_arrayed_index_src(intrin);
@@ -703,7 +710,8 @@ brw_nir_lower_deferred_urb_writes(nir_shader *nir,
                                                  gs_vertex_stride),
                             extra_urb_slot_offset);
 
-            emit_urb_writes(&b, devinfo, outputs, vue_map->num_slots, offset);
+            emit_urb_writes(&b, devinfo, outputs, vue_map->num_slots,
+                            offset, 0);
             /* After EmitVertex() all outputs are undefined */
             memset(outputs, 0, 4 * vue_map->num_slots * sizeof(nir_scalar));
 
@@ -720,7 +728,8 @@ brw_nir_lower_deferred_urb_writes(nir_shader *nir,
    if (nir->info.stage != MESA_SHADER_GEOMETRY) {
       nir_builder b = nir_builder_at(nir_after_impl(impl));
       emit_urb_writes(&b, devinfo, outputs, vue_map->num_slots,
-                      nir_imm_int(&b, 0));
+                      nir_imm_int(&b, 0),
+                      vs_pull_inputs ? 0 : ACCESS_CAN_REORDER);
    }
 
    free(outputs);
@@ -1022,17 +1031,11 @@ brw_nir_should_vectorize_urb(unsigned align_mul, unsigned align_offset,
 {
    brw_pass_tracker *pt = data;
 
-   /* Jay does not yet SIMD split SENDs, so we cannot SIMD split illegal 
-    * SIMD32x8 SENDs in Jay, like BRW does. Instead we just limit URB
-    * vectorization to x4 here. 
-    */
-   if (
-      intel_use_jay(pt->compiler->devinfo, pt->nir->info.stage) && 
-      pt->dispatch_width == 32 && num_components > 4) {
-      return false;
-   }
-
    if (bit_size != 32 || num_components > 8)
+      return false;
+
+   /* vec8 sends are illegal in SIMD32, which may happen for mesh/task */
+   if (pt->nir->info.max_subgroup_size > 16 && num_components > 4)
       return false;
 
    if (num_components > 4 && num_components < 8 &&
@@ -2572,14 +2575,11 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir,
 
    OPT(nir_lower_flrp, lower_flrp, false /* always_precise */);
 
-   /* Needs more work to enable for Jay, see corresponding TODO there */
-   if (!jay) {
-      struct nir_opt_16bit_tex_image_options options = {
-         .rounding_mode = nir_rounding_mode_undef,
-         .opt_tex_dest_types = nir_type_float | nir_type_int | nir_type_uint,
-      };
-      OPT(nir_opt_16bit_tex_image, &options);
-   }
+   struct nir_opt_16bit_tex_image_options options = {
+      .rounding_mode = nir_rounding_mode_undef,
+      .opt_tex_dest_types = nir_type_float | nir_type_int | nir_type_uint,
+   };
+   OPT(nir_opt_16bit_tex_image, &options);
 
    /* Anv delays the initialization of softfp64, so we may not have
     * softfp64 set here. The full lowering will happen during the post-process
@@ -3109,7 +3109,8 @@ get_mem_access_size_align(nir_intrinsic_op intrin, uint8_t bytes,
          uint32_t comps = bytes / 8;
 
          /* We would need to SIMD split for dvec3+ */
-         comps = MIN2(comps, 2);
+         if (mem_cb_data->info->max_subgroup_size > 16)
+            comps = MIN2(comps, 2);
 
          return (nir_mem_access_size_align) {
             .bit_size = 64,
@@ -3153,8 +3154,9 @@ get_mem_access_size_align(nir_intrinsic_op intrin, uint8_t bytes,
          if (comps > 4 && comps < 8)
             comps = is_load ? 8 : 4;
 
-         /* We would need to SIMD split for vec8+ (vec16+ on Xe2+) */
-         comps = MIN2(devinfo->ver >= 20 ? 8 : 4, comps);
+         /* We would need to SIMD split for vec8+ */
+         if (mem_cb_data->info->max_subgroup_size > 16)
+            comps = MIN2(4, comps);
 
          return (nir_mem_access_size_align) {
             .bit_size = 32,
@@ -3356,6 +3358,7 @@ brw_vectorize_lower_mem_access(brw_pass_tracker *pt)
 
    struct brw_mem_access_cb_data cb_data = {
       .devinfo = devinfo,
+      .info = &pt->nir->info,
    };
 
    nir_lower_mem_access_bit_sizes_options mem_access_options = {
@@ -4041,6 +4044,7 @@ lsc_op_for_nir_intrinsic(const nir_intrinsic_instr *intrin)
    case nir_intrinsic_load_shared_uniform_block_intel:
    case nir_intrinsic_load_ssbo_block_intel:
    case nir_intrinsic_load_ssbo_uniform_block_intel:
+   case nir_intrinsic_load_ubo:
    case nir_intrinsic_load_ubo_uniform_block_intel:
    case nir_intrinsic_load_scratch:
    case nir_intrinsic_load_scratch_intel:

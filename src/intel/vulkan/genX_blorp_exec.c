@@ -130,19 +130,15 @@ blorp_alloc_dynamic_state(struct blorp_batch *batch,
    return state.map;
 }
 
-UNUSED static void *
-blorp_alloc_general_state(struct blorp_batch *batch,
-                          uint32_t size,
-                          uint32_t alignment,
-                          uint32_t *offset)
+static struct blorp_address
+blorp_dynamic_state_address(struct blorp_batch *batch,
+                            uint32_t offset)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
-
-   struct anv_state state =
-      anv_cmd_buffer_alloc_general_state(cmd_buffer, size, alignment);
-
-   *offset = state.offset;
-   return state.map;
+   return (struct blorp_address) {
+      .buffer = anv_device_get_dynamic_state_pool(cmd_buffer->device)->block_pool.bo,
+      .offset = offset,
+   };
 }
 
 static bool

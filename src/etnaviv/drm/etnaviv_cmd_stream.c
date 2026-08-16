@@ -219,7 +219,7 @@ void etna_cmd_stream_flush(struct etna_cmd_stream *stream, int in_fence_fd,
 		.stream_size = stream->offset * 4, /* in bytes */
 	};
 
-	if (in_fence_fd != -1) {
+	if (in_fence_fd >= 0) {
 		req.flags |= ETNA_SUBMIT_FENCE_FD_IN | ETNA_SUBMIT_NO_IMPLICIT;
 		req.fence_fd = in_fence_fd;
 	}
@@ -231,7 +231,7 @@ void etna_cmd_stream_flush(struct etna_cmd_stream *stream, int in_fence_fd,
 		req.flags |= ETNA_SUBMIT_SOFTPIN;
 
 	if (stream->offset == priv->offset_end_of_context_init && !out_fence_fd &&
-	    !priv->submit.nr_pmrs)
+	    in_fence_fd < 0 && !priv->submit.nr_pmrs)
 		is_noop = true;
 
 	if (likely(!is_noop)) {

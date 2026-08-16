@@ -195,8 +195,8 @@ jay_validate_ra(jay_function *func)
       assert(block->index < func->num_blocks);
 
       for (unsigned file = 0; file < NUM_VALIDATE_FILES; ++file) {
-         b->n[file] = file == ACCUM  ? 8 / jay_grf_per_gpr(func->shader) :
-                                       jay_num_regs(func->shader, file);
+         b->n[file] = file == ACCUM ? 8 / jay_grf_per_gpr(func->shader) :
+                                      jay_num_regs(func->shader, file);
          b->r[file] = linear_zalloc_array(lin_ctx, uint32_t, b->n[file]);
       }
    }

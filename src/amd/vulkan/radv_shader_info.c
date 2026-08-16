@@ -850,13 +850,21 @@ gather_shader_info_fs(enum amd_gfx_level gfx_level, const nir_shader *nir,
       info->ps.spi_ps_input_addr &= C_02865C_COVERAGE_TO_SHADER_SELECT;
    }
 
-   info->ps.has_epilog = gfx_state->ps.has_epilog && info->ps.colors_written;
+   bool writes_mrt0_alpha = !!(info->ps.color0_written & 0x8);
 
-   const bool export_alpha = !!(info->ps.color0_written & 0x8);
+   /* If the PS epilog is present, it always executes all required exports (mrtz and mrt0-7
+    * if needed).
+    */
+   info->ps.has_epilog =
+      (gfx_state->ps.color_outputs_need_epilog && info->ps.colors_written) ||
+      (gfx_state->ps.depth_output_needs_epilog && info->ps.writes_z) ||
+      (gfx_state->ps.stencil_output_needs_epilog && info->ps.writes_stencil) ||
+      (gfx_state->ps.sample_mask_output_needs_epilog && info->ps.writes_sample_mask) ||
+      (writes_mrt0_alpha && ((gfx_level >= GFX11 && gfx_state->ms.alpha_to_coverage_unknown &&
+                              (info->ps.writes_z || info->ps.writes_stencil || info->ps.writes_sample_mask)) ||
+                             (gfx_state->ms.alpha_to_coverage_unknown && gfx_state->ms.alpha_to_one_enable)));
 
-   if (info->ps.has_epilog) {
-      info->ps.exports_mrtz_via_epilog = gfx_state->ps.exports_mrtz_via_epilog && export_alpha;
-   } else {
+   if (!info->ps.has_epilog) {
       info->ps.mrt0_is_dual_src = gfx_state->ps.epilog.mrt0_is_dual_src;
       info->ps.spi_shader_col_format = gfx_state->ps.epilog.spi_shader_col_format;
 
@@ -865,10 +873,11 @@ gather_shader_info_fs(enum amd_gfx_level gfx_level, const nir_shader *nir,
          info->ps.spi_shader_col_format &= info->ps.colors_written;
 
       info->ps.cb_shader_mask = ac_get_cb_shader_mask(info->ps.spi_shader_col_format);
-   }
 
-   if (!info->ps.exports_mrtz_via_epilog) {
-      info->ps.writes_mrt0_alpha = gfx_state->ms.alpha_to_coverage_via_mrtz && export_alpha;
+      info->ps.writes_mrt0_alpha_to_mrtz =
+         writes_mrt0_alpha && gfx_state->ms.alpha_to_coverage_enable &&
+         ((gfx_level >= GFX11 && (info->ps.writes_z || info->ps.writes_stencil || info->ps.writes_sample_mask)) ||
+          gfx_state->ms.alpha_to_one_enable);
    }
 
    if (gfx_level >= GFX10_3) {

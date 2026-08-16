@@ -10,10 +10,10 @@
 
 #include "vn_pipeline.h"
 
-#include "venus-protocol/vn_protocol_driver_pipeline.h"
-#include "venus-protocol/vn_protocol_driver_pipeline_cache.h"
-#include "venus-protocol/vn_protocol_driver_pipeline_layout.h"
-#include "venus-protocol/vn_protocol_driver_shader_module.h"
+#include "vn_protocol_driver_pipeline.h"
+#include "vn_protocol_driver_pipeline_cache.h"
+#include "vn_protocol_driver_pipeline_layout.h"
+#include "vn_protocol_driver_shader_module.h"
 
 #include "vn_descriptor_set.h"
 #include "vn_device.h"
@@ -421,7 +421,8 @@ vn_CreatePipelineCache(VkDevice device,
 
       local_create_info = *pCreateInfo;
       local_create_info.initialDataSize -= header->header_size;
-      local_create_info.pInitialData += header->header_size;
+      local_create_info.pInitialData =
+         (const char *)local_create_info.pInitialData + header->header_size;
       pCreateInfo = &local_create_info;
    }
 
@@ -515,9 +516,9 @@ vn_GetPipelineCacheData(VkDevice device,
    memcpy(header->uuid, props->pipelineCacheUUID, VK_UUID_SIZE);
 
    *pDataSize -= header->header_size;
-   result =
-      vn_call_vkGetPipelineCacheData(target_ring, device, pipelineCache,
-                                     pDataSize, pData + header->header_size);
+   result = vn_call_vkGetPipelineCacheData(
+      target_ring, device, pipelineCache, pDataSize,
+      (char *)pData + header->header_size);
    if (result < VK_SUCCESS)
       return vn_error(dev->instance, result);
 

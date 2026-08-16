@@ -471,7 +471,6 @@ struct jayb_send_params {
    uint32_t ex_desc_imm;
    int split; /**< explicit split point */
    bool eot;
-   bool check_tdr;
    bool uniform;
    bool bindless;
    bool pure;
@@ -555,6 +554,13 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
       I->src[3] = jay_collect_vectors(b, &p.srcs[split], p.nr_srcs - split);
    }
 
+   if (jay_type_size_bits(p.type) == 16 &&
+       !p.uniform &&
+       b->shader->dispatch_width == 32) {
+      unsigned stride = b->shader->dispatch_width / 2;
+      I->dst = jay_alloc_def(b, UGPR, stride * jay_num_values(I->dst));
+   }
+
    /* For message headers we pack a UGPR vector as a single GRF */
    unsigned lens[3];
    for (unsigned i = 0; i < 3; ++i) {
@@ -587,7 +593,6 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
 
    info->sfid = p.sfid;
    info->eot = p.eot;
-   info->check_tdr = p.check_tdr;
    info->bindless = p.bindless;
    info->pure = p.pure;
    info->skip_helpers = p.skip_helpers;
@@ -623,28 +628,35 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
    }
 
    jay_builder_insert(b, I);
+
+   if (!jay_defs_equivalent(p.dst, I->dst)) {
+      /* Unpack 16-bit vectors to match the hardware with the data model.
+       *
+       * XXX: This is a hack.
+       */
+      unsigned stride = b->shader->dispatch_width / 2;
+      assert(stride % jay_ugpr_per_grf(b->shader) == 0);
+      for (unsigned i = 0; i < jay_num_values(p.dst); ++i) {
+         jay_def src = jay_extract_range(I->dst, i * stride, stride);
+         jay_MOV(b, jay_extract(p.dst, i), src)->type = JAY_TYPE_U16;
+      }
+   }
+
    return I;
 }
 
 #define jay_SEND(b, ...) _jay_SEND(b, (struct jayb_send_params) { __VA_ARGS__ })
 
 static inline void
-jay_copy_strided(jay_builder *b, jay_def dst, jay_def src, bool src_strided)
+jay_copy(jay_builder *b, jay_def dst, jay_def src)
 {
    assert(!jay_is_null(src));
 
-   unsigned src_stride = src_strided ? jay_ugpr_per_grf(b->shader) : 1;
-   uint32_t n = MIN2(jay_num_values(dst), jay_num_values(src) / src_stride);
+   uint32_t n = MIN2(jay_num_values(dst), jay_num_values(src));
 
    for (unsigned i = 0; i < n; ++i) {
-      jay_MOV(b, jay_extract(dst, i), jay_extract(src, i * src_stride));
+      jay_MOV(b, jay_extract(dst, i), jay_extract(src, i));
    }
-}
-
-static inline void
-jay_copy(jay_builder *b, jay_def dst, jay_def src)
-{
-   jay_copy_strided(b, dst, src, false);
 }
 
 static inline jay_def

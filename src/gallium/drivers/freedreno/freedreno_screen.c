@@ -457,6 +457,9 @@ fd_init_screen_caps(struct fd_screen *screen)
    caps->clip_halfz =
       is_a3xx(screen) || is_a4xx(screen) || is_a5xx(screen) || is_a6xx(screen);
 
+   /* a2xx has no depth export from the pixel shader */
+   caps->fragment_shader_depth = !is_a2xx(screen);
+
    caps->texture_multisample =
    caps->image_store_formatted =
    caps->image_load_formatted = is_a5xx(screen) || is_a6xx(screen);

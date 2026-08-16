@@ -82,6 +82,9 @@ radv_pad_cmdbuf(const struct radv_device *device, uint32_t size, enum amd_ip_typ
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const uint32_t ib_alignment = (pdev->info.ip[ip_type].ib_pad_dw_mask + 1) * 4;
 
+   if (!ib_alignment)
+      return 0;
+
    return align(size, ib_alignment);
 }
 
@@ -90,6 +93,9 @@ radv_align_cmdbuf(const struct radv_device *device, uint32_t size, enum amd_ip_t
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const uint32_t ib_alignment = pdev->info.ip[ip_type].ib_alignment;
+
+   if (!ib_alignment)
+      return 0;
 
    return align(size, ib_alignment);
 }
@@ -3282,12 +3288,17 @@ radv_prepare_dgc(struct radv_cmd_buffer *cmd_buffer, const VkGeneratedCommandsIn
    get_dgc_cmdbuf_layout(device, layout, ies, pGeneratedCommandsInfo->pNext, sequences_count, use_preamble,
                          &cmdbuf_layout);
 
-   assert((cmdbuf_layout.main_offset + pGeneratedCommandsInfo->preprocessAddress) %
-             pdev->info.ip[AMD_IP_GFX].ib_alignment ==
-          0);
-   assert((cmdbuf_layout.ace_main_offset + pGeneratedCommandsInfo->preprocessAddress) %
-             pdev->info.ip[AMD_IP_COMPUTE].ib_alignment ==
-          0);
+   if (radv_graphics_queue_enabled(pdev)) {
+      assert((cmdbuf_layout.main_offset + pGeneratedCommandsInfo->preprocessAddress) %
+                pdev->info.ip[AMD_IP_GFX].ib_alignment ==
+             0);
+   }
+
+   if (radv_compute_queue_enabled(pdev)) {
+      assert((cmdbuf_layout.ace_main_offset + pGeneratedCommandsInfo->preprocessAddress) %
+                pdev->info.ip[AMD_IP_COMPUTE].ib_alignment ==
+             0);
+   }
 
    struct radv_dgc_params params = {
       .cmd_buf_preamble_offset = cmdbuf_layout.main_preamble_offset,

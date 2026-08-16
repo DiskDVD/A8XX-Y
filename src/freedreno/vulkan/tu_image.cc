@@ -680,6 +680,20 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
       }
    }
 
+   /* VK_EXT_image_compression_control: honor the application's request to
+    * disable compression for this image.
+    */
+   if (image->vk.compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT) {
+      if (ubwc_enabled) {
+         perf_debug(device,
+                    "Disabling UBWC on %dx%d %s resource due to "
+                    "VK_IMAGE_COMPRESSION_DISABLED_EXT",
+                    image->vk.extent.width, image->vk.extent.height,
+                    util_format_name(vk_format_to_pipe_format(image->vk.format)));
+      }
+      ubwc_enabled = false;
+   }
+
    if (TU_DEBUG(NOUBWC)) {
       ubwc_enabled = false;
    }
@@ -966,16 +980,27 @@ tu_CreateImage(VkDevice _device,
 
       assert(mod_info || drm_explicit_info);
 
+      /* VK_IMAGE_COMPRESSION_DISABLED_EXT means the app wants uncompressed
+       * (non-UBWC) storage. Since there's no way to fall back to linear
+       * tiling with an explicit modifier, the QCOM_COMPRESSED modifier must
+       * never be selected while compression is disabled.
+       */
+      bool compression_disabled =
+         image->vk.compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT;
+
       if (mod_info) {
          modifier = DRM_FORMAT_MOD_LINEAR;
          for (unsigned i = 0; i < mod_info->drmFormatModifierCount; i++) {
-            if (mod_info->pDrmFormatModifiers[i] == DRM_FORMAT_MOD_QCOM_COMPRESSED)
+            if (mod_info->pDrmFormatModifiers[i] == DRM_FORMAT_MOD_QCOM_COMPRESSED &&
+                !compression_disabled)
                modifier = DRM_FORMAT_MOD_QCOM_COMPRESSED;
          }
       } else {
          modifier = drm_explicit_info->drmFormatModifier;
          assert(modifier == DRM_FORMAT_MOD_LINEAR ||
                 modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED);
+         assert(modifier != DRM_FORMAT_MOD_QCOM_COMPRESSED ||
+                !compression_disabled);
          plane_layouts = drm_explicit_info->pPlaneLayouts;
       }
    } else {
@@ -1451,8 +1476,34 @@ tu_get_image_subresource_layout(struct tu_image *image,
       memcpy_size->size = slice->size0;
    }
 
-   if (fdl_ubwc_enabled(layout, pSubresource->imageSubresource.mipLevel)) {
-      /* UBWC starts at offset 0 */
+   VkImageCompressionPropertiesEXT *compression_props =
+      vk_find_struct(pLayout, IMAGE_COMPRESSION_PROPERTIES_EXT);
+   if (compression_props) {
+      compression_props->imageCompressionFixedRateFlags =
+         VK_IMAGE_COMPRESSION_FIXED_RATE_NONE_EXT;
+      compression_props->imageCompressionFlags =
+         fdl_ubwc_enabled(layout, pSubresource->imageSubresource.mipLevel) ?
+            VK_IMAGE_COMPRESSION_DEFAULT_EXT :
+            VK_IMAGE_COMPRESSION_DISABLED_EXT;
+   }
+
+   /* UBWC layout fixups only apply to DRM modifier images. */
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT &&
+       fdl_ubwc_enabled(layout, pSubresource->imageSubresource.mipLevel)) {
+      /* From the Vulkan 1.4.357 spec, vkGetImageSubresourceLayout():
+       *
+       *    "If the image’s tiling is VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
+       *     and the image is non-linear, then the returned layout has an
+       *     implementation-dependent meaning; the vendor of the image’s DRM
+       *     format modifier may provide documentation that explains how to
+       *     interpret the returned layout."
+       *
+       * In particular, we report that the subresource offset is the
+       * beginning of any data related to the (single) subresource (in this
+       * case, the UBWC contents), since that value may get queried and
+       * passed as an offset within the FD for the image contents -- the
+       * position of the rest of the image data including uncompressed
+       * contents is implied from the format modifier. */
       pLayout->subresourceLayout.offset = 0;
       /* UBWC scanout won't match what the kernel wants if we have levels/layers */
       assert(image->vk.mip_levels == 1 && image->vk.array_layers == 1);

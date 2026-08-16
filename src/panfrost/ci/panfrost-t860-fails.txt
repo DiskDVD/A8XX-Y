@@ -396,8 +396,6 @@ program@execute@clz-optimizations,Crash
 program@execute@float-convert_long,Fail
 program@execute@float-convert_long@convert_long(float),Fail
 program@execute@float-convert_long@convert_ulong(float),Fail
-program@execute@global-offset,Fail
-program@execute@global-offset@3d- input dependent,Fail
 program@execute@load-hi16,Crash
 program@execute@load-lo16,Crash
 program@execute@program-scope-arrays,Crash

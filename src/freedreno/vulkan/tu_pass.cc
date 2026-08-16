@@ -358,7 +358,7 @@ tu_render_pass_add_implicit_deps(struct tu_render_pass *pass,
 
             if ((att[a].finalLayout != subpass->pDepthStencilAttachment->layout ||
                 stencil_final_layout != stencil_layout) &&
-                !att_used[a] && !has_external_src[i])
+                !att_used[a] && !has_external_dst[i])
                dst_implicit_dep = true;
             att_used[a] = true;
       }
@@ -1467,7 +1467,8 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
       resolve_subpass->samples = VK_SAMPLE_COUNT_1_BIT;
       resolve_subpass->color_count = info->colorAttachmentCount;
       resolve_subpass->input_count = info->colorAttachmentCount + 1;
-      resolve_subpass->color_attachments = cmd_buffer->dynamic_resolve_attachments;
+      resolve_subpass->color_attachments =
+         cmd_buffer->dynamic_custom_resolve_attachments;
       resolve_subpass->input_attachments = cmd_buffer->dynamic_input_attachments;
       resolve_subpass->multiview_mask = info->viewMask;
       resolve_subpass->legacy_dithering_enabled = info->flags &
@@ -1480,12 +1481,16 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
 
       resolve_subpass->depth_stencil_attachment.attachment = VK_ATTACHMENT_UNUSED;
       pass->subpass_count = 2;
-      subpass->resolve_count = 0;
    } else {
-      subpass->resolve_attachments = cmd_buffer->dynamic_resolve_attachments;
-      subpass->resolve_count = info->colorAttachmentCount;
       pass->subpass_count = 1;
    }
+
+   /* The main subpass keeps its own resolve list either way: a pass with
+    * custom resolves can still resolve other attachments through the
+    * fixed-function path.
+    */
+   subpass->resolve_attachments = cmd_buffer->dynamic_resolve_attachments;
+   subpass->resolve_count = info->colorAttachmentCount;
 
    pass->attachments = cmd_buffer->dynamic_rp_attachments;
 
@@ -1522,6 +1527,10 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
          subpass->input_attachments[i + 1].attachment = VK_ATTACHMENT_UNUSED;
          if (subpass->resolve_attachments)
             subpass->resolve_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
+         if (pass->subpass_count > 1) {
+            resolve_subpass->color_attachments[i].attachment =
+               VK_ATTACHMENT_UNUSED;
+         }
          subpass->unresolve_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
          continue;
       }
@@ -1587,11 +1596,16 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
                resolve_att->used_views = info->viewMask;
                resolve_att->resolve_views = 0;
                resolve_subpass->color_attachments[i].attachment = a++;
+               subpass->resolve_attachments[i].attachment = VK_ATTACHMENT_UNUSED;
             } else {
                subpass->resolve_attachments[i].attachment = a++;
                att->will_be_resolved = true;
                resolve_att->resolve_views = info->viewMask;
                resolve_att->used_views = 0;
+               if (pass->subpass_count > 1) {
+                  resolve_subpass->color_attachments[i].attachment =
+                     VK_ATTACHMENT_UNUSED;
+               }
             }
          } else {
             if (subpass->resolve_count)
@@ -1707,6 +1721,10 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
                   subpass->resolve_depth_stencil = true;
                   resolve_att->resolve_views = info->viewMask;
                   resolve_att->used_views = 0;
+                  if (pass->subpass_count > 1) {
+                     resolve_subpass->depth_stencil_attachment.attachment =
+                        VK_ATTACHMENT_UNUSED;
+                  }
                }
             } else {
                att->will_be_resolved = false;
@@ -1718,10 +1736,18 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
       } else {
          subpass->depth_stencil_attachment.attachment = VK_ATTACHMENT_UNUSED;
          subpass->input_attachments[0].attachment = VK_ATTACHMENT_UNUSED;
+         if (pass->subpass_count > 1) {
+            resolve_subpass->depth_stencil_attachment.attachment =
+               VK_ATTACHMENT_UNUSED;
+         }
       }
    } else {
       subpass->depth_stencil_attachment.attachment = VK_ATTACHMENT_UNUSED;
       subpass->input_attachments[0].attachment = VK_ATTACHMENT_UNUSED;
+      if (pass->subpass_count > 1) {
+         resolve_subpass->depth_stencil_attachment.attachment =
+            VK_ATTACHMENT_UNUSED;
+      }
    }
 
    /* We have to set this early for tu_render_pass_disable_fdm() to work. We
@@ -1775,14 +1801,6 @@ tu_setup_dynamic_render_pass(struct tu_cmd_buffer *cmd_buffer,
       resolve_subpass->fsr_attachment_texel_size =
          subpass->fsr_attachment_texel_size;
       resolve_subpass->fsr_attachment = subpass->fsr_attachment;
-
-      /* We don't do stores on vkCmdBeginCustomResolveEXT, so move them
-       * after custom resolve.
-       */
-      for (uint32_t i = 0; i < pass->user_attachment_count; i++) {
-         struct tu_render_pass_attachment *att = &pass->attachments[i];
-         att->last_subpass_idx = 1;
-      }
 
       /* Even though content of any depth/stencil resolve attachment is
        * undefined at the start of custom resolve, we still have to be

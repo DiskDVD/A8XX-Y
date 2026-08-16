@@ -35,6 +35,7 @@
 #include "panvk_wsi.h"
 
 #include "pan_afbc.h"
+#include "pan_compiler.h"
 #include "pan_props.h"
 
 #include "genxml/gen_macros.h"
@@ -165,16 +166,17 @@ init_shader_caches(struct panvk_physical_device *device,
    memcpy(device->cache_uuid, blake3, VK_UUID_SIZE);
 
 #ifdef ENABLE_SHADER_CACHE
+   const uint64_t gpu_id = device->kmod.dev->props.gpu_id;
+
    char renderer[25];
    ASSERTED int len =
-      snprintf(renderer, sizeof(renderer), "panvk_0x%016" PRIx64,
-               device->kmod.dev->props.gpu_id);
+      snprintf(renderer, sizeof(renderer), "panvk_0x%016" PRIx64, gpu_id);
    assert(len == sizeof(renderer) - 1);
 
    char timestamp[BLAKE3_HEX_LEN];
    _mesa_blake3_format(timestamp, instance->driver_build_sha);
 
-   const uint64_t driver_flags = 0;
+   const uint64_t driver_flags = pan_get_compiler_flags(pan_arch(gpu_id));
    device->vk.disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
 #endif
 }
@@ -593,6 +595,113 @@ panvk_GetPhysicalDeviceQueueFamilyProperties2(
             panvk_fill_global_priority(physical_device, family, prio);
       }
    }
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+panvk_GetPhysicalDeviceCooperativeMatrixPropertiesKHR(
+   VkPhysicalDevice physicalDevice, uint32_t *pPropertyCount,
+   VkCooperativeMatrixPropertiesKHR *pProperties)
+{
+   VK_FROM_HANDLE(panvk_physical_device, physical_device, physicalDevice);
+   VK_OUTARRAY_MAKE_TYPED(VkCooperativeMatrixPropertiesKHR, out, pProperties,
+                          pPropertyCount);
+
+   unsigned arch = pan_arch(physical_device->kmod.dev->props.gpu_id);
+
+   if (arch < 11)
+      return VK_SUCCESS;
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 4,
+         .NSize = 4,
+         .KSize = 4,
+         .AType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .BType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .CType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 16,
+         .NSize = 16,
+         .KSize = 16,
+         .AType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .BType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .CType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 4,
+         .NSize = 8,
+         .KSize = 8,
+         .AType = VK_COMPONENT_TYPE_FLOAT16_KHR,
+         .BType = VK_COMPONENT_TYPE_FLOAT16_KHR,
+         .CType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 16,
+         .NSize = 32,
+         .KSize = 32,
+         .AType = VK_COMPONENT_TYPE_FLOAT16_KHR,
+         .BType = VK_COMPONENT_TYPE_FLOAT16_KHR,
+         .CType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_FLOAT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 4,
+         .NSize = 16,
+         .KSize = 16,
+         .AType = VK_COMPONENT_TYPE_SINT8_KHR,
+         .BType = VK_COMPONENT_TYPE_SINT8_KHR,
+         .CType = VK_COMPONENT_TYPE_SINT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_SINT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   vk_outarray_append_typed(VkCooperativeMatrixPropertiesKHR, &out, p) {
+      *p = (VkCooperativeMatrixPropertiesKHR){
+         .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+         .MSize = 4,
+         .NSize = 16,
+         .KSize = 16,
+         .AType = VK_COMPONENT_TYPE_UINT8_KHR,
+         .BType = VK_COMPONENT_TYPE_UINT8_KHR,
+         .CType = VK_COMPONENT_TYPE_UINT32_KHR,
+         .ResultType = VK_COMPONENT_TYPE_UINT32_KHR,
+         .saturatingAccumulation = false,
+         .scope = VK_SCOPE_SUBGROUP_KHR,
+      };
+   }
+
+   return vk_outarray_status(&out);
 }
 
 VKAPI_ATTR void VKAPI_CALL

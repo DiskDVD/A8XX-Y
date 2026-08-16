@@ -102,9 +102,6 @@ struct kk_device {
    /* Geomtry heap */
    struct kk_bo *heap;
    util_once_flag heap_init_once;
-
-   uint64_t disabled_workarounds;
-   bool gpu_capture_enabled;
 };
 
 VK_DEFINE_HANDLE_CASTS(kk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)

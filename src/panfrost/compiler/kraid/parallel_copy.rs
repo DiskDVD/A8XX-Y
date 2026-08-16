@@ -93,7 +93,7 @@ fn xor_regs(b: &mut impl Builder, dst_b: Range<u16>, src_b: Range<u16>) {
             logic_op: LogicOp::Xor,
             not_result: false,
             src0: src.into(),
-            shift: Src::imm_u8(0),
+            shift: 0_u8.into(),
             src2: src2.into(),
         });
     }

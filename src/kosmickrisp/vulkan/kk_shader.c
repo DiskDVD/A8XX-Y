@@ -17,6 +17,7 @@
 #include "kk_sampler.h"
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
+#include "kosmickrisp/bridge/ns_process_info.h"
 #include "kosmickrisp/bridge/vk_to_mtl_map.h"
 #include "kosmickrisp/compiler/nir_to_msl.h"
 
@@ -153,6 +154,25 @@ kk_populate_fs_key(struct kk_fs_key *key,
    key->has_depth = state->rp->depth_attachment_format != VK_FORMAT_UNDEFINED;
 }
 
+enum kk_feature_key {
+   KK_FEAT_CUSTOM_BORDER = BITFIELD_BIT(0),
+   KK_FEAT_NULL_DESCRIPTOR = BITFIELD_BIT(1),
+   KK_FEAT_IMAGE_VIEW_MIN_LOD = BITFIELD_BIT(2),
+};
+
+static enum kk_feature_key
+kk_make_feature_key(const struct vk_features *feats)
+{
+   enum kk_feature_key key = 0;
+   if (feats->customBorderColors)
+      key |= KK_FEAT_CUSTOM_BORDER;
+   if (feats->nullDescriptor)
+      key |= KK_FEAT_NULL_DESCRIPTOR;
+   if (feats->minLod)
+      key |= KK_FEAT_IMAGE_VIEW_MIN_LOD;
+   return key;
+}
+
 static void
 kk_hash_graphics_state(struct vk_physical_device *device,
                        const struct vk_graphics_pipeline_state *state,
@@ -177,8 +197,8 @@ kk_hash_graphics_state(struct vk_physical_device *device,
                           sizeof(state->mv->view_mask));
    }
 
-   _mesa_blake3_update(&blake3_ctx, &enabled_features->nullDescriptor,
-                       sizeof(enabled_features->nullDescriptor));
+   enum kk_feature_key feature_key = kk_make_feature_key(enabled_features);
+   _mesa_blake3_update(&blake3_ctx, &feature_key, sizeof(feature_key));
 
    _mesa_blake3_final(&blake3_ctx, blake3_out);
 }
@@ -283,6 +303,37 @@ kk_nir_swizzle_fragment_output(nir_builder *b, nir_intrinsic_instr *intrin,
    return false;
 }
 
+static bool
+kk_is_possible_both_depth_clip_clamp(
+   const struct vk_graphics_pipeline_state *state, bool enabled)
+{
+   bool dyn_clamp =
+      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_RS_DEPTH_CLAMP_ENABLE);
+   bool dyn_clip =
+      BITSET_TEST(state->dynamic, MESA_VK_DYNAMIC_RS_DEPTH_CLIP_ENABLE);
+
+   /* If rasterization state is null, clamp must be dynamic, and clip must be
+    * inverted from clamp if not also dynamic. Thus, they cannot match unless
+    * both are dynamic. */
+   if (!state->rs)
+      return dyn_clamp && dyn_clip;
+
+   /* If clip is static and inverted from clamp, they can never be the same */
+   if (!dyn_clip &&
+       state->rs->depth_clip_enable == VK_MESA_DEPTH_CLIP_ENABLE_NOT_CLAMP)
+      return false;
+
+   /* Need to account for:
+    * - Both are dynamic
+    * - Both are static and match the desired value
+    * - One is dynamic and the other is static and matches the desired value
+    */
+   bool static_clamp_match = state->rs->depth_clamp_enable == enabled;
+   bool static_clip_match =
+      vk_rasterization_state_depth_clip_enable(state->rs) == enabled;
+   return (dyn_clamp || static_clamp_match) && (dyn_clip || static_clip_match);
+}
+
 static void
 kk_lower_vs_vbo(nir_shader *nir, const struct vk_graphics_pipeline_state *state,
                 const struct vk_pipeline_robustness_state *rs)
@@ -335,6 +386,12 @@ kk_lower_hw_vs(nir_shader *nir, const struct vk_graphics_pipeline_state *state)
 
    NIR_PASS(_, nir, msl_ensure_vertex_position_output);
    NIR_PASS(_, nir, nir_lower_clip_halfz_dynamic);
+
+   /* In any situation where both clip and clamp can be disabled, we need to
+    * add viewport Z transform emulation to the shader */
+   if (kk_is_possible_both_depth_clip_clamp(state, false))
+      NIR_PASS(_, nir, msl_nir_lower_vs_disabled_depth_clamp_clip);
+
    NIR_PASS(_, nir, msl_nir_vs_io_types);
 }
 
@@ -423,6 +480,8 @@ static void
 kk_lower_fs(struct kk_device *dev, nir_shader *nir,
             const struct vk_graphics_pipeline_state *state)
 {
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+
    nir->info.fs.uses_sample_shading |=
       state->ms && state->ms->sample_shading_enable;
 
@@ -449,9 +508,14 @@ kk_lower_fs(struct kk_device *dev, nir_shader *nir,
    NIR_PASS(_, nir, msl_nir_fs_force_output_signedness, rts);
 
    if (state->rp->depth_attachment_format == VK_FORMAT_UNDEFINED ||
-       nir->info.fs.early_fragment_tests)
-      NIR_PASS(_, nir, nir_shader_intrinsics_pass,
-               msl_nir_fs_remove_depth_write, nir_metadata_control_flow, NULL);
+       nir->info.fs.early_fragment_tests) {
+      NIR_PASS(_, nir, msl_nir_fs_remove_depth_write);
+   }
+
+   /* In any situation where both clip and clamp can be enabled, we need to
+    * add clamp emulation to the shader */
+   if (kk_is_possible_both_depth_clip_clamp(state, true))
+      NIR_PASS(_, nir, msl_nir_lower_fs_combined_depth_clamp_clip);
 
    /* Input attachments are treated as 2D textures. Fixes sampler dimension */
    NIR_PASS(_, nir, nir_shader_tex_pass, lower_subpass_dim, nir_metadata_all,
@@ -467,7 +531,7 @@ kk_lower_fs(struct kk_device *dev, nir_shader *nir,
        state->ms->sample_mask != UINT16_MAX) {
 
       /* KK_WORKAROUND_7 */
-      if (!(dev->disabled_workarounds & BITFIELD64_BIT(7))) {
+      if (!(pdev->settings.disabled_workarounds & BITFIELD64_BIT(7))) {
          if (!nir->info.fs.early_fragment_tests) {
             nir_function_impl *entrypoint = nir_shader_get_entrypoint(nir);
             nir_builder b = nir_builder_at(nir_after_impl(entrypoint));
@@ -484,14 +548,32 @@ kk_lower_fs(struct kk_device *dev, nir_shader *nir,
    /* Check https://github.com/KhronosGroup/Vulkan-Portability/issues/54 for
     * explanation on why we need this. */
    else if (nir->info.fs.needs_full_quad_helper_invocations ||
-            nir->info.fs.needs_coarse_quad_helper_invocations)
-      NIR_PASS(_, nir, msl_lower_static_sample_mask, 0xFFFFFFFF);
+            nir->info.fs.needs_coarse_quad_helper_invocations) {
+      struct kk_physical_device *pdev = kk_device_physical(dev);
+
+      /* Metal by default merges triangles which results in incorrect edges, see
+       * mentioned issue above. The issue is that if we disable them through
+       * writing to the sample mask, then derivatives are broken for multisample
+       * rendering in M1 and M2 with macOS 26. This bug is fixed in macOS 27.
+       *
+       * This is why we are choosing the lesser evil which is incorrect edges
+       * for multisampled rendering. Since CTS does not have tests for the edge
+       * case with multisample, we get a clean run. This does not mean we are
+       * Vulkan conformant with macOS26 for M1 and M2.
+       */
+      bool ms_bug_present = !ns_is_os_version_at_least(27, 0, 0) &&
+                            (pdev->info.gpu_apple_family == 7 ||
+                             pdev->info.gpu_apple_family == 8) &&
+                            state->ms && state->ms->rasterization_samples > 1;
+      if (!ms_bug_present)
+         NIR_PASS(_, nir, msl_lower_static_sample_mask, 0xFFFFFFFF);
+   }
 
    /* KK_WORKAROUND_5 */
-   if (!(dev->disabled_workarounds & BITFIELD64_BIT(5)))
+   if (!(pdev->settings.disabled_workarounds & BITFIELD64_BIT(5)))
       NIR_PASS(_, nir, msl_nir_fake_guard_for_discards);
    /* KK_WORKAROUND_4 */
-   if (!(dev->disabled_workarounds & BITFIELD64_BIT(4))) {
+   if (!(pdev->settings.disabled_workarounds & BITFIELD64_BIT(4))) {
       NIR_PASS(_, nir, nir_lower_helper_writes, true);
       NIR_PASS(_, nir, nir_lower_is_helper_invocation);
    }
@@ -502,8 +584,11 @@ kk_lower_nir(struct kk_device *dev, nir_shader *nir, bool emulated_stage,
              const struct vk_pipeline_robustness_state *rs,
              uint32_t set_layout_count,
              struct vk_descriptor_set_layout *const *set_layouts,
-             const struct vk_graphics_pipeline_state *state)
+             const struct vk_graphics_pipeline_state *state,
+             enum kk_feature_key features)
 {
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+
    if (nir->info.io_lowered)
       return;
 
@@ -604,15 +689,29 @@ kk_lower_nir(struct kk_device *dev, nir_shader *nir, bool emulated_stage,
       kk_lower_fs(dev, nir, state);
    }
 
+   if (features & KK_FEAT_CUSTOM_BORDER)
+      NIR_PASS(_, nir, kk_nir_lower_custom_border);
+
+   if (features & KK_FEAT_IMAGE_VIEW_MIN_LOD)
+      NIR_PASS(_, nir, kk_nir_lower_image_view_min_lod);
+
    /* Descriptor lowering needs to happen after lowering blend since we will
     * generate a nir_intrinsic_load_blend_const_color_rgba which gets lowered by
     * the lower descriptor pass
     */
    NIR_PASS(_, nir, kk_nir_lower_descriptors, rs, set_layout_count,
             set_layouts);
+
+   /* KK_WORKAROUND_16 - must be called after kk_nir_lower_descriptors(), which
+    * lowers all image intrinsics to be bindless */
+   if (rs->images ==
+          VK_PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2 &&
+       !(pdev->settings.disabled_workarounds & BITFIELD64_BIT(16)))
+      NIR_PASS(_, nir, msl_lower_robustness2_images);
+
    NIR_PASS(_, nir, kk_nir_lower_textures);
 
-   if (dev->vk.enabled_features.nullDescriptor)
+   if (features & KK_FEAT_NULL_DESCRIPTOR)
       NIR_PASS(_, nir, kk_nir_lower_null_images);
 
    NIR_PASS(_, nir, nir_lower_global_vars_to_local);
@@ -676,6 +775,23 @@ gather_vs_inputs(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    return false;
 }
 
+static bool
+fs_uses_flat_varying(nir_shader *nir)
+{
+   nir_foreach_function_impl(impl, nir) {
+      nir_foreach_block_safe(block, impl) {
+         nir_foreach_instr_safe(instr, block) {
+            if (instr->type == nir_instr_type_intrinsic) {
+               nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+               if (intr->intrinsic == nir_intrinsic_load_input)
+                  return true;
+            }
+         }
+      }
+   }
+   return false;
+}
+
 static void
 gather_shader_info(struct kk_shader *shader, nir_shader *nir,
                    const struct vk_graphics_pipeline_state *state)
@@ -692,6 +808,7 @@ gather_shader_info(struct kk_shader *shader, nir_shader *nir,
        * which is not a valid Metal layout */
       if (nir->info.fs.depth_layout == FRAG_DEPTH_LAYOUT_NONE)
          nir->info.fs.depth_layout = FRAG_DEPTH_LAYOUT_ANY;
+      shader->info.fs.uses_flat_varyings = fs_uses_flat_varying(nir);
    } else if (nir->info.stage == MESA_SHADER_COMPUTE) {
       shader->info.cs.local_size.x = nir->info.workgroup_size[0];
       shader->info.cs.local_size.y = nir->info.workgroup_size[1];
@@ -768,6 +885,7 @@ kk_compile_shader(struct kk_device *dev, nir_shader *nir,
                   struct kk_shader **shader_out)
 {
    assert(nir->info.io_lowered && "nir must have lowered io");
+   struct kk_physical_device *pdev = kk_device_physical(dev);
 
    struct kk_shader *shader;
    VkResult result = VK_SUCCESS;
@@ -836,7 +954,7 @@ kk_compile_shader(struct kk_device *dev, nir_shader *nir,
 
    struct nir_to_msl_options translate_options = {
       .mem_ctx = NULL,
-      .disabled_workarounds = dev->disabled_workarounds,
+      .disabled_workarounds = pdev->settings.disabled_workarounds,
    };
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       for (uint32_t i = 0u; i < MAX_DRAW_BUFFERS; ++i) {
@@ -857,6 +975,7 @@ kk_compile_shader(struct kk_device *dev, nir_shader *nir,
          }
       }
    }
+
    struct msl_compile_data *data = &shader->msl_data[stage];
    data->code = nir_to_msl(nir, &translate_options);
    const char *entrypoint_name = nir_shader_get_entrypoint(nir)->function->name;
@@ -943,7 +1062,8 @@ nir_opts(nir_shader *nir, void *data)
 
 static nir_shader *
 get_empty_nir(struct kk_device *dev, mesa_shader_stage stage,
-              const struct vk_graphics_pipeline_state *state)
+              const struct vk_graphics_pipeline_state *state,
+              enum kk_feature_key features)
 {
    nir_shader *nir = nir_shader_create(
       NULL, stage,
@@ -961,7 +1081,7 @@ get_empty_nir(struct kk_device *dev, mesa_shader_stage stage,
       .null_uniform_buffer_descriptor = false,
       .null_storage_buffer_descriptor = false,
    };
-   kk_lower_nir(dev, nir, false, &no_robustness, 0u, NULL, state);
+   kk_lower_nir(dev, nir, false, &no_robustness, 0u, NULL, state, features);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
    return nir;
@@ -1305,6 +1425,9 @@ kk_compile_shaders(struct vk_device *device, uint32_t shader_count,
 {
    VkResult result = VK_SUCCESS;
    struct kk_device *dev = container_of(device, struct kk_device, vk);
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+
+   enum kk_feature_key features = kk_make_feature_key(enabled_features);
 
    /* Vulkan doesn't enforce a fragment shader to build pipelines. We may need
     * to create one. */
@@ -1333,9 +1456,9 @@ kk_compile_shaders(struct vk_device *device, uint32_t shader_count,
       bool emulated_stage = tess && (nir->info.stage == MESA_SHADER_VERTEX ||
                                      nir->info.stage == MESA_SHADER_TESS_CTRL);
 
-      msl_preprocess_nir_workarounds(nir, dev->disabled_workarounds);
+      msl_preprocess_nir_workarounds(nir, pdev->settings.disabled_workarounds);
       kk_lower_nir(dev, nir, emulated_stage, info->robustness,
-                   info->set_layout_count, info->set_layouts, state);
+                   info->set_layout_count, info->set_layouts, state, features);
 
       if (nir->info.stage == MESA_SHADER_VERTEX)
          vertex_robustness = info->robustness;
@@ -1349,7 +1472,7 @@ kk_compile_shaders(struct vk_device *device, uint32_t shader_count,
    uint32_t total_shaders = shader_count;
    if (state && infos[shader_count - 1u].stage != MESA_SHADER_FRAGMENT) {
       nir_shaders[shader_count] =
-         get_empty_nir(dev, MESA_SHADER_FRAGMENT, state);
+         get_empty_nir(dev, MESA_SHADER_FRAGMENT, state, features);
       total_shaders += 1u;
    }
 

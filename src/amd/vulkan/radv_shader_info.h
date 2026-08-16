@@ -176,9 +176,8 @@ struct radv_shader_info {
       bool writes_z : 1;
       bool writes_stencil : 1;
       bool writes_sample_mask : 1;
-      bool writes_mrt0_alpha : 1;
+      bool writes_mrt0_alpha_to_mrtz : 1;
       bool mrt0_is_dual_src : 1;
-      bool exports_mrtz_via_epilog : 1;
       bool has_pcoord : 1;
       bool prim_id_input : 1;
       bool viewport_index_input : 1;

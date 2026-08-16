@@ -87,6 +87,14 @@ pub trait SmallConstantTable: TryDecode<u8> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ExecUnit {
+    Cvt,
+    Fma,
+    Msg,
+    Sfu,
+}
+
 pub struct InstructionSrcInfo<S: EnumAsU8> {
     pub allowed_swizzles: U8EnumSet<S, 2>,
     pub is_src64: bool,
@@ -113,6 +121,7 @@ pub struct InstructionDstInfo<L: EnumAsU8> {
 }
 
 pub struct InstructionInfo<S: EnumAsU8 + 'static, L: EnumAsU8 + 'static> {
+    pub exec_unit: ExecUnit,
     pub is_message: bool,
     pub srcs: &'static [InstructionSrcInfo<S>],
     pub sr_src: Option<InstructionSrcInfo<S>>,

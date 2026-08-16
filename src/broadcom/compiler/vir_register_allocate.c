@@ -265,9 +265,19 @@ get_spill_type_for_temp(struct v3d_compile *c, int temp)
 }
 
 static int
-v3d_choose_spill_node(struct v3d_compile *c)
+v3d_choose_spill_node(struct v3d_compile *c, bool reuse_costs)
 {
         assert(c->num_temps > 1);
+
+        /* When spilling a batch of victims between allocations the graph
+         * still holds the spill costs computed for the batch's first victim:
+         * v3d_spill_reg() zeroes the cost of each spilled node and the temps
+         * added by the spill itself never get a cost, so they are never
+         * picked. Reuse those costs instead of walking every instruction
+         * again for each victim in the batch.
+         */
+        if (reuse_costs)
+                return ra_get_best_spill_node(c->g);
 
         const float tmu_scale = 10;
         float block_scale = 1.0;
@@ -1544,7 +1554,7 @@ v3d_register_allocate(struct v3d_compile *c)
         while (true) {
                 if (c->spill_size <
                     V3D_CHANNELS * sizeof(uint32_t) * force_register_spills) {
-                        int node = v3d_choose_spill_node(c);
+                        int node = v3d_choose_spill_node(c, false);
                         uint32_t temp = node_to_temp(c, node);
                         if (node != -1) {
                                 v3d_spill_reg(c, acc_nodes, implicit_rf_nodes, temp);
@@ -1594,7 +1604,7 @@ v3d_register_allocate(struct v3d_compile *c)
                 assert(batch > 0);
 
                 for (uint32_t k = 0; k < batch; k++) {
-                        int node = v3d_choose_spill_node(c);
+                        int node = v3d_choose_spill_node(c, k > 0);
                         if (node == -1) {
                                 if (k > 0)
                                         break;

@@ -66,10 +66,11 @@ bool msl_nir_vs_remove_point_size_write(nir_builder *b,
                                         nir_intrinsic_instr *intrin,
                                         void *data);
 
-bool msl_nir_fs_remove_depth_write(nir_builder *b, nir_intrinsic_instr *intrin,
-                                   void *data);
+bool msl_nir_fs_remove_depth_write(nir_shader *s);
 
 bool msl_lower_textures(nir_shader *s);
+
+bool msl_lower_robustness2_images(nir_shader *s);
 
 bool msl_lower_static_sample_mask(nir_shader *nir, uint32_t sample_mask);
 bool msl_ensure_depth_write(nir_shader *nir);
@@ -82,6 +83,8 @@ bool msl_nir_lower_sample_shading(nir_shader *nir);
 void msl_nir_lower_clip_cull_distance(nir_shader *nir,
                                       unsigned num_cull_distances);
 bool msl_nir_lower_instance_id(nir_shader *nir);
+bool msl_nir_lower_vs_disabled_depth_clamp_clip(nir_shader *nir);
+bool msl_nir_lower_fs_combined_depth_clamp_clip(nir_shader *nir);
 
 bool msl_gather_uses_per_draw_data(nir_shader *nir);
 

@@ -2094,6 +2094,7 @@ emit_control_barrier(struct ir3_context *ctx)
 
    struct ir3_builder *b = &ctx->build;
    struct ir3_instruction *barrier = ir3_BAR(b);
+   ir3_dst_create(barrier, REG_A0_X, IR3_REG_HALF);
    barrier->cat7.g = true;
    if (ctx->compiler->gen < 6)
       barrier->cat7.l = true;
@@ -5592,6 +5593,7 @@ emit_instructions(struct ir3_context *ctx)
       struct ir3_builder build = ir3_builder_at(ir3_after_block(block));
 
       struct ir3_instruction *barrier = ir3_BAR(&build);
+      ir3_dst_create(barrier, REG_A0_X, IR3_REG_HALF);
       barrier->flags = IR3_INSTR_SS | IR3_INSTR_SY;
       barrier->barrier_class = IR3_BARRIER_EVERYTHING;
       array_insert(block, block->keeps, barrier);

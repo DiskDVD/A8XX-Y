@@ -1161,6 +1161,9 @@ bool pco_ra(pco_shader *shader)
       }
    }
 
+   /* FIXME: Temporarily disable vtxin allocation due to vec handling bug. */
+   hw_vtxins = 0;
+
    /* TODO: different number of temps available if preamble/phase change. */
    /* TODO: different number of temps available if barriers are in use. */
    /* TODO: support for internal registers. */

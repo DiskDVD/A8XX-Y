@@ -160,6 +160,49 @@ max_warps_per_mp_for_sm(uint8_t sm)
 }
 
 static uint8_t
+max_blocks_per_mp_for_sm(uint8_t sm)
+{
+   /* Values taken from CUDA programming guide section "Compute Capabilities" */
+   switch (sm) {
+   case 10:
+   case 11:
+   case 12:
+   case 13:
+   case 20:
+   case 21:
+      return 8;
+   case 30:
+   case 32:
+   case 35:
+   case 37:
+   case 75:
+   case 86:
+   case 87:
+      return 16;
+   case 89:
+   case 110:
+   case 120:
+      return 24;
+   case 50:
+   case 52:
+   case 53:
+   case 60:
+   case 61:
+   case 62:
+   case 70:
+   case 72:
+   case 80:
+   case 90:
+   case 100:
+      return 32;
+   default:
+      assert(!"unkown SM version");
+      /* return the smallest known value */
+      return 8;
+   }
+}
+
+static uint8_t
 mp_per_tpc_for_chipset(uint16_t chipset)
 {
    // GP100 is special and has two, otherwise it's a Volta and newer thing to have two
@@ -538,6 +581,7 @@ nouveau_ws_device_new(drmDevicePtr drm_device)
    // for now we hardcode those values, but in the future Nouveau could provide that information to
    // us instead.
    device->info.max_warps_per_mp = max_warps_per_mp_for_sm(device->info.sm);
+   device->info.max_blocks_per_mp = max_blocks_per_mp_for_sm(device->info.sm);
    device->info.mp_per_tpc = mp_per_tpc_for_chipset(device->info.chipset);
 
    /* Transfer queues require two kernel fixes:

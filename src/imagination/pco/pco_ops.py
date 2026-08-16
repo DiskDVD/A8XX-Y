@@ -540,6 +540,18 @@ O_FENCE = pseudo_op('fence')
 
 O_OP_ATOMIC_OFFSET = pseudo_op('op.atomic.offset', OM_ALU_ATOMEXT + [OM_ATOM_OP], 2, 4, [], [[RM_ABS, RM_NEG], [RM_ABS, RM_NEG]])
 
+O_DYNIDX = pseudo_op('dynidx', [OM_EXEC_CND, OM_RPT], 2, 4)
+
+O_SMP_DYNIDX = pseudo_op('smp.dynidx', OM_ALU_RPT1 + [OM_DIM, OM_PROJ, OM_FCNORM, OM_NNCOORDS,
+                                                      OM_LOD_MODE, OM_PPLOD, OM_TAO, OM_SOO,
+                                                      OM_SNO, OM_SB_MODE, OM_MCU_CACHE_MODE_LD,
+                                                      OM_ARRAY, OM_INTEGER, OM_SCHEDSWAP, OM_F16], 1, 10)
+
+O_SMP_WRT_DYNIDX = pseudo_op('smp.wrt.dynidx', OM_ALU_RPT1 + [OM_DIM, OM_PROJ, OM_FCNORM, OM_NNCOORDS,
+                                                              OM_LOD_MODE, OM_PPLOD, OM_TAO, OM_SOO,
+                                                              OM_SNO, OM_SB_MODE, OM_MCU_CACHE_MODE_ST,
+                                                              OM_ARRAY, OM_INTEGER, OM_SCHEDSWAP, OM_F16], 0, 10)
+
 O_BREAK = pseudo_op('break', [OM_EXEC_CND])
 O_CONTINUE = pseudo_op('continue', [OM_EXEC_CND])
 

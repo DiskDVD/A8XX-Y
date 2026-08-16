@@ -142,6 +142,6 @@ void mtl_render_set_depth_store_action(mtl_render_encoder *encoder,
                                        enum mtl_store_action action);
 
 void mtl_render_set_stencil_store_action(mtl_render_encoder *encoder,
-                                       enum mtl_store_action action);
+                                         enum mtl_store_action action);
 
 #endif /* MTL_ENCODER_H */

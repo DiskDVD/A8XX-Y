@@ -630,9 +630,12 @@ struct radv_ps_epilog_state {
 
    uint32_t colors_written;
    bool mrt0_is_dual_src;
-   bool export_depth;
-   bool export_stencil;
-   bool export_sample_mask;
+   bool has_depth_output;
+   bool has_stencil_output;
+   bool has_sample_mask_output;
+   bool ignore_depth_output;
+   bool ignore_stencil_output;
+   bool lower_1bit_sample_mask_to_discard;
    bool alpha_to_coverage_via_mrtz;
    bool alpha_to_one;
    uint8_t need_src_alpha;

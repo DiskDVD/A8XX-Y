@@ -542,8 +542,8 @@ private:
                   "AccWrControl is not present on Gfx20+.");
       }
 
-      /* TODO: Consider Large GRF for certain Xe platforms that support it. */
-      const unsigned max_grf = devinfo->ver >= 20 ? 256 : 128;
+      /* DG2-Xe2: 256 (Large GRF), Xe3: 256 (VRT) */
+      const unsigned max_grf = devinfo->verx10 >= 125 ? 256 : 128;
 
       if (gen_inst_has_dst(inst->opcode)) {
          ERROR_IF(!inst->dst.indirect &&

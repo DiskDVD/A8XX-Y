@@ -1010,6 +1010,8 @@ struct pipe_caps {
    bool atomic_float_minmax;
    bool fragment_shader_texture_lod;
    bool fragment_shader_derivatives;
+   /** defaults to true; clearing it withdraws GL_EXT_frag_depth */
+   bool fragment_shader_depth;
    bool texture_shadow_lod;
    bool shader_samples_identical;
    bool image_atomic_inc_wrap;

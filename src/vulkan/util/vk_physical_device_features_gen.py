@@ -52,6 +52,10 @@ RENAMED_FEATURES = {
     ('FaultFeaturesEXT', 'deviceFaultVendorBinary'): 'deviceFaultVendorBinaryEXT',
 
     ('OpacityMicromapFeaturesEXT', 'micromap'): 'micromapEXT',
+
+    ('CooperativeMatrix2FeaturesNV', 'cooperativeMatrixConversions'): 'cooperativeMatrixConversionsNV',
+    ('CooperativeMatrix2FeaturesNV', 'cooperativeMatrixReductions'): 'cooperativeMatrixReductionsNV',
+    ('CooperativeMatrix2FeaturesNV', 'cooperativeMatrixPerElementOperations'): 'cooperativeMatrixPerElementOperationsNV',
 }
 
 KNOWN_ALIASES = [

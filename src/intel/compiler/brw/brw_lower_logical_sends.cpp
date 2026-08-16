@@ -1637,81 +1637,10 @@ lower_hdc_memory_logical_send(const brw_builder &bld, brw_mem_inst *mem)
 }
 
 static void
-lower_lsc_varying_pull_constant_logical_send(const brw_builder &bld,
-                                             brw_inst *inst)
-{
-   const intel_device_info *devinfo = bld.shader->devinfo;
-
-   assert(inst->src[PULL_VARYING_CONSTANT_SRC_BINDING_TYPE].file == IMM);
-   enum lsc_addr_surface_type surf_type =
-       (enum lsc_addr_surface_type) inst->src[
-          PULL_VARYING_CONSTANT_SRC_BINDING_TYPE].ud;
-
-   brw_reg binding        = inst->src[PULL_VARYING_CONSTANT_SRC_BINDING];
-   brw_reg offset_B       = inst->src[PULL_VARYING_CONSTANT_SRC_OFFSET];
-   brw_reg alignment_B    = inst->src[PULL_VARYING_CONSTANT_SRC_ALIGNMENT];
-
-   /* We are switching the instruction from an ALU-like instruction to a
-    * send-from-grf instruction.  Since sends can't handle strides or
-    * source modifiers, we have to make a copy of the offset source.
-    */
-   brw_reg ubo_offset = bld.move_to_vgrf(offset_B, 1);
-
-   assert(alignment_B.file == IMM);
-   unsigned alignment = alignment_B.ud;
-
-   brw_send_inst *send = brw_transform_inst_to_send(bld, inst);
-   inst = NULL;
-
-   send->sfid = GEN_SFID_UGM;
-
-   assert(!intel_indirect_ubos_use_sampler(devinfo));
-
-   send->src[SEND_SRC_DESC]     = brw_imm_ud(0);
-   send->src[SEND_SRC_EX_DESC]  = brw_imm_ud(0);
-   send->src[SEND_SRC_PAYLOAD1] = ubo_offset;
-   send->src[SEND_SRC_PAYLOAD2] = brw_reg();
-
-   send->desc =
-      lsc_msg_desc(devinfo, LSC_OP_LOAD,
-                   surf_type, LSC_ADDR_SIZE_A32,
-                   LSC_DATA_SIZE_D32,
-                   alignment >= 4 ? 4 : 1 /* num_channels */,
-                   false /* transpose */,
-                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
-   send->mlen = brw_lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, send->exec_size);
-
-   setup_lsc_surface_descriptors(bld, send, send->desc, binding, 0);
-
-   if (alignment < 4) {
-      /* The byte scattered messages can only read one dword at a time so
-       * we have to duplicate the message 4 times to read the full vec4.
-       * Hopefully, dead code will clean up the mess if some of them aren't
-       * needed.
-       */
-      assert(send->size_written == 16 * send->exec_size);
-      send->size_written /= 4;
-      for (unsigned c = 1; c < 4; c++) {
-         /* Emit a copy of the instruction because we're about to modify
-          * it.  Because this loop starts at 1, we will emit copies for the
-          * first 3 and the final one will be the modified instruction.
-          */
-         bld.emit(brw_clone_inst(*bld.shader, send));
-
-         /* Offset the source */
-         send->src[SEND_SRC_PAYLOAD1] = bld.vgrf(BRW_TYPE_UD);
-         bld.ADD(send->src[SEND_SRC_PAYLOAD1], ubo_offset, brw_imm_ud(c * 4));
-
-         /* Offset the destination */
-         send->dst = offset(send->dst, bld, 1);
-      }
-   }
-}
-
-static void
 lower_varying_pull_constant_logical_send(const brw_builder &bld, brw_inst *inst)
 {
    const intel_device_info *devinfo = bld.shader->devinfo;
+   assert(!devinfo->has_lsc);
 
    assert(inst->src[PULL_VARYING_CONSTANT_SRC_BINDING_TYPE].file == IMM);
    enum lsc_addr_surface_type surf_type =
@@ -2243,10 +2172,7 @@ brw_lower_logical_sends(brw_shader &s)
       }
 
       case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
-         if (devinfo->has_lsc)
-            lower_lsc_varying_pull_constant_logical_send(ibld, inst);
-         else
-            lower_varying_pull_constant_logical_send(ibld, inst);
+         lower_varying_pull_constant_logical_send(ibld, inst);
          break;
 
       case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
@@ -2323,6 +2249,7 @@ bool
 brw_lower_uniform_pull_constant_loads(brw_shader &s)
 {
    const intel_device_info *devinfo = s.devinfo;
+   assert(!devinfo->has_lsc);
    bool progress = false;
 
    foreach_block_and_inst_safe (block, brw_inst, inst, s.cfg) {
@@ -2340,66 +2267,36 @@ brw_lower_uniform_pull_constant_loads(brw_shader &s)
       assert(offset_B.file == IMM);
       assert(size_B.file == IMM);
 
-      if (devinfo->has_lsc) {
-         const brw_builder ubld = brw_builder(inst).group(8, 0).exec_all();
+      const brw_builder ubld = brw_builder(inst).exec_all();
+      brw_reg header = brw_builder(&s, 8).exec_all().vgrf(BRW_TYPE_UD);
 
-         const brw_reg payload = ubld.vgrf(BRW_TYPE_UD);
-         ubld.MOV(payload, offset_B);
+      ubld.group(8, 0).MOV(header,
+                           retype(brw_vec8_grf(0, 0), BRW_TYPE_UD));
+      ubld.group(1, 0).MOV(component(header, 2),
+                           brw_imm_ud(offset_B.ud / 16));
 
-         brw_send_inst *send = brw_transform_inst_to_send(ubld, inst);
-         inst = NULL;
+      brw_send_inst *send = brw_transform_inst_to_send(ubld, inst);
+      inst = NULL;
 
-         send->sfid = GEN_SFID_UGM;
-         send->desc = lsc_msg_desc(devinfo, LSC_OP_LOAD, surf_type,
-                                   LSC_ADDR_SIZE_A32,
-                                   LSC_DATA_SIZE_D32,
-                                   send->size_written / 4,
-                                   true /* transpose */,
-                                   LSC_CACHE(devinfo, LOAD, L1STATE_L3MOCS));
-         send->mlen = brw_lsc_msg_addr_len(devinfo, LSC_ADDR_SIZE_A32, 1);
-         send->ex_mlen = 0;
-         send->header_size = 0;
-         send->has_side_effects = false;
-         send->is_volatile = true;
-         send->exec_size = 1;
+      send->sfid = GEN_SFID_HDC_READ_ONLY;
+      send->header_size = 1;
+      send->mlen = 1;
 
-         /* Finally, the payload */
-         setup_lsc_surface_descriptors(ubld, send, send->desc, binding, 0);
-         send->src[SEND_SRC_PAYLOAD1] = payload;
-         send->src[SEND_SRC_PAYLOAD2] = brw_reg();
+      uint32_t desc =
+         brw_dp_oword_block_rw_desc(devinfo, true /* align_16B */,
+                                    size_B.ud / 4, false /* write */);
 
-         s.invalidate_analysis(BRW_DEPENDENCY_INSTRUCTIONS |
-                               BRW_DEPENDENCY_VARIABLES);
-      } else {
-         const brw_builder ubld = brw_builder(inst).exec_all();
-         brw_reg header = brw_builder(&s, 8).exec_all().vgrf(BRW_TYPE_UD);
+      setup_surface_descriptors(ubld, send, desc, surf_type, binding);
 
-         ubld.group(8, 0).MOV(header,
-                              retype(brw_vec8_grf(0, 0), BRW_TYPE_UD));
-         ubld.group(1, 0).MOV(component(header, 2),
-                              brw_imm_ud(offset_B.ud / 16));
-
-         brw_send_inst *send = brw_transform_inst_to_send(ubld, inst);
-         inst = NULL;
-
-         send->sfid = GEN_SFID_HDC_READ_ONLY;
-         send->header_size = 1;
-         send->mlen = 1;
-
-         uint32_t desc =
-            brw_dp_oword_block_rw_desc(devinfo, true /* align_16B */,
-                                       size_B.ud / 4, false /* write */);
-
-         setup_surface_descriptors(ubld, send, desc, surf_type, binding);
-
-         send->src[SEND_SRC_PAYLOAD1] = header;
-         send->src[SEND_SRC_PAYLOAD2] = brw_reg(); /* unused for reads */
-
-         s.invalidate_analysis(BRW_DEPENDENCY_INSTRUCTIONS |
-                               BRW_DEPENDENCY_VARIABLES);
-      }
+      send->src[SEND_SRC_PAYLOAD1] = header;
+      send->src[SEND_SRC_PAYLOAD2] = brw_reg(); /* unused for reads */
 
       progress = true;
+   }
+
+   if (progress) {
+      s.invalidate_analysis(BRW_DEPENDENCY_INSTRUCTIONS |
+                            BRW_DEPENDENCY_VARIABLES);
    }
 
    return progress;

@@ -49,6 +49,37 @@ info on what was updated.
 Workarounds
 ===========
 
+KK_WORKAROUND_17
+----------------
+| macOS version: 26.x
+| Metal ticket: Not reported
+| Metal ticket status:
+| CTS test failure: ``dEQP-VK.spirv_assembly.instruction.compute.float_controls2.fp*.input_args.tanh_testedWithout_NotNaN_arg1_nan_arg2_one_res_nan_*``
+| Comments:
+
+Same issue as KK_WORKAROUND_14 but we need to add ``isNan`` to fix it
+
+| Log:
+| 2026-08-10: Workaround implemented
+
+KK_WORKAROUND_16
+----------------
+| macOS version: 27.0 beta (26A5353q)
+| Metal ticket: Not reported
+| Metal ticket status:
+| CTS test failure: ``dEQP-VK.robustness.robustness2.*.sampled_image.*``
+| Comments:
+
+On M5, if a texture read uses an OOB lod, the lod is clamped to a valid one
+and the read returns data from that level rather than (0, 0, 0, 1). M1 to M4
+chips do not behave like this. Based on workarounds in the HoneyKrisp driver,
+we suspect that the Metal compiler is implementing a workaround on M1-M4
+but not yet on M5.
+
+| Log:
+| 2026-07-24: Workaround implemented
+
+
 KK_WORKAROUND_15
 ----------------
 | macOS version: 27.0 beta (26A5353q)
@@ -74,11 +105,12 @@ KK_WORKAROUND_14
 
 Metal compiler will fold "NAN * 0.0" to "0.0" and "0.0 < abs(NAN)" to "true"
 even under blocks with pragma relaxed when the "0.0" value is constant even
-if relaxed mode preserves NAN values. Work around this by adding an always
-true conditional for multiplies such that "(false value) ? 1.0 : NAN * 0.0"
-and checking for NAN in conditionals such that "!isnan(x) && !isnan(y) && x == y"
-for less than, greater equal than and equal, while using OR and removing
-negation for not equal.
+if relaxed mode preserves NAN values. Work around this by forcing "safe"
+which correctly handles the comparison.
+
+| Log:
+| 2026-07-10: Workaround implemented
+| 2026-08-07: Modified workaround to use safe for the pragma instead of adding isNaN operations
 
 KK_WORKAROUND_13
 ----------------
@@ -108,7 +140,7 @@ KK_WORKAROUND_11
 ----------------
 | macOS version: 26.5
 | Metal ticket: FB22683138
-| Metal ticket status: Waiting resolution
+| Metal ticket status: Resolved in macOS 27 beta 5
 | CTS test failure: ``dEQP-VK.api.object_management.multithreaded_per_thread_device.merged_pipeline_cache``
 | Comments:
 
@@ -126,6 +158,10 @@ ensure that each device only has one compiler instance to share. `MTLDevice`
 instances are unique within the process, so no matter how many Vulkan devices
 we create, the same GPU uses the same `MTLDevice`. Each `MTL4Compiler` instance
 is still capable of performing concurrent compilation.
+
+| Log:
+| 2026-05-28: Workaround implemented
+| 2026-08-10: Resolved in macOS 27 beta 5
 
 KK_WORKAROUND_10
 ----------------
@@ -181,7 +217,7 @@ KK_WORKAROUND_8
 ---------------
 | macOS version: 26.4.1
 | Metal ticket: FB22579201 (@squidbus)
-| Metal ticket status: Waiting resolution
+| Metal ticket status: Resolved between macOS 26.5 and macOS 27 beta 5
 | CTS test failure: N/A
 | Comments:
 
@@ -204,6 +240,7 @@ minimum of 16K, prevening this scenario from occurring.
 
 | Log:
 | 2026-04-27: Workaround implemented
+| 2026-08-10: Confirmed fixed as of macOS 27 beta 5
 
 KK_WORKAROUND_7
 ---------------
@@ -393,9 +430,14 @@ The implemented solution is to change the ``while(true)`` loop with
 tricks the MSL compiler into believing we are not doing an infinite loop
 (wink wink).
 
+For M5, this workaround is needed in macOS 27 to avoid the compiler going
+into an infinite loop for ``dEQP-VK.reconvergence.maximal.compute.nesting3.0.32``,
+``3.2.12`` and ``6.1.3``.
+
 | Log:
 | 2025-09-08: Workaround implemented
 | 2026-06-22: Fixed in macOS 27 Beta (Build 26A5353q)
+| 2026-08-06: Renabled for M5 macOs 27 Beta (26A5388g)
 
 KK_WORKAROUND_1
 ---------------

@@ -143,8 +143,7 @@ pass(jay_function *func)
 
          if (I->zero_inactive) {
             if (!BITSET_TEST(inactive_are_0, I->cond_flag.reg)) {
-               jay_MOV(&b, I->cond_flag, 0)->type =
-                  JAY_TYPE_U | func->shader->dispatch_width;
+               jay_MOV(&b, I->cond_flag, 0)->type = jay_flag_type(func);
                BITSET_SET(inactive_are_0, I->cond_flag.reg);
             }
 

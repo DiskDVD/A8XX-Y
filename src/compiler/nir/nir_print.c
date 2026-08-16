@@ -1334,15 +1334,23 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
    if (num_srcs)
       fprintf(fp, ")");
 
+   unsigned num_printed_indices = 0;
+
    for (unsigned i = 0; i < info->num_indices; i++) {
       unsigned idx = info->indices[i];
 
-      /* Skip "general" to denoise since it is the unremarkable default case */
+      /* Skip some unremarkable default cases. */
       if (idx == NIR_INTRINSIC_PREAMBLE_CLASS &&
           nir_intrinsic_preamble_class(instr) == nir_preamble_class_general)
          continue;
+      if (idx == NIR_INTRINSIC_ARG_NUM_LSB_ZERO &&
+          nir_intrinsic_arg_num_lsb_zero(instr) == 0)
+         continue;
+      if (idx == NIR_INTRINSIC_ARG_UPPER_BOUND_U32_AMD &&
+          nir_intrinsic_arg_upper_bound_u32_amd(instr) == 0)
+         continue;
 
-      if (i == 0)
+      if (num_printed_indices++ == 0)
          fprintf(fp, " (");
       else
          fprintf(fp, ", ");
@@ -1475,6 +1483,9 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          if (instr->intrinsic == nir_intrinsic_quad_swizzle_amd) {
             for (unsigned i = 0; i < 4; i++)
                fprintf(fp, "%d", (mask >> (i * 2) & 3));
+         } else if (instr->intrinsic == nir_intrinsic_dpp8_swizzle_amd) {
+            for (unsigned i = 0; i < 8; i++)
+               fprintf(fp, "%d", (mask >> (i * 3) & 0x7));
          } else if (instr->intrinsic == nir_intrinsic_masked_swizzle_amd) {
             fprintf(fp, "((id & %d) | %d) ^ %d", mask & 0x1F,
                     (mask >> 5) & 0x1F,
@@ -1550,7 +1561,7 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
          case nir_intrinsic_load_per_vertex_input:
          case nir_intrinsic_load_input_vertex:
          case nir_intrinsic_load_coefficients_agx:
-         case nir_intrinsic_load_attribute_pan:
+         case nir_intrinsic_load_attr_pan:
          case nir_intrinsic_load_fs_coeffs_pco:
             mode = nir_var_shader_in;
             break;
@@ -1865,7 +1876,7 @@ print_intrinsic_instr(nir_intrinsic_instr *instr, print_state *state)
       }
       }
    }
-   if (info->num_indices)
+   if (num_printed_indices)
       fprintf(fp, ")");
 
    if (!state->shader)

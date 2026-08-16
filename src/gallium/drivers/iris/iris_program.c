@@ -78,12 +78,15 @@ iris_backend_compile(const struct iris_screen *screen,
    const struct intel_device_info *devinfo = screen->devinfo;
    nir_shader *nir = params->nir;
 
+   params->prog_data->source_hash = *(uint64_t *)nir->info.source_blake3;
+
    if (intel_use_jay(devinfo, nir->info.stage)) {
       struct jay_shader_bin *bin =
          jay_compile(devinfo, mem_ctx, nir,
                      (union brw_any_prog_data *)params->prog_data,
                      (union brw_any_prog_key *)params->key,
-                     params->archiver);
+                     params->archiver,
+                     NULL);
 
       return bin->kernel;
    } else {
@@ -1934,7 +1937,6 @@ iris_compile_vs(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
             .archiver = debug_archiver,
          },
       };
@@ -1967,7 +1969,6 @@ iris_compile_vs(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -2168,15 +2169,8 @@ iris_compile_tcs(struct iris_screen *screen,
       options = screen->elk->nir_options[MESA_SHADER_TESS_CTRL];
    struct elk_tcs_prog_key elk_key = iris_to_elk_tcs_key(screen, key);
 #endif
-   uint64_t source_hash;
 
-   if (ish) {
-      nir = nir_shader_clone(mem_ctx, ish->nir);
-      source_hash = ish->source_hash;
-   } else {
-      nir = iris_create_passthrough_tcs(mem_ctx, options, key);
-      source_hash = *(uint64_t*)nir->info.source_blake3;
-   }
+   nir = ish ? nir_shader_clone(mem_ctx, ish->nir) : iris_create_passthrough_tcs(mem_ctx, options, key);
 
    debug_archiver *debug_archiver =
       iris_debug_archiver_open(mem_ctx, screen, nir, key, sizeof(*key));
@@ -2202,7 +2196,6 @@ iris_compile_tcs(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = source_hash,
             .archiver = debug_archiver,
          },
       };
@@ -2226,7 +2219,6 @@ iris_compile_tcs(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -2412,7 +2404,6 @@ iris_compile_tes(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
             .archiver = debug_archiver,
          },
          .input_vue_map = &input_vue_map,
@@ -2443,7 +2434,6 @@ iris_compile_tes(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -2607,7 +2597,6 @@ iris_compile_gs(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
             .archiver = debug_archiver,
          },
       };
@@ -2638,7 +2627,6 @@ iris_compile_gs(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -2811,7 +2799,6 @@ iris_compile_fs(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
             .archiver = debug_archiver,
          },
 
@@ -2841,7 +2828,6 @@ iris_compile_fs(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -3164,7 +3150,6 @@ iris_compile_cs(struct iris_screen *screen,
             .key = &brw_key.base,
             .prog_data = (struct brw_stage_prog_data *)brw_prog_data,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
             .archiver = debug_archiver,
          },
       };
@@ -3187,7 +3172,6 @@ iris_compile_cs(struct iris_screen *screen,
             .mem_ctx = mem_ctx,
             .nir = nir,
             .log_data = dbg,
-            .source_hash = ish->source_hash,
          },
          .key = &elk_key,
          .prog_data = elk_prog_data,
@@ -3396,8 +3380,8 @@ iris_create_uncompiled_shader(struct iris_screen *screen,
       update_so_info(&ish->stream_output, nir->info.outputs_written);
    }
 
-   /* Use lowest dword of source shader blake3 for shader hash. */
-   ish->source_hash = *(uint32_t*)nir->info.source_blake3;
+   /* Use lowest qword of source shader blake3 for shader hash. */
+   ish->source_hash = *(uint64_t*)nir->info.source_blake3;
 
    if (screen->disk_cache) {
       /* Serialize the NIR to a binary blob that we can hash for the disk

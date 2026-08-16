@@ -206,8 +206,8 @@ to_gen_operand(
        * SIMD1 instructions and are never SIMD split.
        */
       assert(simd_offs == 0 || idx >= 0);
-      unsigned offs_B =
-         (d.reg * (f->shader->dispatch_width / 8)) + (hi ? 2 : 0);
+      unsigned flag_B = jay_type_size_bits(jay_flag_type(f)) / 8;
+      unsigned offs_B = (d.reg * flag_B) + (hi ? 2 : 0);
       R = gen_flag(offs_B / 2);
    } else if (d.file == J_ADDRESS) {
       R = gen_address(d.reg);
@@ -259,9 +259,10 @@ static const struct {
    /* clang-format off */
    OP(ADD3, ADD3, 3),
    OP(ADD, ADD, 2),
+   OP(ADD_RTNE, ADD, 2),
    OP(AND, AND, 2),
    OP(AND_U32_U16, AND, 2),
-   OP(AND_S32_SN, AND, 2),
+   OP(AND_SN_S32, AND, 2),
    OP(ASR, ASR, 2),
    OP(AVG, AVG, 2),
    OP(BFE, BFE, 3),
@@ -467,7 +468,7 @@ emit(struct jay_codegen *jc,
 
    case JAY_OPCODE_RELOC: {
       util_dynarray_append(&jc->relocs,
-                           ((struct intel_shader_reloc) {
+                           ((struct intel_shader_reloc){
                               .id = jay_reloc_param(I),
                               .type = INTEL_SHADER_RELOC_TYPE_MOV_IMM,
                               .offset = GEN_INST_BYTES * (jc->num_insts - 1),
@@ -590,6 +591,7 @@ emit(struct jay_codegen *jc,
       } else {
          gen->swsb = gen_swsb_null();
          gen->opcode = jay_mul_32_high(I) ? GEN_OP_MACH : GEN_OP_MACL;
+         gen->acc_wr_control = jc->devinfo->ver < 20;
       }
       break;
 

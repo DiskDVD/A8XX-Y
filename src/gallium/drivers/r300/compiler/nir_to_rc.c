@@ -1659,7 +1659,7 @@ static nir_def *
 ntr_lower_backend_tex_wrap(nir_builder *b, nir_def *coord, rc_wrap_mode wrapmode)
 {
    nir_def *xyz =
-      nir_channels(b, coord, BITFIELD_MASK(MIN2(coord->num_components, 3)));
+      nir_channels(b, coord, nir_component_mask(MIN2(coord->num_components, 3)));
 
    switch (wrapmode) {
    case RC_WRAP_REPEAT:
@@ -1746,7 +1746,7 @@ ntr_lower_backend_tex_instr(nir_builder *b, nir_tex_instr *tex, void *data)
 
    if (clamp_scale) {
       nir_def *xyz =
-         nir_channels(b, coord, BITFIELD_MASK(MIN2(coord->num_components, 3)));
+         nir_channels(b, coord, nir_component_mask(MIN2(coord->num_components, 3)));
       coord = ntr_tex_coord_replace_xyz(b, coord, nir_fsat(b, xyz));
 
       nir_def *factor =

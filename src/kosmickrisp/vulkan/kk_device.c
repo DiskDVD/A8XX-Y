@@ -47,7 +47,8 @@ static mtl_compiler *
 kk_acquire_compiler(struct kk_device *dev)
 {
    /* KK_WORKAROUND_11 */
-   if (dev->disabled_workarounds & BITFIELD64_BIT(11)) {
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+   if (pdev->settings.disabled_workarounds & BITFIELD64_BIT(11)) {
       return mtl_new_compiler(dev->mtl_handle);
    }
 
@@ -87,7 +88,8 @@ static void
 kk_release_compiler(struct kk_device *dev)
 {
    /* KK_WORKAROUND_11 */
-   if (dev->disabled_workarounds & BITFIELD64_BIT(11)) {
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+   if (pdev->settings.disabled_workarounds & BITFIELD64_BIT(11)) {
       mtl_release(dev->mtl_compiler_handle);
       return;
    }
@@ -234,37 +236,6 @@ kk_sampler_heap_remove(struct kk_device *dev, struct kk_rc_sampler *rc)
    simple_mtx_unlock(&h->lock);
 }
 
-static void
-kk_parse_device_environment_options(struct kk_device *dev)
-{
-   dev->gpu_capture_enabled =
-      debug_get_bool_option("MESA_KK_GPU_CAPTURE", false);
-   if (dev->gpu_capture_enabled) {
-      const char *capture_directory =
-         debug_get_option("MESA_KK_GPU_CAPTURE_DIRECTORY", NULL);
-      mtl_start_gpu_capture(dev->mtl_handle, capture_directory);
-   }
-
-   const char *list = debug_get_option("MESA_KK_DISABLE_WORKAROUNDS", "");
-   const char *all_workarounds = "all";
-   const size_t all_len = strlen(all_workarounds);
-   for (unsigned n; n = strcspn(list, ","), *list; list += MAX2(1, n)) {
-      if (n == all_len && !strncmp(list, all_workarounds, n)) {
-         dev->disabled_workarounds = UINT64_MAX;
-         break;
-      }
-
-      int index = atoi(list);
-      dev->disabled_workarounds |= BITFIELD64_BIT(index);
-   }
-
-   /* Workarounds resolved on macOS 27 */
-   if (ns_is_os_version_at_least(27, 0, 0)) {
-      dev->disabled_workarounds |= BITFIELD64_MASK(7);
-      dev->disabled_workarounds |= BITFIELD64_BIT(12);
-   }
-}
-
 static VkResult
 kk_get_timestamp(struct vk_device *device, uint64_t *timestamp)
 {
@@ -320,8 +291,6 @@ kk_CreateDevice(VkPhysicalDevice physicalDevice,
    dev->vk.command_dispatch_table = &dev->vk.dispatch_table;
    dev->vk.get_timestamp = kk_get_timestamp;
 
-   kk_parse_device_environment_options(dev);
-
    /* Create a new Metal pipeline compiler for the device */
    dev->mtl_compiler_handle = kk_acquire_compiler(dev);
    if (dev->mtl_compiler_handle == NULL)
@@ -358,6 +327,12 @@ kk_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto fail_sampler_heap;
 
+   if (pdev->settings.gpu_capture_enabled) {
+      const char *capture_directory =
+         debug_get_option("MESA_KK_GPU_CAPTURE_DIRECTORY", NULL);
+      mtl_start_gpu_capture(dev->mtl_handle, capture_directory);
+   }
+
    *pDevice = kk_device_to_handle(dev);
 
    return VK_SUCCESS;
@@ -389,13 +364,14 @@ VKAPI_ATTR void VKAPI_CALL
 kk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
    VK_FROM_HANDLE(kk_device, dev, _device);
+   struct kk_physical_device *pdev = kk_device_physical(dev);
 
    if (!dev)
       return;
 
    /* End capture before we start releasing resources. Otherwise, Metal capture
     * may run into issues. */
-   if (dev->gpu_capture_enabled) {
+   if (pdev->settings.gpu_capture_enabled) {
       mtl_stop_gpu_capture();
    }
 

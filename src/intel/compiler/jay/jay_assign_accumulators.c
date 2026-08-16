@@ -55,10 +55,10 @@ postra_liveness(jay_function *func)
       /* Calculate liveness locally */
       jay_foreach_successor(blk, succ, GPR) {
          BITSET_OR(blk->postra_gpr_live_out, blk->postra_gpr_live_out,
-                   succ->postra_gpr_live_in);
+                   (*succ)->postra_gpr_live_in);
       }
 
-      BITSET_DECLARE(live, JAY_NUM_PHYS_GRF);
+      BITSET_DECLARE(live, JAY_MAX_PHYS_GRF);
       memcpy(live, blk->postra_gpr_live_out, sizeof(live));
 
       jay_foreach_inst_in_block_rev(blk, ins) {
@@ -222,7 +222,7 @@ pass(jay_function *func)
 
    /* in_use[acc][IP] set if acc is in-use /before/ executing instruction IP */
    BITSET_WORD *in_use[JAY_MAX_ACCUMS];
-   unsigned nr_accums = func->shader->dispatch_width == 32 ? 2 : 4;
+   unsigned nr_accums = jay_num_accums(func->shader);
 
    for (unsigned i = 0; i < nr_accums; ++i) {
       in_use[i] = BITSET_LINEAR_ZALLOC(linctx, ip_bound);
@@ -235,13 +235,13 @@ pass(jay_function *func)
       util_dynarray_clear(&candidates);
 
       /* Live-set at each point in the program */
-      BITSET_DECLARE(live, JAY_NUM_PHYS_GRF);
+      BITSET_DECLARE(live, JAY_MAX_PHYS_GRF);
       memcpy(live, block->postra_gpr_live_out, sizeof(live));
 
       uint32_t ip = ip_bound;
-      uint32_t last_use_ip[JAY_NUM_PHYS_GRF] = { 0 };
+      uint32_t last_use_ip[JAY_MAX_PHYS_GRF] = { 0 };
       uint32_t pre_live = 0;
-      bool mac_candidates[JAY_NUM_PHYS_GRF] = { false };
+      bool mac_candidates[JAY_MAX_PHYS_GRF] = { false };
 
       jay_foreach_inst_in_block_rev(block, I) {
          --ip;
@@ -330,7 +330,7 @@ pass(jay_function *func)
       }
 
       uint32_t min_ip = ip;
-      uint8_t gpr_to_acc_p1[JAY_NUM_PHYS_GRF] = { 0 };
+      uint8_t gpr_to_acc_p1[JAY_MAX_PHYS_GRF] = { 0 };
 
       jay_foreach_inst_in_block_safe(block, I) {
          /* Rewrite operands using accumulators */

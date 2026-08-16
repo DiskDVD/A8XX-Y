@@ -46,8 +46,8 @@ bi_lower_bit_size(const nir_instr *instr, void *data)
       case nir_op_fexp2:
       case nir_op_flog2:
       case nir_op_fpow:
-         // Kraid can handle 32-bit fexp/flog/fpow
-         if (opts->use_kraid)
+         // Kraid can handle 16-bit fexp/flog/fpow on v12+
+         if (opts->use_kraid && pan_arch(opts->gpu_id) >= 12)
             return 0;
          FALLTHROUGH;
       case nir_op_fsin:
@@ -134,15 +134,27 @@ bi_vectorize_filter(const nir_instr *instr, const void *data)
    case nir_op_ball_fequal2:
    case nir_op_ball_fequal3:
    case nir_op_ball_fequal4:
+   case nir_op_ball_fequal5:
+   case nir_op_ball_fequal8:
+   case nir_op_ball_fequal16:
    case nir_op_bany_fnequal2:
    case nir_op_bany_fnequal3:
    case nir_op_bany_fnequal4:
+   case nir_op_bany_fnequal5:
+   case nir_op_bany_fnequal8:
+   case nir_op_bany_fnequal16:
    case nir_op_ball_iequal2:
    case nir_op_ball_iequal3:
    case nir_op_ball_iequal4:
+   case nir_op_ball_iequal5:
+   case nir_op_ball_iequal8:
+   case nir_op_ball_iequal16:
    case nir_op_bany_inequal2:
    case nir_op_bany_inequal3:
    case nir_op_bany_inequal4:
+   case nir_op_bany_inequal5:
+   case nir_op_bany_inequal8:
+   case nir_op_bany_inequal16:
       return 1;
    case nir_op_pack_uvec2_to_uint:
    case nir_op_pack_uvec4_to_uint:
@@ -429,77 +441,6 @@ bifrost_preprocess_nir(nir_shader *nir, uint64_t gpu_id)
    bi_optimize_loop(nir, gpu_id, true /* allow_copies */);
 
    NIR_PASS(_, nir, nir_lower_var_copies);
-}
-
-/*
- * Build a bit mask of varyings (by location) that are flatshaded. This
- * information is needed by lower_mediump_io, as we don't yet support 16-bit
- * flat varyings.
- *
- * Also varyings that are used as texture coordinates should be kept at fp32 so
- * the texture instruction may be promoted to VAR_TEX. In general this is a good
- * idea, as fp16 texture coordinates are not supported by the hardware and are
- * usually inappropriate. (There are both relevant CTS bugs here, even.)
- *
- * TODO: If we compacted the varyings with some fixup code in the vertex shader,
- * we could implement 16-bit flat varyings. Consider if this case matters.
- *
- * TODO: The texture coordinate handling could be less heavyhanded.
- */
-static bool
-bi_gather_texcoords(nir_builder *b, nir_instr *instr, void *data)
-{
-   uint64_t *mask = data;
-
-   if (instr->type != nir_instr_type_tex)
-      return false;
-
-   nir_tex_instr *tex = nir_instr_as_tex(instr);
-
-   int coord_idx = nir_tex_instr_src_index(tex, nir_tex_src_coord);
-   if (coord_idx < 0)
-      return false;
-
-   nir_src src = tex->src[coord_idx].src;
-   nir_scalar x = nir_scalar_resolved(src.ssa, 0);
-   nir_scalar y = nir_scalar_resolved(src.ssa, 1);
-
-   if (x.def != y.def)
-      return false;
-
-   nir_instr *parent = nir_def_instr(x.def);
-
-   if (parent->type != nir_instr_type_intrinsic)
-      return false;
-
-   nir_intrinsic_instr *intr = nir_instr_as_intrinsic(parent);
-
-   if (intr->intrinsic != nir_intrinsic_load_interpolated_input)
-      return false;
-
-   nir_io_semantics sem = nir_intrinsic_io_semantics(intr);
-   *mask |= BITFIELD64_BIT(sem.location);
-   return false;
-}
-
-static uint64_t
-bi_fp32_varying_mask(nir_shader *nir)
-{
-   uint64_t mask = 0;
-
-   assert(nir->info.stage == MESA_SHADER_FRAGMENT);
-
-   nir_foreach_shader_in_variable(var, nir) {
-      if (var->data.interpolation == INTERP_MODE_FLAT) {
-         unsigned slots = glsl_count_attribute_slots(var->type, false);
-         mask |= BITFIELD64_RANGE(var->data.location, slots);
-      }
-   }
-
-   nir_shader_instructions_pass(nir, bi_gather_texcoords, nir_metadata_all,
-                                &mask);
-
-   return mask;
 }
 
 static bool
@@ -895,39 +836,24 @@ bifrost_postprocess_nir(nir_shader *nir,
    NIR_PASS(_, nir, nir_opt_sink, move_all);
    NIR_PASS(_, nir, nir_opt_move, move_all);
 
-   /* The varying layout (if any) may have different bit sizes for some
-    * varyings than we have in the shader.  For descriptors, this isn't a
-    * problem as it's handled by the descriptor layout.  However, for direct
-    * loads and stores on Valhall+, we need the right bit sizes in the shader.
-    * We could do this in the back-end as we emit but it's easier for now to
-    * lower in NIR.  This also handles the case where we do a load from the
-    * fragment shader of something that isn't written by the vertex shader.
-    * In that case, we just return zero.
-    */
-   if (pan_arch(inputs->gpu_id) >= 9 && inputs->varying_layout)
-      NIR_PASS(_, nir, pan_nir_resize_varying_io, inputs->varying_layout);
-
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
       NIR_PASS(_, nir, nir_lower_is_helper_invocation);
       NIR_PASS(_, nir, pan_nir_lower_helper_invocation);
       NIR_PASS(_, nir, pan_nir_lower_sample_pos);
-      NIR_PASS(_, nir, pan_nir_lower_noperspective_fs,
-               &info->varyings.noperspective);
       NIR_PASS(_, nir, nir_lower_frag_coord_to_pixel_coord);
       NIR_PASS(_, nir, pan_nir_lower_var_special_pan);
 
-      /* TODO: should we do this in VS too? Should we do this earlier? */
-      NIR_PASS(_, nir, nir_lower_mediump_io,
-               nir_var_shader_in | nir_var_shader_out,
-               ~bi_fp32_varying_mask(nir), false);
+      NIR_PASS(_, nir, nir_lower_mediump_io, nir_var_shader_out, 0, false);
 
       NIR_PASS(_, nir, bifrost_nir_lower_load_output);
 
       /* Collect format varyings */
-      pan_varying_collect_formats(&info->varyings.formats,
-                                  nir, inputs->gpu_id,
-                                  inputs->trust_varying_flat_highp_types,
-                                  false /* lower mediump */);
+      pan_varying_collect_formats(&info->varyings.formats, nir, inputs->gpu_id);
+
+      NIR_PASS(_, nir, pan_nir_resize_varying_io, &info->varyings.formats,
+               inputs->varying_layout ?: &info->varyings.formats);
+      NIR_PASS(_, nir, nir_lower_io_to_scalar, nir_var_shader_in, NULL, NULL);
+      NIR_PASS(_, nir, nir_opt_vectorize_io, nir_var_shader_in, false);
 
       if (!inputs->is_blend)
          NIR_PASS(_, nir, pan_nir_lower_fs_inputs, inputs->gpu_id,
@@ -943,7 +869,8 @@ bifrost_postprocess_nir(nir_shader *nir,
          nir->info.outputs_written & (BITFIELD_BIT(FRAG_RESULT_DEPTH) |
                                       BITFIELD_BIT(FRAG_RESULT_STENCIL));
       const bool skip_atest = inputs->is_blit && !emit_zs;
-      NIR_PASS(_, nir, pan_nir_lower_fs_outputs, skip_atest);
+      NIR_PASS(_, nir, pan_nir_lower_fs_outputs, skip_atest,
+               inputs->fragcolor_nr_cbufs);
    } else if (nir->info.stage == MESA_SHADER_VERTEX) {
       NIR_PASS(_, nir, nir_lower_viewport_transform);
       NIR_PASS(_, nir, nir_lower_point_size, 1.0, 0.0);
@@ -953,6 +880,9 @@ bifrost_postprocess_nir(nir_shader *nir,
       memcpy(&info->varyings.formats, inputs->varying_layout,
              sizeof(*inputs->varying_layout));
 
+      NIR_PASS(_, nir, pan_nir_resize_varying_io, &info->varyings.formats,
+               &info->varyings.formats);
+
       info->vs.idvs = bi_should_idvs(nir, inputs);
 
       if (info->vs.idvs && nir->info.writes_memory)
@@ -961,6 +891,7 @@ bifrost_postprocess_nir(nir_shader *nir,
       /* Needs to run after lower_vs_atomics as it inserts operations between
        * ssbo_atomic and store_output */
       NIR_PASS(_, nir, pan_nir_lower_noperspective_vs);
+      NIR_PASS(_, nir, pan_nir_lower_vs_inputs, inputs->gpu_id);
       NIR_PASS(_, nir, pan_nir_lower_vs_outputs, inputs->gpu_id,
                inputs->varying_layout, info->vs.idvs,
                &info->vs.needs_extended_fifo);
@@ -968,6 +899,9 @@ bifrost_postprocess_nir(nir_shader *nir,
 
    NIR_PASS(_, nir, pan_nir_lower_tex, gpu_id);
    NIR_PASS(_, nir, pan_nir_lower_image, gpu_id);
+
+   /* Remove useless movs left behind from lower_io_to_scalar/vectorize_io */
+   NIR_PASS(_, nir, nir_opt_copy_prop);
 
    /* Why aren't we vectorizing nir_var_shader_temp?
     * Basically, the current RA doesn't know rematerialization and is still
@@ -1332,6 +1266,12 @@ bifrost_compile_shader_nir(nir_shader *nir,
    info->fau.count = inputs->fau.reserved;
 
    if (bi_use_kraid(nir, gpu_id)) {
+      if (inputs->fau.pushable_ubos) {
+         /* We can't push if there's a driver-reserved range */
+         assert(inputs->fau.reserved == 0);
+         NIR_PASS(_, nir, pan_nir_opt_push_ubo, inputs->fau.pushable_ubos,
+                  &info->fau, &info->ubo_mask);
+      }
 #ifdef WITH_PANFROST_RUST
       kraid_compile_nir(nir, inputs, binary, info);
 #endif

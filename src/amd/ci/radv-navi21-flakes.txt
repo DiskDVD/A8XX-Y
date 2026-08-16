@@ -11,9 +11,3 @@ dEQP-VK.pipeline.monolithic.image.suballocation.sampling_type.combined.view_type
 dEQP-VK.pipeline.monolithic.image.suballocation.sampling_type.combined.view_type.2d_array.format.r16g16_uint.count_1.size.13x13_array_of_3
 dEQP-VK.pipeline.monolithic.image.suballocation.sampling_type.separate.view_type.cube_array.format.r5g5b5a1_unorm_pack16.count_8.size.13x13_array_of_36
 dEQP-VK.synchronization.op.multi_queue.fence.write_image_fragment_read_copy_image.image_128x128_r16g16b16a16_uint_concurrent
-dEQP-VK.wsi.direct.colorspace.basic
-dEQP-VK.wsi.direct.colorspace.hdr
-dEQP-VK.wsi.direct.present_timing.basic.retired_swapchain
-dEQP-VK.wsi.direct_drm.colorspace.basic
-dEQP-VK.wsi.direct_drm.colorspace.hdr
-dEQP-VK.wsi.direct_drm.present_timing.basic.retired_swapchain

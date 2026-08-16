@@ -210,7 +210,6 @@ spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-3d.vert,Fail
 spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.frag,Fail
 spec@nv_image_formats@compiler@declaration-disallow-rgba16-unorm-cube.vert,Fail
 spec@oes_point_sprite@arb_point_sprite-checkerboard_gles1,Fail
-spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
 
 # https://gitlab.freedesktop.org/mesa/piglit/-/merge_requests/1136
 spec@arb_texture_rg@texwrap formats bordercolor,Fail
@@ -432,8 +431,6 @@ program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong16,Fa
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong2,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong4,Fail
 program@execute@builtin@builtin-ulong-popcount-1.2.generated@popcount ulong8,Fail
-program@execute@global-offset,Fail
-program@execute@global-offset@3d- input dependent,Fail
 program@run kernel with max work item sizes,Fail
 
 # Bisected to 6bc47e65 ("rusticl: Fix work group size validation")
@@ -602,10 +599,6 @@ vk_xfermodes3,Fail
 
 # Bisected to 08b5876c379 ("v3d: only expose rgba buffer-textures")
 TransferPixelsTest,Fail
-
-# uprev Piglit in Mesa
-spec@arb_texture_view@tex-view,Fail
-spec@glsl-1.30@execution@glsl-packed-back-color,Fail
 
 # VKCTS 1.4.5.3 -> 1.4.6.1 uprev
 dEQP-VK.robustness.buffer_access.through_pointers.graphics.writes.vertex.4B_in_memory_with_scalar_f32,Fail

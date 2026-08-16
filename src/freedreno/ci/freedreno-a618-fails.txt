@@ -106,6 +106,9 @@ spec@ext_framebuffer_multisample@sample-alpha-to-coverage 4 depth,Fail
 spec@ext_framebuffer_object@fbo-alphatest-nocolor,Fail
 spec@ext_framebuffer_object@fbo-alphatest-nocolor-ff,Fail
 
+spec@ext_texture_snorm@multisample-formats 2 gl_ext_texture_snorm,Fail
+spec@ext_texture_snorm@multisample-formats 4 gl_ext_texture_snorm,Fail
+
 spec@ext_transform_feedback@tessellation triangle_fan flat_first,Fail
 spec@ext_transform_feedback@tessellation triangle_strip flat_first,Fail
 spec@glsl-1.30@execution@texelfetch fs sampler3d 1x129x9-98x129x9,Fail
@@ -200,8 +203,6 @@ glx@glx-swap-pixmap-bad,Fail
 spec@!opengl 1.0@rasterpos@glsl_vs_ssbo,Fail
 spec@arb_occlusion_query@occlusion_query_order,Fail
 spec@arb_gpu_shader_fp64@execution@fs-indirect-temp-double-src,Crash
-spec@glsl-1.30@execution@fs-uint-to-float-of-extract-int16,Fail
-spec@glsl-1.30@execution@fs-uint-to-float-of-extract-int8,Fail
 spec@khr_texture_compression_astc@miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@miptree-gles srgb-fp@sRGB decode full precision,Fail
 spec@arb_base_instance@arb_base_instance-baseinstance-doesnt-affect-gl-instance-id,Fail
@@ -283,10 +284,6 @@ nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_co
 #Unexpected CL error: CL_SUCCESS 0
 #Expected CL error: CL_LINK_PROGRAM_FAILURE -17
 api@cllinkprogram,Fail
-
-# https://gitlab.freedesktop.org/mesa/mesa/-/issues/8408
-program@execute@global-offset,Fail
-program@execute@global-offset@3d- input dependent,Fail
 
 #
 ## freedreno issues:
@@ -490,3 +487,16 @@ dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_nonsubsampled_mul
 dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_nonsubsampled_with_offset,Fail
 gmem-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_nonsubsampled_with_offset,Fail
 gmem-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.monolithic.fdm_nonsubsampled_multilayer_with_offset,Fail
+
+#
+# OpenCL-CTS
+#
+
+# float controls?
+SPIRV new,Fail
+SPIRV new@op_neg_half,Fail
+SPIRV new@op_spec_constant_half_simple,Fail
+
+# crashes with wave128, passes with wave64 (and gen8+)
+Subgroups,Fail
+Subgroups@subgroup_functions_ballot,Fail

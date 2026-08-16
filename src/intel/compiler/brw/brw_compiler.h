@@ -514,12 +514,6 @@ struct brw_stage_prog_data {
    uint64_t source_hash;
 };
 
-/**
- * Convert a number of GRF registers used (grf_used in prog_data) into
- * a number of GRF register blocks supported by the hardware on PTL+.
- */
-unsigned ptl_register_blocks(unsigned grf_used);
-
 enum brw_pixel_shader_computed_depth_mode {
    BRW_PSCDEPTH_OFF   = 0, /* PS does not compute depth */
    BRW_PSCDEPTH_ON    = 1, /* PS computes depth; no guarantee about value */
@@ -614,6 +608,11 @@ struct brw_fs_prog_data {
     * Shader is ran at the coarse pixel shading dispatch rate (3DSTATE_CPS).
     */
    bool coarse_pixel_dispatch;
+
+   /**
+    * Whether the shader was compiled with a preference for SIMD32.
+    */
+   bool prefer_simd32;
 
    /**
     * Shader writes the SampleMask and this is AND-ed with the API's
@@ -827,6 +826,9 @@ struct brw_cs_prog_data {
 
    /* True if shader has any sample operation */
    bool uses_sampler;
+
+   /* True if the shader was compiled with SIMD32 forced */
+   bool force_simd32;
 
    struct {
       struct brw_push_const_block cross_thread;
@@ -1275,8 +1277,6 @@ struct brw_compile_params {
 
    uint64_t debug_flag;
 
-   uint64_t source_hash;
-
    debug_archiver *archiver;
 };
 
@@ -1543,6 +1543,22 @@ enum brw_topology_id
    /* A value composed of EU ID, thread ID & SIMD lane ID. */
    BRW_TOPOLOGY_ID_EU_THREAD_SIMD,
 };
+
+static inline unsigned
+intel_vrt_register_file_size(const struct intel_device_info *devinfo,
+                             unsigned size)
+{
+   if (devinfo->ver < 30)
+      return 128;
+
+   return MIN2(align(size, size > 192 ? 64 : 32), 256);
+}
+
+static inline unsigned
+intel_max_vrt_threads(const struct intel_device_info *devinfo, unsigned grfs)
+{
+   return devinfo->ver >= 30 ? MIN2(1024 / grfs, 10) : UINT32_MAX;
+}
 
 #ifdef __cplusplus
 } /* extern "C" */

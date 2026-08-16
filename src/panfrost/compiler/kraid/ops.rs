@@ -35,7 +35,10 @@ use std::num::FpCategory;
 macro_rules! bool_as_mod_str {
     ($s: ident . $mod: ident) => {
         if $s.$mod { stringify!(.$mod) } else { "" }
-    }
+    };
+    ($gate: expr, $display: expr) => {
+        if $gate { $display } else { "" }
+    };
 }
 
 // Code compilation bug: old rustc versions use
@@ -336,6 +339,12 @@ pub struct OpBranch {
     pub label: Label,
 }
 
+impl OpBranch {
+    pub fn is_unconditional(&self) -> bool {
+        self.cond.is_zero() && self.not
+    }
+}
+
 impl DisplayOp for OpBranch {
     fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BRANCH")
@@ -616,7 +625,7 @@ pub struct OpCSel {
 
 impl DisplayOp for OpCSel {
     fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "CSEL{}", self.cmp_type)
+        write!(f, "CSEL.{}", self.cmp_type)
     }
 
     fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -850,7 +859,8 @@ impl fmt::Display for FRound {
     }
 }
 
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
+#[repr(u8)]
+#[derive(Clone, Copy, Default, EnumAsU8, Eq, Hash, PartialEq)]
 pub enum FClamp {
     #[default]
     None,
@@ -869,6 +879,44 @@ impl FClamp {
             FClamp::ZeroToOne => (0.0, 1.0),
         };
         x.ieee_max(lo).ieee_min(hi)
+    }
+
+    pub fn is_none(&self) -> bool {
+        matches!(self, FClamp::None)
+    }
+
+    /// Take the maximum of two clamps and produce the least restrictive clamp
+    pub fn max(self, other: FClamp) -> FClamp {
+        use FClamp::*;
+        match self {
+            None => None,
+            ZeroToInf => match other {
+                ZeroToInf | ZeroToOne => ZeroToInf,
+                None | NegOneToOne => None,
+            },
+            NegOneToOne => match other {
+                ZeroToOne | NegOneToOne => NegOneToOne,
+                None | ZeroToInf => None,
+            },
+            ZeroToOne => other,
+        }
+    }
+
+    /// Take the minimum of two clamps and produce the most restrictive clamp
+    pub fn min(self, other: FClamp) -> FClamp {
+        use FClamp::*;
+        match self {
+            None => other,
+            ZeroToInf => match other {
+                None | ZeroToInf => ZeroToInf,
+                NegOneToOne | ZeroToOne => ZeroToOne,
+            },
+            NegOneToOne => match other {
+                None | NegOneToOne => NegOneToOne,
+                ZeroToInf | ZeroToOne => ZeroToOne,
+            },
+            ZeroToOne => ZeroToOne,
+        }
     }
 }
 
@@ -1961,7 +2009,10 @@ impl PerCompFoldable for OpIAdd {
 
 #[repr(C)]
 #[derive(Clone, Opcode)]
-#[variants(src_type in [S16, U16, V2S16, V2U16, S32, U32])]
+#[variants(src_type in [
+    S8, U8, V2S8, V2U8, V4S8, V4U8,
+    S16, U16, V2S16, V2U16, S32, U32
+])]
 pub struct OpICmp {
     pub dst: Dst,
 
@@ -2135,9 +2186,10 @@ impl Foldable for OpIDpAdd {
 #[repr(C)]
 #[derive(Clone, Opcode)]
 #[variants(dst_type in [
-    S8, U8, V2S8, V2U8, V4S8, V4U8,
-    S16, U16, V2S16, V2U16,
-    S32, U32, S64, U64,
+    I8, S8, U8, V2I8, V2S8, V2U8, V4I8, V4S8, V4U8,
+    I16, S16, U16, V2I16, V2S16, V2U16,
+    // I64 doesn't exist because 64-bit multiply requires widening
+    I32, S32, U32, S64, U64,
 ])]
 pub struct OpIMul {
     pub dst: Dst,
@@ -2288,6 +2340,45 @@ impl fmt::Display for MemAccess {
             MemAccess::EStream => write!(f, ".estream"),
             MemAccess::Force => write!(f, ".force"),
         }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Opcode)]
+#[variants(dst_type in [
+    F16, V2F16, V3F16, V4F16,
+    S16, V2S16, V3S16, V4S16,
+    U16, V2U16, V3U16, V4U16,
+    F32, V2F32, V3F32, V4F32,
+    A32, V2A32, V3A32, V4A32,
+    S32, V2S32, V3S32, V4S32,
+    U32, V2U32, V3U32, V4U32,
+])]
+pub struct OpLdAttr {
+    pub dst: Dst,
+    pub dst_type: DataType,
+
+    #[src_type(I32)]
+    pub vertex_index: Src,
+    #[src_type(I32)]
+    pub instance_index: Src,
+    #[src_type(I32)]
+    pub handle: Src,
+}
+
+impl DisplayOp for OpLdAttr {
+    fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "LD_ATTR.{}", self.dst_type)
+    }
+
+    fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {} {}",
+            self.fmt_src(&self.vertex_index),
+            self.fmt_src(&self.instance_index),
+            self.fmt_handle_src(&self.handle),
+        )
     }
 }
 
@@ -2456,7 +2547,7 @@ impl DisplayOp for OpLdTex {
             " {} {} {}",
             self.fmt_src(&self.coords[0]),
             self.fmt_src(&self.coords[1]),
-            self.fmt_src(&self.handle),
+            self.fmt_handle_src(&self.handle),
         )
     }
 }
@@ -2508,7 +2599,7 @@ impl DisplayOp for OpLeaPka {
             f,
             " {} {}",
             self.fmt_src(&self.offset),
-            self.fmt_src(&self.handle),
+            self.fmt_handle_src(&self.handle),
         )
     }
 }
@@ -2535,7 +2626,7 @@ impl DisplayOp for OpLeaTex {
             " {} {} {}",
             self.fmt_src(&self.coords[0]),
             self.fmt_src(&self.coords[1]),
-            self.fmt_src(&self.handle),
+            self.fmt_handle_src(&self.handle),
         )
     }
 }
@@ -2546,6 +2637,9 @@ impl DisplayOp for OpLeaTex {
 pub struct OpLoad {
     pub dst: Dst,
     pub dst_type: DataType,
+
+    /// Used to determine if this LOAD should count towards the fill count
+    pub is_tls: bool,
     pub access: MemAccess,
 
     #[src_type(I64)]
@@ -2561,7 +2655,8 @@ impl DisplayOp for OpLoad {
     fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} #{}",
+            "{}{} {} #{}",
+            bool_as_mod_str!(self.is_tls, "tls"),
             self.access,
             self.fmt_src(&self.addr),
             self.offset,
@@ -2700,6 +2795,152 @@ impl VirtualOpcode for OpMkVecV4I8 {
 
     fn src_supports_swizzle(&self, _src: &Src, swizzle: Swizzle) -> bool {
         swizzle.replicates_byte()
+    }
+}
+
+/// MMUL.v2f16 sources are 4x8 matrices with each MMUL acting on a 4x4
+/// sub-matrix.  Similarly, MMUL.f16 is a 4x4*4x8 matrix multiply where the A
+/// matrix is a 4x4 sub-matrix of the 4x8 input matrix.  This enum selects
+/// which of the two 4x4 sub-matrices in the 4x8 matrix gets read.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum F16SubMat {
+    /// No submatrix operation.  This is used for F32 4x4 source matrices.
+    None,
+    /// Selects the first 4 columns of the 4x8 input matrix
+    F0,
+    /// Selects the last 4 columns of the 4x8 input matrix
+    F1,
+}
+
+impl fmt::Display for F16SubMat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            F16SubMat::None => Ok(()),
+            F16SubMat::F0 => write!(f, ".f0"),
+            F16SubMat::F1 => write!(f, ".f1"),
+        }
+    }
+}
+
+/// A matrix multiply and add operation on a 4x8 F16 accumulator matrix.  The
+/// multiply operation is fundamentally a (4x4)*(8x4) -> (8x4) matrix multiply.
+/// However, since all F16 MMUL sources read an 8x4 matrix, the A source acts
+/// on a 4x4 sub-matrix of the 4x8 source matrix, specified by `a_submat`.
+#[repr(C)]
+#[derive(Clone, Opcode)]
+pub struct OpMMulF16 {
+    #[dst_type(F16)]
+    pub dst: Dst,
+
+    pub a_submat: F16SubMat,
+
+    #[src_type(V2F16)]
+    pub a: Src,
+    #[src_type(V2F16)]
+    pub b: Src,
+    #[src_type(F16)]
+    pub c: Src,
+}
+
+impl DisplayOp for OpMMulF16 {
+    fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MMUL.f16")
+    }
+
+    fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            " {}{} {} {}",
+            self.fmt_src(&self.a),
+            self.a_submat,
+            self.fmt_src(&self.b),
+            self.fmt_src(&self.c),
+        )
+    }
+}
+
+/// A matrix multiply and add operation on a 4x4 F32 accumulator matrix.  The
+/// multiply operation is fundamentally a (4x4)*(4x4) -> (4x4) matrix multiply
+/// and can operate either on 4x4 F32 source matrices or on 4x4 sub-matrices
+/// of 4x8 F16 matrices.  In the later case, `a_submat` and `b_submat` specify
+/// which of the two possible 4x4 sub-matrices are read from the 4x8 F16 source
+/// matrix.
+#[repr(C)]
+#[derive(Clone, Opcode)]
+#[variants(src_type in [V2F16, F32])]
+pub struct OpMMulF32 {
+    #[dst_type(F32)]
+    pub dst: Dst,
+
+    pub src_type: DataType,
+    pub a_submat: F16SubMat,
+    pub b_submat: F16SubMat,
+
+    pub a: Src,
+    pub b: Src,
+    #[src_type(F32)]
+    pub c: Src,
+}
+
+impl DisplayOp for OpMMulF32 {
+    fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MMUL.{}", self.src_type)
+    }
+
+    fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            " {}{} {}{} {}",
+            self.fmt_src(&self.a),
+            self.a_submat,
+            self.fmt_src(&self.b),
+            self.b_submat,
+            self.fmt_src(&self.c),
+        )
+    }
+}
+
+/// A matrix multiply and add operation on a 4x4 S32 or U32 accumulator matrix.
+/// The matrix multiply operation is a (4x16)*(16x4) -> (4x4) matrix multiply
+/// acting on source matrices of (possibly signed) bytes.
+#[repr(C)]
+#[derive(Clone, Opcode)]
+#[variants(mul_type in [V4S8, V4U8])]
+pub struct OpMMulI32 {
+    #[dst_type(X32)]
+    pub dst: Dst,
+
+    /// The type of this multiplication,  This isn't quite the source type or
+    /// destination type.
+    pub mul_type: DataType,
+    pub saturate: bool,
+
+    pub a_type: DataType,
+    pub b_type: DataType,
+
+    #[src_type(V4I8)]
+    pub a: Src,
+    #[src_type(V4I8)]
+    pub b: Src,
+    #[src_type(X32)]
+    pub c: Src,
+}
+
+impl DisplayOp for OpMMulI32 {
+    fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MMUL.{}", self.mul_type)
+    }
+
+    fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            " {}.{} {}.{} {}",
+            self.fmt_src(&self.a),
+            self.a_type,
+            self.fmt_src(&self.b),
+            self.b_type,
+            self.fmt_src(&self.c),
+        )
     }
 }
 
@@ -3157,6 +3398,11 @@ impl DisplayOp for OpStCvt {
 #[variants(src_type in [I8, I16, I24, I32, I48, I64, I96, I128])]
 pub struct OpStore {
     pub src_type: DataType,
+
+    /// Used to determine if this STORE should count towards the spill count
+    pub is_tls: bool,
+    /// Is this a glPointSize write?
+    pub is_psiz: bool,
     pub access: MemAccess,
 
     pub data: Src,
@@ -3174,7 +3420,9 @@ impl DisplayOp for OpStore {
     fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} {} #{}",
+            "{}{}{} {} {} #{}",
+            bool_as_mod_str!(self.is_tls, "tls"),
+            bool_as_mod_str!(self.is_psiz, "psiz"),
             self.access,
             self.fmt_src(&self.data),
             self.fmt_src(&self.addr),
@@ -3634,6 +3882,7 @@ pub enum Op {
     IMul(Box<OpIMul>),
     ISub(Box<OpISub>),
     IToF32(Box<OpIToF32>),
+    LdAttr(Box<OpLdAttr>),
     LdCvt(Box<OpLdCvt>),
     LdExp(Box<OpLdExp>),
     LdGClk(Box<OpLdGClk>),
@@ -3647,6 +3896,9 @@ pub enum Op {
     MkVecV2I8I16(Box<OpMkVecV2I8I16>),
     MkVecV2I16(Box<OpMkVecV2I16>),
     MkVecV4I8(Box<OpMkVecV4I8>),
+    MMulF16(Box<OpMMulF16>),
+    MMulF32(Box<OpMMulF32>),
+    MMulI32(Box<OpMMulI32>),
     Mov(Box<OpMov>),
     Mux(Box<OpMux>),
     Nop(OpNop),
@@ -3698,5 +3950,23 @@ impl Op {
                 | Op::Store(_)
                 | Op::StCvt(_)
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clamp_min_max() {
+        for a in FClamp::VARIANTS.iter() {
+            assert!(a.min(a) == a);
+            assert!(a.max(a) == a);
+            for b in FClamp::VARIANTS.iter() {
+                assert!(a.min(b) == b.min(a));
+                assert!(a.max(b) == b.max(a));
+                assert!(a.min(a.max(b)) == a);
+            }
+        }
     }
 }

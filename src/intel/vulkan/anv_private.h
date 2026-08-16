@@ -999,8 +999,7 @@ struct anv_pipeline_binding {
    /** Offset in the descriptor buffer
     *
     * Relative to anv_descriptor_set::desc_addr. This is useful for
-    * ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_DIRECT, to generate the binding
-    * table entry.
+    * ANV_SHADER_BINDING_MODE_LEGACY, to generate the binding table entry.
     */
    uint32_t set_offset;
 
@@ -1096,8 +1095,8 @@ struct anv_pipeline_bind_map {
    unsigned char                                sampler_blake3[BLAKE3_KEY_LEN];
    unsigned char                                push_blake3[BLAKE3_KEY_LEN];
 
-   /* enum anv_descriptor_set_layout_type */
-   uint16_t layout_type;
+   /* enum anv_shader_binding_mode */
+   uint16_t binding_mode;
    /* enum anv_pipeline_bind_mask */
    uint16_t binding_mask;
 
@@ -1908,6 +1907,8 @@ struct anv_queue {
 
    struct anv_async_submit                  *init_submit;
    struct anv_async_submit                  *init_companion_submit;
+
+   uint64_t metrics_library_configuration;
 };
 
 struct nir_xfb_info;
@@ -2708,6 +2709,8 @@ struct anv_device {
 
     uint32_t                                    queue_count;
     struct anv_queue  *                         queues;
+    /* Bitfield of queues active that can use buffer/image views */
+    VkQueueFlagBits                             view_queues;
 
     struct anv_scratch_pool                     scratch_pool;
     struct anv_scratch_pool                     protected_scratch_pool;
@@ -2855,7 +2858,8 @@ struct anv_device {
 
     struct {
        simple_mtx_t  mutex;
-       struct radix_sort_vk *radix_sort;
+       struct radix_sort_vk *radix_sort_64;
+       struct radix_sort_vk *radix_sort_96;
        struct vk_acceleration_structure_build_args build_args;
    } accel_struct_build;
 
@@ -2894,12 +2898,6 @@ anv_get_first_render_queue_index(struct anv_physical_device *pdevice)
    }
 
    UNREACHABLE("Graphics capable queue family not found");
-}
-
-static inline struct anv_state_pool *
-anv_device_get_general_state_pool(struct anv_device *device)
-{
-   return &device->general_state_pool;
 }
 
 static inline struct anv_state_pool *
@@ -3691,18 +3689,11 @@ struct anv_descriptor_set_binding_layout {
    struct anv_descriptor_set_layout_sampler *samplers;
 };
 
-enum anv_descriptor_set_layout_type {
-   ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_UNKNOWN,
-   ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_INDIRECT,
-   ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_DIRECT,
-   ANV_PIPELINE_DESCRIPTOR_SET_LAYOUT_TYPE_BUFFER,
-};
-
 struct anv_descriptor_set_layout {
    struct vk_descriptor_set_layout vk;
 
-   /* Type of descriptor set layout */
-   enum anv_descriptor_set_layout_type type;
+   /* Binding mode */
+   enum anv_shader_binding_mode binding_mode;
 
    /* Number of bindings in this descriptor set */
    uint32_t binding_count;
@@ -4501,7 +4492,6 @@ struct anv_simple_shader {
    struct anv_cmd_buffer *cmd_buffer;
    /* State stream used for various internal allocations */
    struct anv_state_stream *dynamic_state_stream;
-   struct anv_state_stream *general_state_stream;
    /* Where to emit the commands (can be different from cmd_buffer->batch) */
    struct anv_batch *batch;
    /* Shader to use */
@@ -4520,7 +4510,26 @@ struct anv_simple_shader {
  * per-stage array in anv_cmd_state.
  */
 struct anv_bind_point_state {
+   /**
+    * Binding mode used by the currently bound shaders
+    */
+   enum anv_shader_binding_mode binding_mode;
+   /**
+    * Bound descriptors in ANV_SHADER_BINDING_MODE_LEGACY
+    */
    struct anv_descriptor_set *descriptors[MAX_SETS];
+   /**
+    * Highest number of descriptor bound in descriptors[]
+    */
+   uint32_t max_bound_descriptors;
+   /**
+    * Push descriptor, only used in ANV_SHADER_BINDING_MODE_LEGACY &
+    * ANV_SHADER_BINDING_MODE_BUFFER modes.
+    */
+   struct anv_push_descriptor_set push_descriptor;
+   /**
+    * State associated with ANV_SHADER_BINDING_MODE_BUFFER mode.
+    */
    struct {
       bool             bound;
       /**
@@ -4541,7 +4550,6 @@ struct anv_bind_point_state {
        */
       struct anv_state state;
    } descriptor_buffers[MAX_SETS];
-   struct anv_push_descriptor_set push_descriptor;
 
    struct anv_push_constants push_constants;
 
@@ -4655,8 +4663,7 @@ struct anv_cmd_graphics_state {
    struct intel_urb_config urb_cfg;
 
    uint32_t indirect_data_stride;
-   enum u_tristate indirect_data_stride_aligned : 2;
-
+   bool indirect_data_stride_set : 1;
 
    bool kill_pixel : 1;
    bool uses_xfb : 1;
@@ -4747,13 +4754,6 @@ struct anv_cmd_ray_tracing_state {
    bool trace_rays_active;
 };
 
-enum anv_cmd_descriptor_buffer_mode {
-   ANV_CMD_DESCRIPTOR_BUFFER_MODE_UNKNOWN,
-   ANV_CMD_DESCRIPTOR_BUFFER_MODE_LEGACY,
-   ANV_CMD_DESCRIPTOR_BUFFER_MODE_BUFFER,
-   ANV_CMD_DESCRIPTOR_BUFFER_MODE_HEAP,
-};
-
 enum anv_color_aux_op_class {
    /* Non color related operation class or rendering */
    ANV_COLOR_AUX_OP_CLASS_NONE,
@@ -4816,13 +4816,13 @@ struct anv_cmd_state {
     * anv_device::dynamic_state_pool or anv_device::dynamic_state_pool_db for
     * the dynamic state heap.
     */
-   enum anv_cmd_descriptor_buffer_mode          current_db_mode;
+   enum anv_shader_binding_mode                 current_binding_mode;
 
    /**
     * Whether the command buffer has pending descriptor buffers bound it. This
-    * variable changes before anv_device::current_db_mode.
+    * variable changes before anv_device::current_binding_mode.
     */
-   enum anv_cmd_descriptor_buffer_mode          pending_db_mode;
+   enum anv_shader_binding_mode                 pending_binding_mode;
 
    struct {
       /**
@@ -4859,11 +4859,17 @@ struct anv_cmd_state {
    VkShaderStageFlags                           push_constants_dirty;
 
    struct {
+      bool                                      dirty;
       uint64_t                                  surfaces_address;
       uint64_t                                  samplers_address;
+   }                                            descriptor_heap;
+
+   struct {
       bool                                      dirty;
       VkShaderStageFlags                        offsets_dirty;
       uint64_t                                  address[MAX_SETS];
+      int8_t                                    surfaces_buffer;
+      int8_t                                    samplers_buffer;
    }                                            descriptor_buffers;
 
    /* Last programmed 3DSTATE_BINDING_TABLE_POOL_ALLOC address */
@@ -4996,7 +5002,6 @@ struct anv_cmd_buffer {
    /* Stream objects for storing temporary data */
    struct anv_state_stream                      surface_state_stream;
    struct anv_state_stream                      dynamic_state_stream;
-   struct anv_state_stream                      general_state_stream;
    struct anv_state_stream                      indirect_push_descriptor_stream;
    struct anv_state_stream                      push_descriptor_buffer_stream;
 
@@ -5282,9 +5287,6 @@ anv_cmd_buffer_alloc_surface_states(struct anv_cmd_buffer *cmd_buffer,
                                     uint32_t count);
 struct anv_state
 anv_cmd_buffer_alloc_dynamic_state(struct anv_cmd_buffer *cmd_buffer,
-                                   uint32_t size, uint32_t alignment);
-struct anv_state
-anv_cmd_buffer_alloc_general_state(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t size, uint32_t alignment);
 static inline struct anv_state
 anv_cmd_buffer_alloc_temporary_state(struct anv_cmd_buffer *cmd_buffer,
@@ -6470,6 +6472,7 @@ anv_cmd_buffer_ensure_rcs_companion(struct anv_cmd_buffer *cmd_buffer);
 
 void
 anv_cmd_buffer_set_rt_state(struct vk_command_buffer *vk_cmd_buffer,
+                            struct vk_pipeline_layout *vk_pipeline_layout,
                             VkDeviceSize scratch_size,
                             uint32_t ray_queries,
                             const uint8_t *dynamic_descriptor_offsets);
@@ -6757,6 +6760,9 @@ struct anv_query_pool {
 
    /* Video encoding queries */
    VkVideoCodecOperationFlagsKHR                codec;
+
+   /* Metrics Library handle */
+   void*                                        metrics_library_query_pool;
 };
 
 static inline uint32_t khr_perf_query_preamble_offset(const struct anv_query_pool *pool,
@@ -6986,6 +6992,8 @@ enum anv_vid_mem_av1_types {
    ANV_VID_MEM_AV1_CDF_DEFAULTS_2,
    ANV_VID_MEM_AV1_CDF_DEFAULTS_3,
    ANV_VID_MEM_AV1_DBD_BUFFER,
+   ANV_VID_MEM_AV1_TILE_SIZE_STREAMOUT,
+   ANV_VID_MEM_AV1_ENCODE_TILE_BITSTREAM_ACCUM,
    ANV_VID_MEM_AV1_MAX,
 };
 
@@ -7229,7 +7237,6 @@ struct anv_utrace_submit {
 
    /* Stream for temporary allocations */
    struct anv_state_stream dynamic_state_stream;
-   struct anv_state_stream general_state_stream;
 
    /* Last fully read 64bit timestamp (used to rebuild the upper bits of 32bit
     * timestamps), the timestamp is not scaled to the CPU time domain.

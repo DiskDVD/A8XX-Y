@@ -157,7 +157,7 @@ bool anv_nir_lower_unaligned_dispatch(nir_shader *shader);
 
 bool anv_nir_lower_resource_intel(nir_shader *shader,
                                   const struct anv_physical_device *device,
-                                  enum anv_descriptor_set_layout_type desc_type);
+                                  enum anv_shader_binding_mode binding_mode);
 
 bool anv_nir_add_base_work_group_id(nir_shader *shader);
 

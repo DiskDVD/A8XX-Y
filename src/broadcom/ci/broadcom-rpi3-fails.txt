@@ -933,6 +933,8 @@ spec@arb_fragment_program@minmax,Fail
 spec@arb_framebuffer_object@fbo-attachments-blit-scaled-linear,Fail
 spec@arb_framebuffer_object@fbo-blit-stretch,Fail
 spec@arb_framebuffer_object@fbo-mipmap-copypix,Fail
+spec@arb_framebuffer_object@framebuffer-blit-oblong tall,Fail
+spec@arb_framebuffer_object@framebuffer-blit-oblong wide,Fail
 spec@arb_framebuffer_object@mixed-buffer-sizes,Fail
 spec@arb_framebuffer_srgb@arb_framebuffer_srgb-srgb_conformance,Fail
 spec@arb_internalformat_query2@all internalformat_<x>_size pname checks,Fail

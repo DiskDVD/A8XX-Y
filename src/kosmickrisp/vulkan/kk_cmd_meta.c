@@ -29,9 +29,9 @@ kk_cmd_bind_map_buffer(struct vk_command_buffer *vk_cmd,
    if (unlikely(!buf.gpu))
       return VK_ERROR_OUT_OF_POOL_MEMORY;
 
-   /* Need to retain since VkBuffers release the mtl_handle too */
+   /* Need to retain since VkBuffers release the metal.handle too */
    mtl_retain(buf.buffer);
-   buffer->mtl_handle = buf.buffer;
+   buffer->metal.handle = buf.buffer;
    buffer->vk.device_address = buf.gpu;
    *map_out = buf.cpu;
 

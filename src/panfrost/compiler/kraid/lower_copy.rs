@@ -42,7 +42,7 @@ fn lower_copy(b: &mut impl Builder, copy: OpCopy) {
                 logic_op: LogicOp::And,
                 not_result: false,
                 src0: dst_reg.into(),
-                shift: Src::imm_u8(0),
+                shift: 0_u8.into(),
                 src2: (!mask).into(),
             });
             if imm != 0 {
@@ -53,7 +53,7 @@ fn lower_copy(b: &mut impl Builder, copy: OpCopy) {
                     logic_op: LogicOp::Or,
                     not_result: false,
                     src0: dst_reg.into(),
-                    shift: Src::imm_u8(0),
+                    shift: 0_u8.into(),
                     src2: (imm & mask).into(),
                 });
             }
@@ -80,7 +80,7 @@ fn lower_copy(b: &mut impl Builder, copy: OpCopy) {
                 b.push_op(OpMkVecV2I8I16 {
                     dst: dst_reg.into(),
                     srcs,
-                    accum: Src::imm_u16(0),
+                    accum: 0_u16.into(),
                 });
             } else {
                 let mut srcs =
@@ -147,8 +147,8 @@ fn lower_copy(b: &mut impl Builder, copy: OpCopy) {
                 logic_op: LogicOp::None,
                 not_result: false,
                 src0: copy.src,
-                shift: Src::imm_u8(0),
-                src2: 0.into(),
+                shift: 0_u8.into(),
+                src2: 0_u32.into(),
             });
         }
     }

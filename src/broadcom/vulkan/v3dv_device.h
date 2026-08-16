@@ -294,6 +294,13 @@ struct v3dv_device {
    uint32_t bo_size;
    uint32_t bo_count;
 
+   /* Monotonically increasing id used to give VK_EXT_device_memory_report
+    * a memObjectId that stays unique across BO cache reuse, since the
+    * cache can hand back the same struct v3dv_bo (and thus the same
+    * kernel handle) for what is logically a new allocation.
+    */
+   uint32_t bo_report_id;
+
    /* Event handling resources.
     *
     * Our implementation of events uses a BO to store event state (signaled vs
@@ -319,7 +326,7 @@ struct v3dv_device {
       /* Vulkan resources to access the event BO from shaders. We have a
        * pipeline that sets the state of an event and another that waits on
        * a single event. Both pipelines require access to the event state BO,
-       * for which we need to allocate a single descripot set.
+       * for which we need to allocate a single descriptor set.
        */
       VkBuffer buffer;
       VkDeviceMemory mem;

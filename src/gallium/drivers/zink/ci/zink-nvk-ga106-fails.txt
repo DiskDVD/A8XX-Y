@@ -2465,7 +2465,6 @@ program@execute@global-memory@(16 x 1 x 1) (16 x 1 x 1),Fail
 program@execute@global-memory@(64 x 1 x 1) (4 x 1 x 1),Fail
 program@execute@global-memory@2 global memory objects,Fail
 program@execute@global-memory@Simple,Fail
-program@execute@global-offset,Fail
 program@execute@global-offset@1D- global_size 4 0 0- global_offset 9 0 0,Fail
 program@execute@global-offset@1D- global_size 4 0 0- global_offset 9 8 0,Fail
 program@execute@global-offset@1D- global_size 4 0 0- global_offset 9 8 7,Fail

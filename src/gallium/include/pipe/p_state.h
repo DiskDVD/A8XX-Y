@@ -440,8 +440,19 @@ struct pipe_framebuffer_state
 
    /** multiple color buffers for multiple render targets */
    uint8_t nr_cbufs;
+
    /** true if pixel local storage is enabled */
-   bool pls_enabled;
+   bool pls_enabled:1;
+
+   /**
+    * Additional color buffers aren't explicitly written by the fragment
+    * shader but are downscaled 2x from the previous color buffer. This is
+    * used by some GPUs to output multiple mipmaps at once.
+    */
+   bool downscale_cbufs:1;
+
+   uint8_t _pad:6;
+
    /** used for multiview */
    uint8_t viewmask;
    struct pipe_surface cbufs[PIPE_MAX_COLOR_BUFS];
