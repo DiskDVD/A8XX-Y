@@ -59,8 +59,37 @@ class State(object):
 s = State()
 
 def add_gpus(ids, info):
+    validate_gpus(ids, info)
     for id in ids:
         s.gpus[id] = info
+
+def gpu_name_list(ids):
+    return ", ".join(id.name for id in ids)
+
+def validate_gpus(ids, info):
+    if info.chip == CHIP.A8XX.value:
+        validate_a8xx_ubwc_caps(ids, info)
+
+def validate_a8xx_ubwc_caps(ids, info):
+    required_props = [
+        "has_coherent_ubwc_flag_caches",
+        "has_ubwc_linear_mipmap_fallback",
+        "supports_uav_ubwc",
+        "ubwc_unorm_snorm_int_compatible",
+        "ubwc_all_formats_compatible",
+    ]
+
+    missing_props = [
+        prop for prop in required_props
+        if not getattr(info.props, prop, False)
+    ]
+
+    if missing_props:
+        raise RuntimeError(
+            "A8XX device-info entry %s must keep required UBWC "
+            "capabilities enabled: %s" %
+            (gpu_name_list(ids), ", ".join(missing_props))
+        )
 
 class GPUId(object):
     def __init__(self, gpu_id = None, chip_id = None, name=None):
