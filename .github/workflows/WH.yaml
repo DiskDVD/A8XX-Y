@@ -22,12 +22,12 @@ jobs:
       - name: Fetch donor repo and cherry-pick
         run: |
           # Подключаем репозиторий whitebelyash
-          git remote add donor https://github.com/whitebelyash/mesa-unified
-          git fetch donor turnip/gen8
+          git remote add donor https://github.com/DiskDVD/A8XX-Y
+          git fetch donor A8XX-old
 
           # Запуск cherry-pick для ваших коммитов
           echo "Переносим коммиты..."
-          git cherry-pick d869843 9f96d9a f2a3c43 7a9a28d c1f0d8f 9137d26
+          git cherry-pick 0a961f9 8faee38 2cb6eec 7d07335
 
       - name: Push changes
         run: git push origin HEAD:A8XX
