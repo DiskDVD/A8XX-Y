@@ -23,7 +23,7 @@ jobs:
         run: |
           # Подключаем репозиторий whitebelyash
           git remote add donor https://github.com/DiskDVD/A8XX-Y
-          git fetch donor A8XX-old
+          git fetch donor A8xx-old
 
           # Запуск cherry-pick для ваших коммитов
           echo "Переносим коммиты..."
