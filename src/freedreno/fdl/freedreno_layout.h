@@ -75,6 +75,12 @@ struct fdl_explicit_layout {
    uint32_t pitch;
 };
 
+enum fdl_image_usage {
+   FDL_IMAGE_USAGE_SAMPLED    = BITFIELD_BIT(0),
+   FDL_IMAGE_USAGE_STORAGE    = BITFIELD_BIT(1),
+   FDL_IMAGE_USAGE_ATTACHMENT = BITFIELD_BIT(2),
+};
+
 /**
  * General layout params for images.
  */
@@ -111,6 +117,8 @@ struct fdl_image_params {
    bool sparse;
 
    bool force_disable_linear_fallback;
+
+   uint32_t usage;
 
    uint32_t plane;
 };
@@ -238,10 +246,19 @@ fdl_surface_offset(const struct fdl_layout *layout, unsigned level,
 }
 
 static inline uint32_t
+fdl_ubwc_layer_stride(const struct fdl_layout *layout, unsigned level)
+{
+   if (layout->layer_first)
+      return layout->ubwc_layer_size;
+   else
+      return layout->ubwc_slices[level].size0;
+}
+
+static inline uint32_t
 fdl_ubwc_offset(const struct fdl_layout *layout, unsigned level, unsigned layer)
 {
    const struct fdl_slice *slice = &layout->ubwc_slices[level];
-   return slice->offset + layer * layout->ubwc_layer_size;
+   return slice->offset + layer * fdl_ubwc_layer_stride(layout, level);
 }
 
 /* Minimum layout width to enable tiling/UBWC, and width below which
