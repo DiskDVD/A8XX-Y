@@ -1616,12 +1616,34 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2,
-         GPUProps(shading_rate_matches_vk = True)],
+         GPUProps(
+             sysmem_ccu_color_cache_fraction = CCUColorCacheFraction.FULL.value,
+             sysmem_per_ccu_color_cache_size = 256 * 1024,
+             sysmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
+             sysmem_per_ccu_depth_cache_size = 128 * 1024,
+
+            gmem_ccu_color_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_color_cache_size = 1536 * 1024, 
+            gmem_ccu_depth_cache_fraction = CCUColorCacheFraction.HALF.value,
+            gmem_per_ccu_depth_cache_size = 1536 * 1024,
+
+             gmem_vpc_attr_buf_size = 131072,
+             gmem_vpc_pos_buf_size = 65536,     
+             gmem_vpc_bv_pos_buf_size = 98304,  
+             
+             has_fs_tex_prefetch = False, # Пока тестово, на основе А829
+             has_salu_int_narrowing_quirk = True,
+             enable_tp_ubwc_flag_hint = True,
+             disable_gmem = False,
+             gmem_size = 18 * 1024 * 1024,
+             shading_rate_matches_vk = True,
+                  
+                 )],
         num_ccu = 6,
         num_slices = 3,
         tile_align_w = 96,
         tile_align_h = 32,
-        tile_max_w = 16416,
+        tile_max_w = 16384,  # Прерыдущее значение 16416.
         tile_max_h = 16384,
         num_vsc_pipes = 32,
         cs_shared_mem_size = 64 * 1024,
