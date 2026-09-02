@@ -952,6 +952,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
           instr->intrinsic == nir_intrinsic_bindless_image_samples ||
           instr->intrinsic == nir_intrinsic_get_ubo_size ||
           instr->intrinsic == nir_intrinsic_get_ssbo_size ||
+          instr->intrinsic == nir_intrinsic_load_ssbo_address ||
           instr->intrinsic == nir_intrinsic_image_heap_levels ||
           instr->intrinsic == nir_intrinsic_image_heap_size ||
           instr->intrinsic == nir_intrinsic_image_heap_samples)
@@ -1165,6 +1166,10 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
          const unsigned slots =
             glsl_count_attribute_slots(glsl_get_array_element(var->type), false);
          shader->info.per_view_outputs |= BITFIELD64_RANGE(var->data.location, slots);
+      }
+      if (var->data.yuv) {
+         assert(shader->info.stage == MESA_SHADER_FRAGMENT);
+         shader->info.fs.yuv_color = true;
       }
    }
 

@@ -42,6 +42,7 @@ struct mtl_sampler_packed {
    enum mtl_sampler_min_mag_filter min_filter;
    enum mtl_sampler_min_mag_filter mag_filter;
    enum mtl_sampler_mip_filter mip_filter;
+   enum mtl_sampler_reduction_mode reduction_mode;
 
    enum mtl_compare_function compare_func;
    float min_lod;

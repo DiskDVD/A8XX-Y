@@ -174,8 +174,7 @@ instr_cost(nir_instr *instr, const void *data)
          }
 
          if (const_ubo && nir_src_is_const(intrin->src[1]) &&
-             (instr->block->cf_node.parent->type == nir_cf_node_function ||
-              (nir_intrinsic_access(intrin) & ACCESS_CAN_SPECULATE)))
+             ir3_nir_is_prefetchable(intrin))
             return 0;
 
          /* TODO: get actual numbers for ldc */
@@ -336,16 +335,15 @@ ir3_def_is_rematerializable_for_preamble(nir_def *def,
       nir_intrinsic_instr *intrin = nir_def_as_intrinsic(def);
       switch (intrin->intrinsic) {
       case nir_intrinsic_load_ubo:
-         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
-                                                         preamble_defs) &&
-            ir3_def_is_rematerializable_for_preamble(intrin->src[1].ssa,
+         return ir3_nir_is_prefetchable(intrin) &&
+            ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
                                                      preamble_defs) &&
-            (nir_def_block(def)->cf_node.parent->type ==
-             nir_cf_node_function ||
-             (nir_intrinsic_access(intrin) & ACCESS_CAN_SPECULATE));
+            ir3_def_is_rematerializable_for_preamble(intrin->src[1].ssa,
+                                                     preamble_defs);
       case nir_intrinsic_bindless_resource_ir3:
-         return ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
-                                                         preamble_defs);
+         return ir3_nir_is_prefetchable(intrin) &&
+            ir3_def_is_rematerializable_for_preamble(intrin->src[0].ssa,
+                                                     preamble_defs);
       case nir_intrinsic_load_preamble:
          return !!preamble_defs;
       default:
@@ -775,7 +773,7 @@ ir3_nir_opt_prefetch_descriptors(nir_shader *nir, struct ir3_shader_variant *v)
                should_prefetch_descriptor(descs[1])))
             continue;
 
-         /* Each descriptor must be rematerializable and speculatable */
+         /* Each descriptor must be rematerializable */
          if (descs[0] &&
              (!is_descriptor_prefetchable(descs[0]) ||
               !ir3_def_is_rematerializable_for_preamble(descs[0], preamble_defs)))

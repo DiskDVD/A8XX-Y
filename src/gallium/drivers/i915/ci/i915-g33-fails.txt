@@ -403,7 +403,6 @@ spec@arb_texture_rectangle@texwrap rect proj bordercolor@GL_RGBA8- projected- bo
 spec@ati_fragment_shader@ati_fragment_shader-render-ops,Fail
 spec@ati_fragment_shader@ati_fragment_shader-render-ops@mov 8*c0,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 
 spec@ext_direct_state_access@program-uniform,Fail
@@ -612,12 +611,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec4-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-float-float,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat2-mat2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat3-float,Fail
@@ -656,14 +649,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-mat4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec3,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat2-mat2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat3-float,Fail

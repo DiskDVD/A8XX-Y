@@ -196,6 +196,12 @@ enum mtl_sampler_mip_filter {
    MTL_SAMPLER_MIP_FILTER_LINEAR = 2,
 };
 
+enum mtl_sampler_reduction_mode {
+   MTL_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE = 0,
+   MTL_SAMPLER_REDUCTION_MODE_MINIMUM = 1,
+   MTL_SAMPLER_REDUCTION_MODE_MAXIMUM = 2,
+};
+
 enum mtl_compare_function {
    MTL_COMPARE_FUNCTION_NEVER = 0,
    MTL_COMPARE_FUNCTION_LESS = 1,
@@ -300,6 +306,11 @@ enum mtl_math_mode {
 enum mtl_math_floating_point_functions {
    MTL_MATH_FLOATING_POINT_FUNCTIONS_FAST = 0,
    MTL_MATH_FLOATING_POINT_FUNCTIONS_PRECISE = 1,
+};
+
+enum mtl_language_version {
+   MTL_LANGUAGE_VERSION_4_0 = 0x40000,
+   MTL_LANGUAGE_VERSION_4_1 = 0x40001,
 };
 
 /** STRUCTURES */

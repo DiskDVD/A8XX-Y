@@ -133,6 +133,8 @@ amd_common_files = files(
   'ac_sqtt.h',
   'ac_rgp.c',
   'ac_rgp.h',
+  'ac_rdf.c',
+  'ac_rdf.h',
   'ac_msgpack.c',
   'ac_msgpack.h',
   'amd_family.c',
@@ -236,7 +238,7 @@ libamd_common = static_library(
     inc_include, inc_src, inc_amd, inc_virtio_gpu,
   ],
   dependencies : [dep_llvm.partial_dependency(compile_args: true, includes: true)] + [
-    dep_thread, dep_elf, dep_libdrm_amdgpu, dep_valgrind,
+    dep_thread, dep_elf, dep_libdrm_amdgpu, dep_valgrind, dep_zstd,
     idep_mesautil, idep_nir_headers, idep_nir, idep_amd_generated_headers
   ],
   link_with: [ link_with ],

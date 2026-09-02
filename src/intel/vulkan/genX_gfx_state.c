@@ -1428,7 +1428,7 @@ update_te(struct anv_gfx_dynamic_state *hw_state,
          distrib_mode = TEDMODE_OFF;
 
       /* Debug feature for hang analysis */
-      if (!device->physical->instance->drirc.debug.te_distribution)
+      if (!device->physical->drirc.debug.te_distribution)
          distrib_mode = TEDMODE_OFF;
 
       SET(TE, te.TessellationDistributionMode, distrib_mode);
@@ -1783,7 +1783,7 @@ update_blend_state(struct anv_gfx_dynamic_state *hw_state,
                    bool has_fs_stage,
                    bool has_fs_dual_src)
 {
-   const struct anv_instance *instance = device->physical->instance;
+   const struct anv_physical_device *pdevice = device->physical;
    const uint8_t color_writes = dyn->cb.color_write_enables;
    bool has_writeable_rt =
       has_fs_stage &&
@@ -1955,7 +1955,7 @@ update_blend_state(struct anv_gfx_dynamic_state *hw_state,
             DestinationBlendFactor = BLENDFACTOR_ONE;
       }
 
-      if (instance->drirc.debug.wa_14018912822 &&
+      if (pdevice->drirc.debug.wa_14018912822 &&
           intel_needs_workaround(device->info, 14018912822) &&
           dyn->ms.rasterization_samples > 1) {
          if (DestinationBlendFactor == BLENDFACTOR_ZERO) {
@@ -2027,7 +2027,7 @@ update_viewports(struct anv_gfx_dynamic_state *hw_state,
                  const struct anv_cmd_graphics_state *gfx,
                  const struct anv_device *device)
 {
-   const struct anv_instance *instance = device->physical->instance;
+   const struct anv_physical_device *pdevice = device->physical;
    const VkViewport *viewports = dyn->vp.viewports;
 
    const float scale = dyn->vp.depth_clip_negative_one_to_one ? 0.5f : 1.0f;
@@ -2056,8 +2056,8 @@ update_viewports(struct anv_gfx_dynamic_state *hw_state,
          };
 
          /* Fix depth test misrenderings by lowering translated depth range */
-         if (instance->drirc.debug.lower_depth_range_rate != 1.0f)
-            sfv.ViewportMatrixElementm32 *= instance->drirc.debug.lower_depth_range_rate;
+         if (pdevice->drirc.debug.lower_depth_range_rate != 1.0f)
+            sfv.ViewportMatrixElementm32 *= pdevice->drirc.debug.lower_depth_range_rate;
 
          const uint32_t fb_size_max = 1 << 14;
          uint32_t x_min = 0, x_max = fb_size_max;
@@ -2252,10 +2252,10 @@ update_tbimr_info(struct anv_gfx_dynamic_state *hw_state,
                   const struct anv_cmd_graphics_state *gfx,
                   const struct intel_l3_config *l3_config)
 {
-   const struct anv_instance *instance = device->physical->instance;
+   const struct anv_physical_device *pdevice = device->physical;
    unsigned fb_width, fb_height, tile_width, tile_height;
 
-   if (instance->drirc.debug.tbimr &&
+   if (pdevice->drirc.debug.tbimr &&
        calculate_render_area(gfx, &fb_width, &fb_height) &&
        calculate_tile_dimensions(device, gfx, l3_config,
                                  fb_width, fb_height,
@@ -2699,7 +2699,7 @@ cmd_buffer_repack_gfx_state(struct anv_gfx_dynamic_state *hw_state,
                             const struct anv_cmd_graphics_state *gfx)
 {
    struct anv_device *device = cmd_buffer->device;
-   struct anv_instance *instance = device->physical->instance;
+   struct anv_physical_device *pdevice = device->physical;
 
 #define INIT(category, name) \
    .name = hw_state->category.name
@@ -2823,9 +2823,9 @@ cmd_buffer_repack_gfx_state(struct anv_gfx_dynamic_state *hw_state,
    if (IS_DIRTY(VF)) {
       anv_gfx_pack(vf, GENX(3DSTATE_VF), vf) {
 #if GFX_VERx10 >= 125
-         vf.GeometryDistributionEnable = instance->drirc.debug.vf_distribution;
+         vf.GeometryDistributionEnable = pdevice->drirc.debug.vf_distribution;
 #endif
-         vf.ComponentPackingEnable = instance->drirc.perf.vf_comp_packing;
+         vf.ComponentPackingEnable = pdevice->drirc.perf.vf_comp_packing;
          SET(vf, vf, IndexedDrawCutIndexEnable);
          SET(vf, vf, CutIndex);
       }
@@ -2880,7 +2880,7 @@ cmd_buffer_repack_gfx_state(struct anv_gfx_dynamic_state *hw_state,
    if (IS_DIRTY(VF_SGVS_INSTANCING))
       anv_gfx_copy_variable(vf_sgvs_instancing, MESA_SHADER_VERTEX, vs.vf_sgvs_instancing);
 
-   if (instance->drirc.perf.vf_comp_packing &&
+   if (pdevice->drirc.perf.vf_comp_packing &&
        IS_DIRTY(VF_COMPONENT_PACKING)) {
       anv_gfx_copy(vf_component_packing, GENX(3DSTATE_VF_COMPONENT_PACKING),
                    MESA_SHADER_VERTEX, vs.vf_component_packing);
@@ -3531,7 +3531,7 @@ emit_wa_18020335297_dummy_draw(struct anv_cmd_buffer *cmd_buffer)
    }
    anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_VF), vf) {
       vf.GeometryDistributionEnable =
-         cmd_buffer->device->physical->instance->drirc.debug.vf_distribution;
+         cmd_buffer->device->physical->drirc.debug.vf_distribution;
    }
 #endif
 
@@ -3668,7 +3668,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_batch *batch = &cmd_buffer->batch;
    struct anv_device *device = cmd_buffer->device;
-   const struct anv_instance *instance = device->physical->instance;
+   const struct anv_physical_device *pdevice = device->physical;
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
    const struct vk_dynamic_graphics_state *dyn =
       &cmd_buffer->vk.dynamic_graphics_state;
@@ -3711,6 +3711,13 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
 
 #define IS_DIRTY(name) BITSET_TEST(hw_state->emit_dirty, ANV_GFX_STATE_##name)
 
+#if INTEL_WA_14024997852_GFX_VER
+   if (IS_DIRTY(WA_14024997852) &&
+       intel_needs_workaround(device->info, 14024997852)) {
+      genX(setup_autostrip_state)(cmd_buffer, !hw_state->autostrip_disabled);
+   }
+#endif
+
    /*
     * Values provided by push constants
     */
@@ -3721,13 +3728,6 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
                                                 VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
       gfx->base->push_constants_state = ANV_STATE_NULL;
    }
-
-#if INTEL_WA_14024997852_GFX_VER
-   if (IS_DIRTY(WA_14024997852) &&
-       intel_needs_workaround(device->info, 14024997852)) {
-      genX(setup_autostrip_state)(cmd_buffer, !hw_state->autostrip_disabled);
-   }
-#endif
 
    if (IS_DIRTY(FS_CONFIG)) {
       push_consts->drv_data.gfx.fs_config = hw_state->fs_config;
@@ -3792,7 +3792,7 @@ cmd_buffer_gfx_state_emission(struct anv_cmd_buffer *cmd_buffer)
       anv_batch_emit_gfx(batch, GENX(3DSTATE_VF_SGVS_2), vf_sgvs_2);
 #endif
 
-   if (instance->drirc.perf.vf_comp_packing &&
+   if (pdevice->drirc.perf.vf_comp_packing &&
        IS_DIRTY(VF_COMPONENT_PACKING)) {
       anv_batch_emit_gfx(batch, GENX(3DSTATE_VF_COMPONENT_PACKING),
                          vf_component_packing);

@@ -64,10 +64,17 @@ void jay_assign_accumulators(jay_shader *s);
 
 const char *jay_file_prefix(enum jay_file file);
 void jay_print_type(FILE *f, enum jay_type t);
-void jay_print_inst(FILE *fp, jay_block *block, jay_inst *I, unsigned *lu);
-void jay_print_block(FILE *f, jay_block *block);
+void jay_print_inst_with_lu(
+   FILE *fp, jay_function *func, jay_block *block, jay_inst *I, unsigned *lu);
+void jay_print_block(FILE *f, jay_function *func, jay_block *block);
 void jay_print_func(FILE *fp, jay_function *func);
 void jay_print(FILE *f, jay_shader *s);
+
+static inline void
+jay_print_inst(FILE *fp, jay_function *func, jay_inst *I)
+{
+   jay_print_inst_with_lu(fp, func, NULL, I, NULL);
+}
 
 #ifndef NDEBUG
 void jay_archive(jay_shader *s, const char *name, unsigned idx);

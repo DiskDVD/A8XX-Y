@@ -1085,7 +1085,7 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
             /* The full flush preamble should also wait for previous shader work to finish. */
             flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
             if (queue->qf == RADV_QUEUE_GENERAL)
-               flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH;
+               flush_bits |= RADV_CMD_FLAG_VS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH;
          }
 
          radv_cs_emit_cache_flush(ws, cs, gfx_level, NULL, 0, flush_bits, &sqtt_flush_bits, 0);

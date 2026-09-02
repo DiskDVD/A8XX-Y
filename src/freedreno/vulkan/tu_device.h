@@ -726,4 +726,16 @@ tu_bo_init_new_cached(struct tu_device *dev, struct vk_object_base *base,
       flags, NULL, name);
 }
 
+/* Return BO flags necessary for IBs */
+static inline enum tu_bo_alloc_flags
+tu_bo_ib_flags(struct tu_device *dev)
+{
+   (void)dev; /* TODO don't do this workaround when newer FW comes out */
+   /* All known firmwares have a bug where preemption can cause the wrong IB
+    * contents to be fetched if there is 32B rollover (i.e. the IB crosses a
+    * 4GB boundary). Avoid rollover here to workaround it.
+    */
+   return TU_BO_ALLOC_NO_32B_ROLLOVER;
+}
+
 #endif /* TU_DEVICE_H */

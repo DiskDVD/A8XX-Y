@@ -233,7 +233,6 @@ spec@arb_texture_rectangle@texwrap rect proj bordercolor@GL_RGBA8- projected- bo
 spec@arb_vertex_program@big-param,Fail
 spec@arb_vertex_program@clip-plane-transformation arb,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 # segfault around starting the CopyMultiTexSubImage tests.
 spec@ext_direct_state_access@multi-texture,Crash
@@ -327,34 +326,6 @@ spec@ext_texture_srgb@texwrap formats-s3tc bordercolor-swizzled@GL_COMPRESSED_SR
 spec@ext_texture_srgb@texwrap formats-s3tc bordercolor-swizzled@GL_COMPRESSED_SRGB_ALPHA- swizzled- border color only,Fail
 spec@ext_texture_srgb@texwrap formats-s3tc bordercolor-swizzled@GL_COMPRESSED_SRGB_S3TC_DXT1_EXT- swizzled- border color only,Fail
 spec@ext_texture_srgb@texwrap formats-s3tc bordercolor-swizzled@GL_COMPRESSED_SRGB- swizzled- border color only,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@clipping@clip-plane-transformation clipvert_pos,Fail
 spec@glsl-1.10@execution@clipping@clip-plane-transformation fixed,Fail
 spec@glsl-1.10@execution@clipping@clip-plane-transformation pos_clipvert,Fail
@@ -599,26 +570,7 @@ spec@arb_texture_rectangle@copyteximage rect samples=2,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=4,Fail
 
 # Added on 2025-01-30
-dEQP-GLES2.functional.shaders.operator.selection.highp_float_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_int_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_ivec2_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_ivec3_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_ivec4_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_vec2_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_vec3_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.selection.highp_vec4_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.sequence.no_side_effects.highp_bool_vec2_fragment,Fail
-dEQP-GLES2.functional.shaders.operator.sequence.side_effects.highp_bool_vec2_fragment,Fail
-spec@!opengl 1.0@gl-1.0-dlist-materials,Fail
-spec@!opengl 1.0@gl-1.0-spot-light,Fail
-spec@!opengl 1.1@dlist-color-material,Fail
-spec@!opengl 1.1@draw-arrays-colormaterial,Fail
-spec@!opengl 1.1@gl-1.1-color-material-array,Fail
-spec@!opengl 1.1@infinite-spot-light,Fail
-spec@!opengl 1.2@draw-elements-vs-inputs,Fail
-spec@!opengl 1.2@gl-1.2-rescale-normal,Fail
 spec@!opengl 1.4@gl-1.4-polygon-offset,Fail
-spec@!opengl 1.5@normal3b3s-invariance-byte,Fail
 spec@arb_draw_buffers@fbo-mrt-alphatest,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-no-draw-buffer-zero 2,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-no-draw-buffer-zero 4,Fail
@@ -628,10 +580,11 @@ spec@glsl-1.10@execution@variable-indexing@fs-input-array-vec2-index-rd,Fail
 # uprev Piglit in Mesa
 spec@!opengl 1.1@polygon-mode-offset@config 3: Expected blue pixel in center,Fail
 spec@!opengl 1.1@polygon-mode-offset@config 4: Expected blue pixel in center,Fail
-spec@!opengl 1.1@push-pop-color-material,Fail
 spec@arb_fragment_program@sparse-samplers,Fail
 spec@ext_framebuffer_object@fbo-readpixels-depth-formats,Fail
 spec@glsl-1.10@execution@built-in-functions@vs-sign-vec4,Fail
+spec@glsl-1.10@execution@glsl-fs-texture2d-mipmap-const-bias-01,Fail
+spec@glsl-1.10@execution@samplers@glsl-fs-sampler-numbering-2,Fail
 
 # Nightly run expectations update
 KHR-GLES2.core.internalformat.texture2d.depth_component_unsigned_int_depth_component,Fail

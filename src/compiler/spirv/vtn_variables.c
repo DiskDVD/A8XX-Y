@@ -943,7 +943,10 @@ vtn_get_builtin_location(struct vtn_builder *b,
       } else if (b->shader->info.stage == MESA_SHADER_GEOMETRY) {
          *location = VARYING_SLOT_LAYER;
          *mode = nir_var_shader_out;
-      } else if (b->supported_capabilities.ShaderViewportIndexLayerEXT &&
+      } else if ((b->supported_capabilities.ShaderViewportIndexLayerEXT ||
+                  b->supported_capabilities.ShaderLayer ||
+                  b->supported_capabilities.MeshShadingEXT ||
+                  b->supported_capabilities.MeshShadingNV) &&
                (b->shader->info.stage == MESA_SHADER_VERTEX ||
                 b->shader->info.stage == MESA_SHADER_TESS_EVAL ||
                 b->shader->info.stage == MESA_SHADER_MESH)) {
@@ -957,7 +960,10 @@ vtn_get_builtin_location(struct vtn_builder *b,
       *location = VARYING_SLOT_VIEWPORT;
       if (b->shader->info.stage == MESA_SHADER_GEOMETRY) {
          *mode = nir_var_shader_out;
-      } else if (b->supported_capabilities.ShaderViewportIndexLayerEXT &&
+      } else if ((b->supported_capabilities.ShaderViewportIndexLayerEXT ||
+                  b->supported_capabilities.ShaderViewportIndex ||
+                  b->supported_capabilities.MeshShadingEXT ||
+                  b->supported_capabilities.MeshShadingNV) &&
                (b->shader->info.stage == MESA_SHADER_VERTEX ||
                 b->shader->info.stage == MESA_SHADER_TESS_EVAL ||
                 b->shader->info.stage == MESA_SHADER_MESH)) {

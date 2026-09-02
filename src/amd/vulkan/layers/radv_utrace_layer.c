@@ -92,7 +92,8 @@ radv_utrace_write_timestamp(struct u_trace *ut, void *cs, void *timestamps, uint
    if (suspend_cond_render)
       radv_suspend_conditional_rendering(cmd_buffer);
 
-   cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
+   cmd_buffer->state.flush_bits |=
+      RADV_CMD_FLAG_VS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
 
    radv_emit_cache_flush(cmd_buffer);
 

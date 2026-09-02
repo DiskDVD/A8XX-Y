@@ -38,3 +38,6 @@ dEQP-VK.rasterization.line_continuity.line-strip,Crash
 dEQP-VK.memory_model.write_after_read.core11.u32.coherent.fence_fence.atomicwrite.workgroup.payload_local.image.guard_local.image.comp,Crash
 dEQP-VK.memory_model.write_after_read.core11.u32.coherent.fence_fence.atomicwrite.subgroup.payload_local.image.guard_local.image.comp,Crash
 dEQP-VK.memory_model.write_after_read.core11.u32.coherent.fence_fence.atomicwrite.device.payload_local.image.guard_local.image.comp,Crash
+dEQP-VK.binding_model.shader_access.secondary_cmd_buf.bind.uniform_buffer_dynamic.vertex.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_nonzero,Crash
+dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.with_template.uniform_buffer_dynamic.fragment.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_nonzero,Crash
+dEQP-VK.binding_model.shader_access.secondary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.descriptor_array.offset_view_zero_dynamic_nonzero,Crash

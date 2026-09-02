@@ -1006,6 +1006,10 @@ impl InstrEncVariant {
                     // Physical fields only show up as sources if we can't
                     // automatically calculate them.
                     if f.expr.is_some() {
+                        // A hardcoded slot (exact="slot0") is still a message
+                        if f.name == "message_slot_index" {
+                            info.is_message = true;
+                        }
                         continue;
                     }
                     let restrict = f.restrict.clone();

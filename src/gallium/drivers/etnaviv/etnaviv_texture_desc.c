@@ -176,6 +176,14 @@ etna_texture_desc_fill(struct etna_context *ctx,
       break;
    }
 
+   int msaa_xscale = 1, msaa_yscale = 1;
+   assert(res->base.nr_samples <= 1 ||
+          res->base.nr_samples == ETNA_MAX_SAMPLES);
+   translate_samples_to_xyscale(res->base.nr_samples, &msaa_xscale,
+                                &msaa_yscale);
+   base_width *= msaa_xscale;
+   base_height *= msaa_yscale;
+
 #define DESC_SET(x, y) buf[(TEXDESC_##x)>>2] = (y)
    DESC_SET(CONFIG0, COND(!ext && !astc, VIVS_TE_SAMPLER_CONFIG0_FORMAT(format))
                    | VIVS_TE_SAMPLER_CONFIG0_TYPE(target_hw) |
@@ -191,6 +199,7 @@ etna_texture_desc_fill(struct etna_context *ctx,
    DESC_SET(LINEAR_STRIDE, res->levels[0].stride);
    DESC_SET(VOLUME, etna_log2_fixp88(base_depth));
    DESC_SET(SLICE, res->levels[0].layer_stride);
+   DESC_SET(CONFIG3, COND(res->base.nr_samples > 1, TE_SAMPLER_CONFIG3_MSAA));
    DESC_SET(3D_CONFIG, VIVS_TE_SAMPLER_3D_CONFIG_DEPTH(base_depth));
    DESC_SET(ASTC0, COND(astc, VIVS_NTE_SAMPLER_ASTC0_ASTC_FORMAT(format)) |
                    COND(astc && util_format_is_srgb(sv->base.format),

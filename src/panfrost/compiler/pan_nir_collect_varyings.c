@@ -154,29 +154,6 @@ walk_varyings(UNUSED nir_builder *b, nir_instr *instr, void *data)
    if (sem.no_varying && !is_clip_dist_vs_output)
       return false;
 
-   nir_alu_type base_type = nir_alu_type_get_base_type(type);
-   unsigned size = nir_alu_type_get_type_size(type);
-   assert(base_type & (nir_type_int | nir_type_uint | nir_type_float));
-
-   bool untrusted_type = sem.location >= VARYING_SLOT_VAR0;
-   if (untrusted_type) {
-      /* Don't trust the type, varying_opts might have smashed everything
-       * onto floats.  Replace all flat varyings with ints and smooth varyings
-       * with floats, only exception is 16-bit flat varyings that should be
-       * stored/loaded as floats as the hardware cannot encode 16-bit flat ints.
-       * Read docs/drivers/panfrost/varyings.rst for details.
-       */
-      bool is_flat = intr->intrinsic != nir_intrinsic_load_interpolated_input;
-      base_type = (is_flat && size == 32) ? nir_type_uint : nir_type_float;
-      type = base_type | size;
-      if (is_store)
-         nir_intrinsic_set_src_type(intr, type);
-      else
-         nir_intrinsic_set_dest_type(intr, type);
-   }
-   /* 16-bit ints are NEVER supported right now */
-   assert(type != nir_type_int16 && type != nir_type_uint16);
-
    /* Count currently contains the number of components accessed by this
     * intrinsics. However, we may be accessing a fractional location,
     * indicating by the NIR component. Add that in. The final value be the

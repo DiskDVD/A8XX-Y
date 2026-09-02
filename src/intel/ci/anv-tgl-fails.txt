@@ -20,3 +20,10 @@ dEQP-VK.api.copy_and_blit.core.use_after_copy.x8_d24_unorm_pack32.general.32x32x
 dEQP-VK.api.copy_and_blit.core.use_after_copy.x8_d24_unorm_pack32.general.32x32x2_img2img,Fail
 dEQP-VK.api.copy_and_blit.core.use_after_copy.x8_d24_unorm_pack32.general.32x32x2_regions,Fail
 dEQP-VK.drm_format_modifiers.export_import_fmt_features2.b10g11r11_ufloat_pack32,Fail
+
+# New failures with the MR #43854.
+# See https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/43854#note_3632141
+# This is not a fault of ANV, needs to be discussed with CTS developers.
+dEQP-VK.video.encode.h265.i_p_b_13_layered_src_video_layout,Fail
+dEQP-VK.video.encode.h265.rc_cbr_layered_src_video_layout,Fail
+dEQP-VK.video.encode.h265.query_with_status_separated_src_video_layout,Fail

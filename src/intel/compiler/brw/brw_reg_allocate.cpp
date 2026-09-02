@@ -313,9 +313,11 @@ private:
    bool build_interference_graph(bool allow_spilling);
 
    brw_reg build_lane_offsets(const brw_builder &bld,
-                              uint32_t spill_offset, int ip);
+                              uint32_t spill_offset, int ip,
+                              bool *out_use_base_offset);
    brw_reg build_single_offset(const brw_builder &bld,
-                              uint32_t spill_offset, int ip);
+                               uint32_t spill_offset, int ip,
+                               bool *out_use_base_offset);
    brw_reg build_legacy_scratch_header(const brw_builder &bld,
                                        uint32_t spill_offset, int ip);
 
@@ -819,8 +821,11 @@ brw_reg_alloc::build_interference_graph(bool allow_spilling)
 }
 
 brw_reg
-brw_reg_alloc::build_single_offset(const brw_builder &bld, uint32_t spill_offset, int ip)
+brw_reg_alloc::build_single_offset(const brw_builder &bld, uint32_t spill_offset, int ip,
+                                   bool *out_use_base_offset)
 {
+   *out_use_base_offset = false;
+
    brw_reg offset = retype(alloc_spill_reg(1, ip), BRW_TYPE_UD);
    brw_inst *inst = bld.MOV(offset, brw_imm_ud(spill_offset));
    _mesa_set_add(spill_insts, inst);
@@ -828,25 +833,32 @@ brw_reg_alloc::build_single_offset(const brw_builder &bld, uint32_t spill_offset
 }
 
 brw_reg
-brw_reg_alloc::build_lane_offsets(const brw_builder &bld, uint32_t spill_offset, int ip)
+brw_reg_alloc::build_lane_offsets(const brw_builder &bld, uint32_t spill_offset, int ip,
+                                  bool *out_use_base_offset)
 {
-   assert(bld.dispatch_width() <= 16 * reg_unit(bld.shader->devinfo));
+   const intel_device_info *devinfo = bld.shader->devinfo;
+   assert(bld.dispatch_width() <= 16 * reg_unit(devinfo));
+
+   *out_use_base_offset =
+      brw_lsc_supports_base_offset(devinfo) &&
+      brw_lsc_can_use_instruction_offset(LSC_ADDR_SURFTYPE_SS, spill_offset);
 
    const brw_builder ubld = bld.exec_all();
    const unsigned reg_count = ubld.dispatch_width() / 8;
 
    brw_reg offset = retype(alloc_spill_reg(reg_count, ip), BRW_TYPE_UD);
+   brw_reg offset_uw = retype(offset, BRW_TYPE_UW);
    brw_inst *inst;
 
    /* Build an offset per lane in SIMD8 */
-   inst = ubld.group(8, 0).MOV(retype(offset, BRW_TYPE_UW),
+   inst = ubld.group(8, 0).MOV(offset_uw,
                                brw_imm_uv(0x76543210));
    _mesa_set_add(spill_insts, inst);
 
-   if (spill_offset > 0 && spill_offset <= 0xffffu) {
+   if (spill_offset > 0 && spill_offset <= 0xffffu && !*out_use_base_offset) {
       inst = ubld.group(8, 0).MAD(offset,
                                   brw_imm_uw(spill_offset),
-                                  retype(offset, BRW_TYPE_UW),
+                                  offset_uw,
                                   brw_imm_uw(4));
       _mesa_set_add(spill_insts, inst);
    } else {
@@ -855,7 +867,7 @@ brw_reg_alloc::build_lane_offsets(const brw_builder &bld, uint32_t spill_offset,
       _mesa_set_add(spill_insts, inst);
 
       /* Add the base offset */
-      if (spill_offset) {
+      if (spill_offset && !*out_use_base_offset) {
          inst = ubld.group(8, 0).ADD(offset, offset, brw_imm_ud(spill_offset));
          _mesa_set_add(spill_insts, inst);
       }
@@ -931,10 +943,11 @@ brw_reg_alloc::emit_unspill(const brw_builder &bld,
             bld.has_writemask_all();
          const brw_builder ubld = use_transpose ? bld.uniform() : bld;
          brw_reg offset;
+         bool use_base_offset = false;
          if (use_transpose) {
-            offset = build_single_offset(ubld, slot.offset, ip);
+            offset = build_single_offset(ubld, slot.offset, ip, &use_base_offset);
          } else {
-            offset = build_lane_offsets(ubld, slot.offset, ip);
+            offset = build_lane_offsets(ubld, slot.offset, ip, &use_base_offset);
          }
 
          const bool exec_all = use_transpose || bld.has_writemask_all();
@@ -945,6 +958,7 @@ brw_reg_alloc::emit_unspill(const brw_builder &bld,
 
          unspill_inst->offset = slot.offset;
          unspill_inst->logical_offset = slot.logical_offset;
+         unspill_inst->use_base_offset = use_base_offset;
          unspill_inst->use_transpose = use_transpose;
          unspill_inst->size_written =
             brw_lsc_msg_dest_len(devinfo, LSC_DATA_SIZE_D32, bld.dispatch_width()) * REG_SIZE;
@@ -1006,7 +1020,8 @@ brw_reg_alloc::emit_spill(const brw_builder &bld,
       ++stats->spill_count;
 
       if (devinfo->verx10 >= 125) {
-         brw_reg offset = build_lane_offsets(bld, slot.offset, ip);
+         bool use_base_offset = false;
+         brw_reg offset = build_lane_offsets(bld, slot.offset, ip, &use_base_offset);
 
          brw_scratch_inst *spill_inst = bld.SPILL();
          spill_inst->dst = bld.null_reg_f();
@@ -1016,6 +1031,7 @@ brw_reg_alloc::emit_spill(const brw_builder &bld,
 
          spill_inst->offset = slot.offset;
          spill_inst->logical_offset = slot.logical_offset;
+         spill_inst->use_base_offset = use_base_offset;
          spill_inst->use_transpose = false;
 
          _mesa_set_add(spill_insts, spill_inst);
@@ -1291,10 +1307,12 @@ brw_reg_alloc::spill_reg(unsigned spill_reg)
    ra_set_node_spill_cost(g, first_vgrf_node + spill_reg, 0);
    ra_reset_node_interference(g, first_vgrf_node + spill_reg);
 
-   /* Track which registers of the spilled VGRF hold a defined value, so that
-    * we don't fill undefined data back from scratch.  Initialized at each
-    * block from livein, cleared by SHADER_OPCODE_UNDEF and set by any other
-    * write.
+   /* Track which registers of the spilled VGRF may have been defined before
+    * the current write, so that only their first definition can skip filling
+    * the destination.  At block boundaries use reaching definitions rather
+    * than liveness: Inactive channels from a divergent path or a prior loop
+    * iteration may need to be preserved even though the value is not live-in.
+    * SHADER_OPCODE_UNDEF does not clear this state for the same reason.
     */
    const unsigned vgrf_size = fs->alloc.sizes[spill_reg];
    uint64_t defined_regs = 0;
@@ -1315,23 +1333,14 @@ brw_reg_alloc::spill_reg(unsigned spill_reg)
       if (block != cur_block) {
          cur_block = block;
 
-         const BITSET_WORD *livein = live.block_data[block->num].livein;
+         const BITSET_WORD *defin = live.block_data[block->num].defin;
          const unsigned first_var = live.var_from_vgrf[spill_reg];
 
          defined_regs = 0;
          for (unsigned i = 0; i < vgrf_size; i++) {
-            if (BITSET_TEST(livein, first_var + i))
+            if (BITSET_TEST(defin, first_var + i))
                defined_regs |= (uint64_t)1 << i;
          }
-      }
-
-      if (inst->opcode == SHADER_OPCODE_UNDEF &&
-          inst->dst.file == VGRF && inst->dst.nr == spill_reg) {
-         const unsigned first_reg = inst->dst.offset / REG_SIZE;
-         assert(first_reg < vgrf_size);
-         defined_regs &= ~reg_range(first_reg,
-                                    MIN2(regs_written(inst),
-                                         vgrf_size - first_reg));
       }
 
       for (unsigned int i = 0; i < inst->sources; i++) {
@@ -1429,8 +1438,11 @@ brw_reg_alloc::spill_reg(unsigned spill_reg)
           * write, there should be no need for the unspill since the
           * instruction will be overwriting the whole destination in any case.
           *
-          * There's also no need to unspill when the value is completely
-          * undefined.
+          * A masked instruction whose spill cannot be per-channel also needs
+          * to preserve inactive channels whenever a definition can reach it.
+          *
+          * When no definition can reach the write, the scratch contents are
+          * undefined and the unspill can be skipped.
 	  */
          const unsigned first_reg = aligned_offset / REG_SIZE;
          assert(first_reg < vgrf_size);

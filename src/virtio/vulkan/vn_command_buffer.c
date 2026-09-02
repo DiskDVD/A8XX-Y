@@ -276,21 +276,21 @@ vn_cmd_fix_image_memory_barrier_common(const struct vn_image *img,
 }
 
 static void
-vn_cmd_set_external_acquire_unmodified(VkBaseOutStructure *chain,
+vn_cmd_set_external_acquire_unmodified(void *barrier,
                                        struct vn_cmd_cached_storage *storage)
 {
    VkExternalMemoryAcquireUnmodifiedEXT *acquire_unmodified =
-      vk_find_struct(chain->pNext, EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT);
+      vk_find_struct(barrier, EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT);
    if (acquire_unmodified) {
       acquire_unmodified->acquireUnmodifiedMemory = VK_TRUE;
    } else {
       acquire_unmodified = vn_cached_get_acquire_unmodified(storage);
       *acquire_unmodified = (VkExternalMemoryAcquireUnmodifiedEXT){
          .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT,
-         .pNext = chain->pNext,
+         .pNext = vk_pnext_get_next(barrier),
          .acquireUnmodifiedMemory = VK_TRUE,
       };
-      chain->pNext = (void *)acquire_unmodified;
+      vk_pnext_set_next(barrier, acquire_unmodified);
    }
 }
 
@@ -315,8 +315,7 @@ vn_cmd_fix_image_memory_barrier(const struct vn_command_buffer *cmd,
    if (result.external_acquire_unmodified &&
        dev->physical_device->renderer_extensions
           .EXT_external_memory_acquire_unmodified)
-      vn_cmd_set_external_acquire_unmodified((VkBaseOutStructure *)barrier,
-                                             storage);
+      vn_cmd_set_external_acquire_unmodified(barrier, storage);
 }
 
 static void
@@ -344,8 +343,7 @@ vn_cmd_fix_image_memory_barrier2(const struct vn_command_buffer *cmd,
    if (result.external_acquire_unmodified &&
        dev->physical_device->renderer_extensions
           .EXT_external_memory_acquire_unmodified) {
-      vn_cmd_set_external_acquire_unmodified((VkBaseOutStructure *)barrier,
-                                             storage);
+      vn_cmd_set_external_acquire_unmodified(barrier, storage);
    }
 }
 
@@ -989,8 +987,8 @@ vn_fix_command_buffer_begin_info(struct vn_command_buffer *cmd,
     * VkCommandBufferBeginInfo::flags, parameters of this structure are
     * ignored.
     */
-   VkBaseOutStructure *head = NULL;
-   VkBaseOutStructure *tail = NULL;
+   void *head = NULL;
+   void *tail = NULL;
    vk_foreach_struct_const(sType, src, local->inheritance.pNext) {
       void *pnext = NULL;
       switch (sType) {
@@ -1019,7 +1017,7 @@ vn_fix_command_buffer_begin_info(struct vn_command_buffer *cmd,
          if (!head)
             head = pnext;
          else
-            tail->pNext = pnext;
+            vk_pnext_set_next(tail, pnext);
 
          tail = pnext;
       }

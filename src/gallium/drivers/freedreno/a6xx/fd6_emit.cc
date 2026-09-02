@@ -291,8 +291,8 @@ build_prog_fb_rast(struct fd6_emit *emit) assert_dt
       .frag_writes_sampmask = fs->writes_smask && pfb->samples > 1,
       .frag_writes_stencilref = fs->writes_stencilref,
    ));
-   crb.add(A6XX_RB_PS_MRT_CNTL(.mrt = nr));
-   crb.add(A6XX_SP_PS_MRT_CNTL(.mrt = nr));
+   crb.add(A6XX_RB_PS_MRT_CNTL(.mrt = nr))
+      .add(A6XX_SP_PS_MRT_CNTL(.mrt = nr));
 
    unsigned mrt_components = 0;
    for (unsigned i = 0; i < pfb->nr_cbufs; i++) {
@@ -305,10 +305,17 @@ build_prog_fb_rast(struct fd6_emit *emit) assert_dt
    if (blend->use_dual_src_blend)
       mrt_components |= 0xf << 4;
 
+   /* For multi-planar YUV, the RB treats the chroma plane as a separate MRT,
+    * so enable its write mask even though the shader only outputs to MRT0.
+    */
+   if (blend->base.is_yuv)
+      mrt_components |= 0xf << 4;
+
    mrt_components &= prog->mrt_components;
 
    crb.add(A6XX_SP_PS_OUTPUT_MASK(.dword = mrt_components))
       .add(A6XX_RB_PS_OUTPUT_MASK(.dword = mrt_components));
+
 
    return crb;
 }

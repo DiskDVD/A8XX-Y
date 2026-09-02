@@ -445,9 +445,12 @@ radv_set_vs_output_param(enum amd_gfx_level gfx_level, const struct nir_shader *
    struct radv_vs_output_info *outinfo = &info->outinfo;
    uint64_t per_vtx_mask, per_prim_mask;
 
-   radv_get_output_masks(nir, gfx_state, &per_vtx_mask, &per_prim_mask);
-
    memset(outinfo->vs_output_param_offset, AC_EXP_PARAM_UNDEFINED, sizeof(outinfo->vs_output_param_offset));
+
+   if (gfx_state->rs.rasterizer_discard)
+      return;
+
+   radv_get_output_masks(nir, gfx_state, &per_vtx_mask, &per_prim_mask);
 
    /* Implicit primitive ID for VS and TES is added by ac_nir_lower_legacy_vs / ac_nir_lower_ngg,
     * it can be configured as either a per-vertex or per-primitive output depending on the GPU.
@@ -1389,20 +1392,29 @@ radv_determine_ngg_settings(const struct radv_compiler_info *compiler_info, stru
       num_vertices_per_prim = mesa_vertices_per_prim(ngg_stage->nir->info.gs.output_primitive);
    }
 
-   ngg_stage->info.has_ngg_culling =
-      radv_consider_culling(compiler_info, ngg_stage->nir, ps_inputs_read, num_vertices_per_prim, &ngg_stage->info);
+   ngg_stage->info.has_ngg_culling = radv_consider_culling(compiler_info, ngg_stage->nir, ps_inputs_read,
+                                                           num_vertices_per_prim, &ngg_stage->info, gfx_state);
 
    if (ngg_stage->stage != MESA_SHADER_GEOMETRY) {
       nir_function_impl *impl = nir_shader_get_entrypoint(ngg_stage->nir);
       ngg_stage->info.has_ngg_early_prim_export =
          compiler_info->ac->gfx_level < GFX11 && exec_list_is_singular(&impl->body);
 
-      /* NGG passthrough mode should be disabled when culling and when the vertex shader
-       * exports the primitive ID.
+      /* NGG passthrough requires that the input and output topologies, vertex counts, and primitive
+       * counts are the same. NGG passthrough doesn't care about anything else the shader does,
+       * and the shader can still cull by flipping the cull bit in primitive exports.
+       *
+       * Since we reduce exported primitives and vertices to 0 with static rasterizer discard, NGG
+       * passthrough must be disabled with it.
+       *
+       * Behavior:
+       * - VGT_ESGS_RING_ITEMSIZE is ignored (behaving as if it was equal to 1)
+       * - vertex indices are packed into 1 VGPR to be passed as-is to the prim export
+       * - Navi23 and later chips can optionally skip the gs_alloc_req message
+       *
+       * If switching NGG passthrough on/off leads to unnecessary context rolls, we should stop using it.
        */
-      ngg_stage->info.is_ngg_passthrough =
-         !ngg_stage->info.has_ngg_culling &&
-         !(ngg_stage->stage == MESA_SHADER_VERTEX && ngg_stage->info.outinfo.export_prim_id);
+      ngg_stage->info.is_ngg_passthrough = !ngg_stage->info.has_ngg_culling && !gfx_state->rs.rasterizer_discard;
    }
 }
 

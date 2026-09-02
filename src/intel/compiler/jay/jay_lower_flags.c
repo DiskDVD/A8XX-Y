@@ -122,10 +122,8 @@ pass(jay_function *f)
       jay_foreach_src(I, i) {
          if (jay_is_flag(I->src[i]) &&
              i != 0 &&
-             i != I->num_srcs - I->predication &&
              !(i == 2 && I->op == JAY_OPCODE_SEL) &&
-             !(i == I->num_srcs - I->predication + 1 &&
-               I->predication == JAY_PREDICATED_DEFAULT)) {
+             i < I->num_srcs - I->predication) {
 
             BITSET_SET(read_as_ugpr, jay_index(I->src[i]));
             jay_replace_src(&I->src[i], as_ugpr[jay_index(I->src[i])]);

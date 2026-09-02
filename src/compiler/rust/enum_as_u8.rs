@@ -72,6 +72,10 @@ impl<E: EnumAsU8, const N: usize> U8EnumSet<E, N> {
         self.set.insert(e.as_u8())
     }
 
+    pub fn remove(&mut self, e: E) -> bool {
+        self.set.remove(e.as_u8())
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = E> + use<'_, E, N> {
         // SAFETY: We ensure that the only elements added to the set are valid
         // E values.

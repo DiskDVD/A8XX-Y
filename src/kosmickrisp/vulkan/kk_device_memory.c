@@ -317,3 +317,10 @@ kk_GetDeviceMemoryOpaqueCaptureAddress(
 
    return mem->bo->gpu;
 }
+
+void
+kk_device_memory_set_label(struct kk_device_memory *dev_mem, const char *label)
+{
+   if (dev_mem->bo)
+      kk_bo_set_label(dev_mem->bo, label);
+}

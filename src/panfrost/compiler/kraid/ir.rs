@@ -239,7 +239,10 @@ impl From<&SmallConstant> for FAURef {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumAsU8,
+)]
 pub enum PreloadReg {
     /* Compute */
     ///  0..16 -> local_id_0
@@ -268,13 +271,25 @@ pub enum PreloadReg {
     /// 16..32 -> position_y
     PositionXY,
     ///  0..16 -> cumulative_coverage
+    /// 16..32 -> undefined
     CumulativeCoverage,
     ///  0..16 -> rasterizer_coverage
+    /// 16..32 -> undefined
+    RasterizerCoverage,
+    /// 0 ..16 -> undefined
     /// 16..24 -> sample_id
     /// 24..32 -> centroid_id
-    RasterizerSampleCentroid,
-    FrameArgLow,
-    FrameArgHigh,
+    SampleCentroidId,
+    FrameArg,
+}
+
+impl PreloadReg {
+    pub fn reg_size(&self) -> u8 {
+        match self {
+            Self::FrameArg => 2,
+            _ => 1,
+        }
+    }
 }
 
 impl fmt::Display for PreloadReg {
@@ -298,13 +313,15 @@ impl fmt::Display for PreloadReg {
             PrimitiveFlags => "PRIMITIVE_FLAGS",
             PositionXY => "POSIZTION_XY",
             CumulativeCoverage => "CUMULATIVE_COVERAGE",
-            RasterizerSampleCentroid => "RASTERIZER_COV_SAMPLE_ID_CENTROID_ID",
-            FrameArgLow => "FRAME_ARG_LO",
-            FrameArgHigh => "FRAME_ARG_HI",
+            RasterizerCoverage => "RASTERIZER_COVERAGE",
+            SampleCentroidId => "SAMPLE_CENTROID_ID",
+            FrameArg => "FRAME_ARG",
         };
         write!(f, "{name}")
     }
 }
+
+pub type PreloadRegSet = U8EnumSet<PreloadReg, 1>;
 
 /// Handle referencing an external resource (e.g. sampler, texture, attribute,
 /// uniform buffer...).  It is just a pair of indices, one selecting a "table",
@@ -360,7 +377,7 @@ impl fmt::Display for ResHandle {
 /// half of a register, it is swizzled accordingly.  For 16-bit destinations,
 /// the instruction itself continues to operate 32 bits wide and the register
 /// write is simply masked.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RegRange {
     Byte0,
     Byte1,
@@ -430,27 +447,15 @@ impl From<RegRange> for Swizzle {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RegRef {
     pub idx: u8,
     pub range: RegRange,
-    /// Optional preload origin for pretty printing
-    pub preload: Option<PreloadReg>,
-}
-
-impl PartialEq for RegRef {
-    fn eq(&self, other: &RegRef) -> bool {
-        // preload is intentionally missing
-        self.idx.eq(&other.idx) && self.range.eq(&other.range)
-    }
 }
 
 impl fmt::Display for RegRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.preload {
-            Some(d) => write!(f, "{d}")?,
-            None => write!(f, "r{}", self.idx)?,
-        };
+        write!(f, "r{}", self.idx)?;
 
         match &self.range {
             RegRange::Byte0 => write!(f, ".b0"),
@@ -490,22 +495,31 @@ impl RegRef {
                 .try_into()
                 .map_err(|_| "Register range too large")?,
         )?;
-        Ok(RegRef {
-            idx,
-            range,
-            preload: None,
-        })
+        Ok(RegRef { idx, range })
     }
 
-    pub fn word(mut self, word: u8) -> RegRef {
-        if let RegRange::Regs(nregs) = self.range {
-            assert!(word < nregs, "RegRef::word() out of bounds");
-            self.idx += word;
-            self.range = RegRange::Regs(1);
-            self
+    pub fn intersect(&self, other: RegRef) -> Option<RegRef> {
+        let a = self.byte_range();
+        let b = other.byte_range();
+        let start = a.start.max(b.start);
+        let end = a.end.min(b.end);
+        if start >= end {
+            None
         } else {
+            // Can't be too large, it must be smaller than both a and b
+            Some(RegRef::from_byte_range(start..end).unwrap())
+        }
+    }
+
+    pub fn word(self, word: u8) -> RegRef {
+        let RegRange::Regs(nregs) = self.range else {
             assert!(word == 0);
-            self
+            return self;
+        };
+        assert!(word < nregs, "RegRef::word() out of bounds");
+        RegRef {
+            idx: self.idx + word,
+            range: RegRange::Regs(1),
         }
     }
 }
@@ -699,7 +713,7 @@ impl From<MemRef> for SrcRef {
 }
 
 #[repr(u8)]
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, EnumAsU8)]
 pub enum SrcMod {
     #[default]
     None = 0,
@@ -1839,6 +1853,15 @@ pub struct ShaderInfo {
     pub has_ld_gclk: bool,
 }
 
+impl ShaderInfo {
+    pub fn add_preload(&mut self, reg: &RegRef) {
+        debug_assert!(reg.bytes() % 4 == 0);
+        for i in 0..(reg.bytes() / 4) {
+            self.register_preload |= 1 << (reg.idx + i);
+        }
+    }
+}
+
 pub struct Shader<'a> {
     pub model: &'a dyn Model,
     pub ssa_alloc: SSAValueAllocator,
@@ -1869,6 +1892,12 @@ impl Shader<'_> {
         }
         self.validate();
         res
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blocks.len() == 1
+            && self.blocks[0].instrs.len() == 1
+            && matches!(self.blocks[0].instrs[0].op, Op::Nop(_))
     }
 }
 

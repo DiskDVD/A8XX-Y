@@ -192,6 +192,8 @@ private:
 
 bool
 r600_nir_lower_tex_to_backend(nir_shader *shader, amd_gfx_level chip_class);
+bool
+r600_nir_lower_buf_txf_pre_eg(nir_shader *shader);
 
 } // namespace r600
 

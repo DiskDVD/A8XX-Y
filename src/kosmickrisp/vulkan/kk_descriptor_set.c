@@ -426,6 +426,13 @@ kk_push_descriptor_set_update(struct kk_push_descriptor_set *push_set,
 static void kk_descriptor_pool_free(struct kk_descriptor_pool *pool,
                                     uint64_t addr, uint64_t size);
 
+void
+kk_descriptor_pool_set_label(struct kk_descriptor_pool *pool, const char *label)
+{
+   if (pool->bo)
+      kk_bo_set_label(pool->bo, label);
+}
+
 static void
 kk_descriptor_set_destroy(struct kk_device *dev,
                           struct kk_descriptor_pool *pool,

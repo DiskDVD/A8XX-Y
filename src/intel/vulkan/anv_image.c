@@ -2055,7 +2055,7 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       /* Workaround to disable XE2 CCS modifiers from drirc. */
       if (device->info->ver >= 20 &&
           image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT &&
-          device->physical->instance->drirc.debug.disable_xe2_ccs_modifiers) {
+          device->physical->drirc.debug.disable_xe2_ccs_modifiers) {
          anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
                        "Disabling aux: "
                        "drirc disable_xe2_drm_ccs_modifiers");
@@ -4229,6 +4229,19 @@ anv_can_fast_clear_color(const struct anv_cmd_buffer *cmd_buffer,
         image->vk.extent.width == 16 * 1024)) {
       anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
                     "Wa_16021232440: 16k dimension. Slow clearing.");
+      return false;
+   }
+
+   /* Wa_22018390030 (Xe2+), Bspec 57340, and HSD 22021327133 (Xe3P+) say that
+    * we can't fast clear surfaces that are color, non-volumetric, Tile4, and
+    * have a VALIGN of 4.
+    */
+   if (cmd_buffer->device->info->ver >= 20 &&
+       anv_surf->isl.dim != ISL_SURF_DIM_3D &&
+       anv_surf->isl.image_alignment_el.h == 4) {
+      assert(anv_surf->isl.tiling == ISL_TILING_4);
+      anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
+                    "Wa_2201839003: Don't fast-clear on VALIGN_4.");
       return false;
    }
 

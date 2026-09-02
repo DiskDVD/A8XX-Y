@@ -334,7 +334,7 @@ tu_CmdBuildAccelerationStructuresKHR(VkCommandBuffer commandBuffer, uint32_t inf
 
    struct vk_acceleration_structure_build_args args = {
       .subgroup_size = device->physical_device->info->threadsize_base *
-                       (device->physical_device->info->props.supports_double_threadsize ? 2 : 1),
+                       (device->physical_device->expose_double_threadsize ? 2 : 1),
       .bvh_bounds_offset = offsetof(tu_accel_struct_header, aabb),
       .morton_sort_workgroup_size = 512,
       .morton_sort_kvs_per_thread = 2,
@@ -488,7 +488,7 @@ tu_GetAccelerationStructureBuildSizesKHR(VkDevice _device, VkAccelerationStructu
 
    struct vk_acceleration_structure_build_args args = {
       .subgroup_size = device->physical_device->info->threadsize_base *
-                       (device->physical_device->info->props.supports_double_threadsize ? 2 : 1),
+                       (device->physical_device->expose_double_threadsize ? 2 : 1),
       .morton_sort_workgroup_size = 512,
       .morton_sort_kvs_per_thread = 2,
    };

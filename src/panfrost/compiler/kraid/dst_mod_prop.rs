@@ -401,7 +401,7 @@ impl<A: AllocSSA> DstModProp<'_, A> {
         let src_folded = self.try_fold_instr_src(instr);
         let dst_folded = match &mut instr.op {
             Op::F32ToF16(op) => {
-                self.fold_clamp(&op.dst, DataType::F32, &mut op.clamp)
+                self.fold_clamp(&op.dst, DataType::F16, &mut op.clamp)
             }
             Op::FAdd(op) => {
                 self.fold_clamp(&op.dst, op.dst_type, &mut op.clamp)

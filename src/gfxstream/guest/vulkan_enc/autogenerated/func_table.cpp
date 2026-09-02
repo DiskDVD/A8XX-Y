@@ -4718,6 +4718,9 @@ VkResult gfxstream_vk_CreatePrivateDataSlotEXT(VkDevice device,
 void gfxstream_vk_DestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlot privateDataSlot,
                                             const VkAllocationCallbacks* pAllocator) {
     MESA_TRACE_SCOPE("vkDestroyPrivateDataSlotEXT");
+    if (VK_NULL_HANDLE == privateDataSlot) {
+        return;
+    }
     VK_FROM_HANDLE(gfxstream_vk_device, gfxstream_device, device);
     {
         auto vkEnc = gfxstream::vk::ResourceTracker::getThreadLocalEncoder();

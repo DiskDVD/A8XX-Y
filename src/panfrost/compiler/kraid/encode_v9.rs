@@ -242,7 +242,10 @@ fn encode_typed_src(src: &Src, src_type: DataType) -> v9::EncodedSrc {
             assert_eq!(src_type.num_type(), NumericType::Float);
         }
         SrcMod::BNot => {
-            assert_eq!(src_type.num_type(), NumericType::Integer);
+            assert!(matches!(
+                src_type.num_type(),
+                NumericType::Integer | NumericType::UnsignedInteger
+            ));
         }
     }
 
@@ -403,6 +406,9 @@ fn instr_fau_page(instr: &Instr) -> Option<u8> {
 }
 
 fn encode_flow(mut flow: FlowCtrl, arch: u8) -> FlowControlM {
+    // Encoded separately from the flow field.
+    flow.take_msg_slot_idx();
+
     if flow.take_end_shader() {
         assert!(flow == FlowCtrl::NONE);
         return FlowControlM::End;
@@ -3115,6 +3121,13 @@ pub fn v9_op_dst_supported_lanes(op: &Op, arch: u8) -> DstLanesSet {
             }
         }
     }
+
+    // B1 and B3 are broken for LD_PKA
+    if matches!(op, Op::LdPka(_)) {
+        lanes.remove(ir::DstLanes::B1);
+        lanes.remove(ir::DstLanes::B3);
+    }
+
     lanes
 }
 

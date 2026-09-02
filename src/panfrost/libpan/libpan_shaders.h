@@ -22,6 +22,8 @@
 #include "libpan_shaders_v9.h"
 #elif (PAN_ARCH == 10)
 #include "libpan_shaders_v10.h"
+#elif (PAN_ARCH == 11)
+#include "libpan_shaders_v11.h"
 #elif (PAN_ARCH == 12)
 #include "libpan_shaders_v12.h"
 #elif (PAN_ARCH == 13)

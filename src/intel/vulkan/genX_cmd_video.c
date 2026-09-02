@@ -26,6 +26,8 @@
 #include "genxml/gen_macros.h"
 #include "genxml/genX_video_pack.h"
 
+#include "genX_huc.h"
+
 #include "util/vl_zscan_data.h"
 
 void
@@ -183,11 +185,48 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
    const StdVideoH265SequenceParameterSet *sps;
    const StdVideoH265PictureParameterSet *pps;
 
+   assert(cmd_buffer->device->physical->has_huc);
+
    vk_video_get_h265_parameters(&vid->vk, params, frame_info, h265_pic_info, &sps, &pps);
 
-   struct vk_video_h265_reference ref_slots[2][8] = { 0 };
    uint8_t dpb_idx[ANV_VIDEO_H265_MAX_NUM_REF_FRAME] = { 0,};
    bool is_10bit = sps->bit_depth_chroma_minus8 || sps->bit_depth_luma_minus8;
+
+   struct anv_address huc_second_bb = ANV_NULL_ADDRESS;
+
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+      assert(slot_idx < ANV_VIDEO_H265_MAX_NUM_REF_FRAME);
+
+      if (slot_idx < 0)
+         continue;
+
+      dpb_idx[slot_idx] = i;
+   }
+
+   /* Second-level batch buffer that the HuC S2L kernel fills with HCP slice
+    * commands at execution time.
+    */
+   uint32_t bb_size =
+      align(h265_pic_info->sliceSegmentCount * ANV_HUC_S2L_SLICE_CMD_SIZE + 64,
+            4096);
+   struct anv_state bb_state =
+      anv_cmd_buffer_alloc_temporary_state(cmd_buffer, bb_size, 4096);
+
+   if (bb_state.map == NULL)
+      return;
+
+   memset(bb_state.map, 0, bb_size);
+
+   struct GENX(MI_BATCH_BUFFER_END) bbe = {
+      GENX(MI_BATCH_BUFFER_END_header),
+   };
+   GENX(MI_BATCH_BUFFER_END_pack)(NULL, bb_state.map, &bbe);
+
+   huc_second_bb = anv_cmd_buffer_temporary_state_address(cmd_buffer, bb_state);
+   genX(h265_huc_s2l)(cmd_buffer, frame_info, h265_pic_info, sps, pps,
+                      dpb_idx, huc_second_bb);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.VideoPipelineCacheInvalidate = 1;
@@ -662,219 +701,10 @@ anv_h265_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Slice parsing */
-   uint32_t last_slice = h265_pic_info->sliceSegmentCount - 1;
-   void *slice_map;
-   VkResult result =
-      anv_device_map_bo(cmd_buffer->device,
-                        src_buffer->address.bo,
-                        src_buffer->address.offset,
-                        frame_info->srcBufferRange + frame_info->srcBufferOffset,
-                        NULL /* placed_addr */,
-                        &slice_map);
-   if (result != VK_SUCCESS) {
-      anv_batch_set_error(&cmd_buffer->batch, result);
-      return;
-   }
-
-   slice_map += frame_info->srcBufferOffset;
-
-   struct vk_video_h265_slice_params slice_params[h265_pic_info->sliceSegmentCount];
-
-   /* All slices should be parsed in advance to collect information necessary */
-   for (unsigned s = 0; s < h265_pic_info->sliceSegmentCount; s++) {
-      uint32_t current_offset = h265_pic_info->pSliceSegmentOffsets[s];
-      void *map = slice_map + current_offset;
-      uint32_t slice_size = 0;
-
-      if (s == last_slice)
-         slice_size = frame_info->srcBufferRange - current_offset;
-      else
-         slice_size = h265_pic_info->pSliceSegmentOffsets[s + 1] - current_offset;
-
-      vk_video_parse_h265_slice_header(frame_info, h265_pic_info, sps, pps, map, slice_size, &slice_params[s]);
-      vk_fill_video_h265_reference_info(frame_info, h265_pic_info, &slice_params[s], ref_slots);
-   }
-
-   anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo,
-                       slice_map, frame_info->srcBufferRange,
-                       false /* replace */);
-
-   for (unsigned s = 0; s < h265_pic_info->sliceSegmentCount; s++) {
-      uint32_t ctb_size = 1 << (sps->log2_diff_max_min_luma_coding_block_size +
-          sps->log2_min_luma_coding_block_size_minus3 + 3);
-      uint32_t pic_width_in_min_cbs_y = sps->pic_width_in_luma_samples /
-         (1 << (sps->log2_min_luma_coding_block_size_minus3 + 3));
-      uint32_t width_in_pix = (1 << (sps->log2_min_luma_coding_block_size_minus3 + 3)) *
-         pic_width_in_min_cbs_y;
-      uint32_t ctb_w = DIV_ROUND_UP(width_in_pix, ctb_size);
-      bool is_last = (s == last_slice);
-      int slice_qp = (slice_params[s].slice_qp_delta + pps->init_qp_minus26 + 26) & 0x3f;
-
-      anv_batch_emit(&cmd_buffer->batch, GENX(HCP_SLICE_STATE), slice) {
-         slice.SliceHorizontalPosition = slice_params[s].slice_segment_address % ctb_w;
-         slice.SliceVerticalPosition = slice_params[s].slice_segment_address / ctb_w;
-
-         if (is_last) {
-            slice.NextSliceHorizontalPosition = 0;
-            slice.NextSliceVerticalPosition = 0;
-         } else {
-            slice.NextSliceHorizontalPosition = (slice_params[s + 1].slice_segment_address) % ctb_w;
-            slice.NextSliceVerticalPosition = (slice_params[s + 1].slice_segment_address) / ctb_w;
-         }
-
-         slice.SliceType = slice_params[s].slice_type;
-         slice.LastSlice = is_last;
-         slice.DependentSlice = slice_params[s].dependent_slice_segment;
-         slice.SliceTemporalMVPEnable = slice_params[s].temporal_mvp_enable;
-         slice.SliceQP = abs(slice_qp);
-         slice.SliceQPSign = slice_qp >= 0 ? 0 : 1;
-         slice.SliceCbQPOffset = slice_params[s].slice_cb_qp_offset;
-         slice.SliceCrQPOffset = slice_params[s].slice_cr_qp_offset;
-         slice.SliceHeaderDisableDeblockingFilter = pps->flags.deblocking_filter_override_enabled_flag ?
-               slice_params[s].disable_deblocking_filter_idc : pps->flags.pps_deblocking_filter_disabled_flag;
-         slice.SliceTCOffsetDiv2 = pps->flags.deblocking_filter_override_enabled_flag ?
-               slice_params[s].tc_offset_div2 : pps->pps_tc_offset_div2;
-         slice.SliceBetaOffsetDiv2 = pps->flags.deblocking_filter_override_enabled_flag ?
-               slice_params[s].beta_offset_div2 : pps->pps_beta_offset_div2;
-         slice.SliceLoopFilterEnable = slice_params[s].loop_filter_across_slices_enable;
-         slice.SliceSAOChroma = slice_params[s].sao_chroma_flag;
-         slice.SliceSAOLuma = slice_params[s].sao_luma_flag;
-         slice.MVDL1Zero = slice_params[s].mvd_l1_zero_flag;
-
-         uint8_t low_delay = true;
-
-         if (slice_params[s].slice_type == STD_VIDEO_H265_SLICE_TYPE_I) {
-            low_delay = false;
-         } else {
-            for (unsigned i = 0; i < slice_params[s].num_ref_idx_l0_active; i++) {
-               int slot_idx = ref_slots[0][i].slot_index;
-
-               if (vk_video_h265_poc_by_slot(frame_info, slot_idx) >
-                     h265_pic_info->pStdPictureInfo->PicOrderCntVal) {
-                  low_delay = false;
-                  break;
-               }
-            }
-
-            for (unsigned i = 0; i < slice_params[s].num_ref_idx_l1_active; i++) {
-               int slot_idx = ref_slots[1][i].slot_index;
-               if (vk_video_h265_poc_by_slot(frame_info, slot_idx) >
-                     h265_pic_info->pStdPictureInfo->PicOrderCntVal) {
-                  low_delay = false;
-                  break;
-               }
-            }
-         }
-
-         slice.LowDelay = low_delay;
-         slice.CollocatedFromL0 = slice_params[s].collocated_list == 0 ? true : false;
-         slice.Log2WeightDenominatorChroma = slice_params[s].luma_log2_weight_denom +
-            (slice_params[s].chroma_log2_weight_denom - slice_params[s].luma_log2_weight_denom);
-         slice.Log2WeightDenominatorLuma = slice_params[s].luma_log2_weight_denom;
-         slice.CABACInit = slice_params[s].cabac_init_idc;
-         slice.MaxMergeIndex = slice_params[s].max_num_merge_cand - 1;
-         slice.CollocatedMVTemporalBufferIndex =
-            dpb_idx[ref_slots[slice_params[s].collocated_list][slice_params[s].collocated_ref_idx].slot_index];
-         assert(slice.CollocatedMVTemporalBufferIndex < ANV_VIDEO_H265_HCP_NUM_REF_FRAME);
-
-         slice.SliceHeaderLength = slice_params[s].slice_data_bytes_offset;
-         slice.CABACZeroWordInsertionEnable = false;
-         slice.EmulationByteSliceInsertEnable = false;
-         slice.TailInsertionPresent = false;
-         slice.SliceDataInsertionPresent = false;
-         slice.HeaderInsertionPresent = false;
-
-         slice.IndirectPAKBSEDataStartOffset = 0;
-         slice.TransformSkipLambda = 0;
-         slice.TransformSkipNumberofNonZeroCoeffsFactor0 = 0;
-         slice.TransformSkipNumberofZeroCoeffsFactor0 = 0;
-         slice.TransformSkipNumberofNonZeroCoeffsFactor1 = 0;
-         slice.TransformSkipNumberofZeroCoeffsFactor1 = 0;
-
-#if GFX_VER >= 12
-         slice.OriginalSliceStartCtbX = slice_params[s].slice_segment_address % ctb_w;
-         slice.OriginalSliceStartCtbY = slice_params[s].slice_segment_address / ctb_w;
-#endif
-      }
-
-      if (slice_params[s].slice_type != STD_VIDEO_H265_SLICE_TYPE_I) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(HCP_REF_IDX_STATE), ref) {
-            ref.ReferencePictureListSelect = 0;
-            ref.NumberofReferenceIndexesActive = slice_params[s].num_ref_idx_l0_active - 1;
-
-            for (unsigned i = 0; i < ref.NumberofReferenceIndexesActive + 1; i++) {
-               int slot_idx = ref_slots[0][i].slot_index;
-               unsigned poc = ref_slots[0][i].pic_order_cnt;
-               int32_t diff_poc = h265_pic_info->pStdPictureInfo->PicOrderCntVal - poc;
-
-               assert(dpb_idx[slot_idx] < ANV_VIDEO_H265_HCP_NUM_REF_FRAME);
-
-               ref.ReferenceListEntry[i].ListEntry = dpb_idx[slot_idx];
-               ref.ReferenceListEntry[i].ReferencePicturetbValue = CLAMP(diff_poc, -128, 127) & 0xff;
-               ref.ReferenceListEntry[i].TopField = true;
-               ref.ReferenceListEntry[i].LongTermReference = ref_slots[0][i].lt;
-            }
-         }
-      }
-
-      if (slice_params[s].slice_type == STD_VIDEO_H265_SLICE_TYPE_B) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(HCP_REF_IDX_STATE), ref) {
-            ref.ReferencePictureListSelect = 1;
-            ref.NumberofReferenceIndexesActive = slice_params[s].num_ref_idx_l1_active - 1;
-
-            for (unsigned i = 0; i < ref.NumberofReferenceIndexesActive + 1; i++) {
-               int slot_idx = ref_slots[1][i].slot_index;;
-               unsigned poc = ref_slots[1][i].pic_order_cnt;
-               int32_t diff_poc = h265_pic_info->pStdPictureInfo->PicOrderCntVal - poc;
-
-               assert(dpb_idx[slot_idx] < ANV_VIDEO_H265_HCP_NUM_REF_FRAME);
-
-               ref.ReferenceListEntry[i].ListEntry = dpb_idx[slot_idx];
-               ref.ReferenceListEntry[i].ReferencePicturetbValue = CLAMP(diff_poc, -128, 127) & 0xff;
-               ref.ReferenceListEntry[i].TopField = true;
-               ref.ReferenceListEntry[i].LongTermReference = ref_slots[1][i].lt;
-            }
-         }
-      }
-
-      if ((pps->flags.weighted_pred_flag && (slice_params[s].slice_type == STD_VIDEO_H265_SLICE_TYPE_P)) ||
-            (pps->flags.weighted_bipred_flag && (slice_params[s].slice_type == STD_VIDEO_H265_SLICE_TYPE_B))) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(HCP_WEIGHTOFFSET_STATE), w) {
-            w.ReferencePictureListSelect = 0;
-
-            for (unsigned i = 0; i < ANV_VIDEO_H265_MAX_NUM_REF_FRAME; i++) {
-               w.LumaOffsets[i].DeltaLumaWeightLX = slice_params[s].delta_luma_weight_l0[i] & 0xff;
-               w.LumaOffsets[i].LumaOffsetLX = slice_params[s].luma_offset_l0[i] & 0xff;
-               w.ChromaOffsets[i].DeltaChromaWeightLX0 = slice_params[s].delta_chroma_weight_l0[i][0] & 0xff;
-               w.ChromaOffsets[i].ChromaOffsetLX0 = slice_params[s].chroma_offset_l0[i][0] & 0xff;
-               w.ChromaOffsets[i].DeltaChromaWeightLX1 = slice_params[s].delta_chroma_weight_l0[i][1] & 0xff;
-               w.ChromaOffsets[i].ChromaOffsetLX1 = slice_params[s].chroma_offset_l0[i][1] & 0xff;
-            }
-         }
-
-         if (slice_params[s].slice_type == STD_VIDEO_H265_SLICE_TYPE_B) {
-            anv_batch_emit(&cmd_buffer->batch, GENX(HCP_WEIGHTOFFSET_STATE), w) {
-               w.ReferencePictureListSelect = 1;
-
-               for (unsigned i = 0; i < ANV_VIDEO_H265_MAX_NUM_REF_FRAME; i++) {
-                  w.LumaOffsets[i].DeltaLumaWeightLX = slice_params[s].delta_luma_weight_l1[i] & 0xff;
-                  w.LumaOffsets[i].LumaOffsetLX = slice_params[s].luma_offset_l1[i] & 0xff;
-                  w.ChromaOffsets[i].DeltaChromaWeightLX0 = slice_params[s].delta_chroma_weight_l1[i][0] & 0xff;
-                  w.ChromaOffsets[i].DeltaChromaWeightLX1 = slice_params[s].delta_chroma_weight_l1[i][1] & 0xff;
-                  w.ChromaOffsets[i].ChromaOffsetLX0 = slice_params[s].chroma_offset_l1[i][0] & 0xff;
-                  w.ChromaOffsets[i].ChromaOffsetLX1 = slice_params[s].chroma_offset_l1[i][1] & 0xff;
-               }
-            }
-         }
-      }
-
-      uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
-
-      anv_batch_emit(&cmd_buffer->batch, GENX(HCP_BSD_OBJECT), bsd) {
-         bsd.IndirectBSDDataLength = slice_params[s].slice_size - 3;
-         bsd.IndirectBSDDataStartAddress = buffer_offset + h265_pic_info->pSliceSegmentOffsets[s] + 3;
-      }
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_BATCH_BUFFER_START), bbs) {
+      bbs.AddressSpaceIndicator = ASI_PPGTT;
+      bbs.SecondLevelBatchBuffer = Secondlevelbatch;
+      bbs.BatchBufferStartAddress = huc_second_bb;
    }
 
 #if GFX_VER >= 12

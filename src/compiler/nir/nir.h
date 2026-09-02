@@ -781,6 +781,11 @@ typedef struct nir_variable {
       unsigned depth_layout : 3;
 
       /**
+       * Whether the variable is a YUV color-output.
+       */
+      unsigned yuv : 1;
+
+      /**
        * Vertex stream output identifier.
        *
        * For packed outputs, NIR_STREAM_PACKED is set and bits [2*i+1,2*i]
@@ -3128,7 +3133,12 @@ nir_def_instr_nonconst(nir_def *def)
                  "nir_load_const_instr: nir_def always has to be at the same offset relative to nir_instr.");
    static_assert(offsetof(nir_phi_instr, def) == offsetof(nir_undef_instr, def),
                  "nir_phi_instr: nir_def always has to be at the same offset relative to nir_instr.");
-   return &container_of(def, nir_undef_instr, def)->instr;
+
+   /* Manually calculate the pointer address to avoid accessing through
+    * an instr type that's not actually correct.
+    */
+   char *ptr = (char *)def - offsetof(nir_undef_instr, def);
+   return (nir_instr *)ptr;
 }
 
 static inline const nir_instr *
@@ -5573,6 +5583,7 @@ bool nir_split_var_copies(nir_shader *shader);
 bool nir_separate_merged_clip_cull_io(nir_shader *nir);
 bool nir_split_per_member_structs(nir_shader *shader);
 bool nir_split_struct_vars(nir_shader *shader, nir_variable_mode modes);
+bool nir_opt_scalar_array_vars_to_vec(nir_shader *shader, nir_variable_mode modes);
 
 bool nir_lower_returns_impl(nir_function_impl *impl);
 bool nir_lower_returns(nir_shader *shader);
@@ -5812,8 +5823,14 @@ typedef struct {
 } nir_lower_xfb_to_stores_options;
 
 bool nir_lower_xfb_to_stores(nir_shader *nir, const nir_lower_xfb_to_stores_options *options);
+
+typedef enum {
+   nir_io_indirect_loads_lower_vertex_index = BITFIELD_BIT(0),
+   nir_io_indirect_loads_lower_divergent_offset_only = BITFIELD_BIT(1),
+} nir_lower_io_indirect_loads_options;
+
 bool nir_lower_io_indirect_loads(nir_shader *nir, nir_variable_mode modes,
-                                 bool lower_indirect_vertex_index);
+                                 nir_lower_io_indirect_loads_options options);
 bool nir_remove_outputs(nir_shader *shader, mesa_shader_stage next_stage,
                         uint64_t remove_varying, uint64_t remove_sysval);
 
@@ -6365,6 +6382,7 @@ typedef struct nir_lower_tex_options {
    unsigned bt709_external;
    unsigned bt2020_external;
    unsigned yuv_full_range_external;
+   unsigned bypass_csc_external;
 
    /**
     * To emulate certain texture wrap modes, this can be used

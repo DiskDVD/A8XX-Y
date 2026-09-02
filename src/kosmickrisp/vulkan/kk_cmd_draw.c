@@ -1185,6 +1185,9 @@ kk_upload_tess_params(struct kk_cmd_buffer *cmd, struct poly_tess_params *out,
 static void
 kk_flush_dynamic_state(struct kk_cmd_buffer *cmd)
 {
+   struct kk_device *dev = kk_cmd_buffer_device(cmd);
+   struct kk_physical_device *pdev = kk_device_physical(dev);
+
    struct kk_graphics_state *gfx = &cmd->state.gfx;
    struct kk_descriptor_state *desc = &gfx->descriptors;
    struct vk_dynamic_graphics_state *dyn = &cmd->vk.dynamic_graphics_state;
@@ -1300,6 +1303,17 @@ kk_flush_dynamic_state(struct kk_cmd_buffer *cmd)
          }
       }
       desc->root_dirty = true;
+   }
+
+   if ((IS_DIRTY(DS_DEPTH_BOUNDS_TEST_ENABLE) ||
+        IS_DIRTY(DS_DEPTH_BOUNDS_TEST_BOUNDS)) &&
+       pdev->vk.supported_features.depthBounds) {
+      /* Metal does not expose a separate flag for enabling the depth bounds
+       * test. Instead, it treats [0, 1] as disabled. */
+      bool bounds_enable = dyn->ds.depth.bounds_test.enable;
+      float bounds_min = bounds_enable ? dyn->ds.depth.bounds_test.min : 0.0f;
+      float bounds_max = bounds_enable ? dyn->ds.depth.bounds_test.max : 1.0f;
+      mtl_set_depth_test_bounds(enc, bounds_min, bounds_max);
    }
 
    if (IS_DIRTY(DS_STENCIL_REFERENCE))

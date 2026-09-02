@@ -283,6 +283,19 @@ v3d-rpi5-rusticl-full:arm64:
     CI_TRON_TIMEOUT__OVERALL__MINUTES: 25
     DEQP_SUITE: v3d-rusticl
 
+v3d-rpi5-opencl-cts-quick:
+  extends:
+    - .ci-tron-arm64-test-gl
+    - .ci-tron-broadcom-rpi5:arm64
+    - .test-opencl-cts
+    - .v3d-rusticl-manual-rules
+  timeout: 2h
+  variables:
+    CI_TRON_TIMEOUT__OVERALL_MINUTES: 110
+    HWCI_START_WESTON: 1
+    RUSTICL_ENABLE: v3d
+    DEQP_SUITE: broadcom-rpi-opencl-cts-quick
+
 v3d-rpi5-traces:arm64:
   extends:
     - .igalia-bcm2712-rpi-5

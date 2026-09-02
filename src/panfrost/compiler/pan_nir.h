@@ -353,7 +353,7 @@ bool pan_nir_lower_fs_outputs(nir_shader *shader, bool skip_atest,
 uint32_t pan_nir_collect_noperspective_varyings_fs(nir_shader *s);
 
 bool pan_nir_resize_varying_io(nir_shader *nir,
-                               const struct pan_varying_layout *varying_fmt,
+                               struct pan_varying_layout *varying_fmt,
                                const struct pan_varying_layout *varying_layout);
 
 bool pan_nir_fuse_io_cvt(nir_shader *nir, uint64_t gpu_id,

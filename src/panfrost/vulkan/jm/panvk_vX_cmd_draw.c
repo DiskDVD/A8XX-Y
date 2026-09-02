@@ -622,14 +622,18 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                               struct panvk_draw_data *draw)
 {
    const struct panvk_shader *vs = cmdbuf->state.gfx.vs.shader;
+   const struct panvk_shader_variant *vs_variant =
+      panvk_shader_hw_variant(cmdbuf->state.gfx.vs.shader);
    const struct vk_dynamic_graphics_state *dyns =
       &cmdbuf->vk.dynamic_graphics_state;
    const struct vk_vertex_input_state *vi = dyns->vi;
    unsigned num_imgs = vs->desc_info.others.count[PANVK_BIFROST_DESC_TABLE_IMG];
-   unsigned num_vs_attribs = util_last_bit(vi->attributes_valid);
    unsigned num_vbs = util_last_bit(vi->bindings_valid);
-   unsigned attrib_count =
-      num_imgs ? MAX_VS_ATTRIBS + num_imgs : num_vs_attribs;
+   unsigned num_vs_attribs =
+      num_imgs ? MAX_VS_ATTRIBS
+               : MAX2(util_last_bit(vi->attributes_valid),
+                      vs_variant->info.attribute_count);
+   unsigned attrib_count = num_vs_attribs + num_imgs;
 
    unsigned attrib_buf_count = (num_vbs + num_imgs) * 2;
    struct pan_ptr bufs = panvk_cmd_alloc_desc_array(
@@ -686,7 +690,9 @@ panvk_draw_prepare_vs_attribs(struct panvk_cmd_buffer *cmdbuf,
                                 &cmdbuf->state.gfx.vb.bufs[buf_idx],
                                 &attrib_descs[i], helper_attrib_info);
       } else {
-         memset(&attrib_descs[i], 0, sizeof(attrib_descs[0]));
+         /* Unbound attributes read the zero default */
+         pan_pack(&attrib_descs[i], ATTRIBUTE, cfg)
+            cfg.format = MALI_PACK_FMT(CONSTANT, 0000, L);
       }
    }
 

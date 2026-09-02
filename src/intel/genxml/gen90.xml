@@ -2053,7 +2053,7 @@
     </group>
   </instruction>
   <instruction name="HUC_CFG_STATE" bias="2" length="2" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="0" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="3" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2064,7 +2064,7 @@
     </field>
   </instruction>
   <instruction name="HUC_DMEM_STATE" bias="2" length="6" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="4" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="2" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2075,7 +2075,7 @@
     <field name="HUC Data Length" dword="5" bits="16:6" type="uint" />
   </instruction>
   <instruction name="HUC_IMEM_STATE" bias="2" length="5" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="3" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="1" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2083,7 +2083,7 @@
     <field name="HUC Firmware Descriptor" dword="4" bits="7:0" type="uint" />
   </instruction>
   <instruction name="HUC_IND_OBJ_BASE_ADDR_STATE" bias="2" length="11" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="9" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="5" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2096,7 +2096,7 @@
     <field name="HUC Indirect Stream-Out Object - Access Upper Bound" dword="9" bits="63:0" type="address" />
   </instruction>
   <instruction name="HUC_PIPE_MODE_SELECT" bias="2" length="3" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="1" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="0" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2105,7 +2105,7 @@
     <field name="Media Soft-Reset Counter" dword="2" bits="31:0" type="uint" />
   </instruction>
   <instruction name="HUC_START" bias="2" length="2" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="0" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="33" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2113,15 +2113,15 @@
     <field name="Last Stream Object" dword="1" bits="0:0" type="bool" />
   </instruction>
   <instruction name="HUC_STREAM_OBJECT" bias="2" length="5" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="3" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="32" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
     <field name="Indirect Stream-In Data Length" dword="1" bits="31:0" type="uint" />
-    <field name="Indirect Stream-In - Address" dword="2" bits="28:0" type="address" />
+    <field name="Indirect Stream-In - Address" dword="2" bits="28:0" type="uint" />
     <field name="HUC Processing" dword="2" bits="31:31" type="bool" />
-    <field name="Indirect Stream-Out - Address" dword="3" bits="28:0" type="address" />
+    <field name="Indirect Stream-Out - Address" dword="3" bits="28:0" type="uint" />
     <field name="Start Code Byte [0]" dword="4" bits="7:0" type="uint" />
     <field name="Start Code Byte [1]" dword="4" bits="15:8" type="uint" />
     <field name="Start Code Byte [2]" dword="4" bits="23:16" type="uint" />
@@ -2135,7 +2135,7 @@
     <field name="HUC Bitstream Enable" dword="4" bits="29:29" type="bool" />
   </instruction>
   <instruction name="HUC_VIRTUAL_ADDR_STATE" bias="2" length="49" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="47" />
     <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="4" />
     <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
@@ -2730,7 +2730,7 @@
       <value name="JPEG_Chroma_Cb_QUANTIZER_MATRIX (or G)" value="1" />
       <value name="JPEG_Chroma_Cr_QUANTIZER_MATRIX (or B)" value="2" />
     </field>
-    <group count="64" dword="2" size="8">
+    <group count="128" dword="2" size="8">
       <field name="Quantizer Matrix 8x8" dword="0" bits="7:0" type="uint" />
     </group>
   </instruction>

@@ -127,6 +127,21 @@ xe_gem_supports_protected_exec_queue(int fd)
    return intel_ioctl(fd, DRM_IOCTL_XE_DEVICE_QUERY, &query) == 0;
 }
 
+bool
+xe_gem_supports_huc(int fd)
+{
+   struct drm_xe_query_uc_fw_version huc_version = {
+      .uc_type = XE_QUERY_UC_TYPE_HUC,
+   };
+   struct drm_xe_device_query query = {
+      .query = DRM_XE_DEVICE_QUERY_UC_FW_VERSION,
+      .size = sizeof(huc_version),
+      .data = (uintptr_t)&huc_version,
+   };
+
+   return intel_ioctl(fd, DRM_IOCTL_XE_DEVICE_QUERY, &query) == 0;
+}
+
 bool xe_gem_supports_get_vm_faults(int fd)
 {
    struct drm_xe_vm_get_property prop = {

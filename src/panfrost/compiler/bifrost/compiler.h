@@ -618,6 +618,13 @@ typedef struct {
     * create a variant without psiz writes */
    bool is_psiz_write;
 
+   /* Tags the two instructions va_lower_blend() appends after BLEND to call
+    * a blend shader. Under fixed-function blending, they are always skipped,
+    * so they are a fixed ABI cost rather than shader work and are excluded
+    * from statistics.
+    */
+   bool is_blend_prologue;
+
    /* On Bifrost: A value of bi_table to override the table, inducing a
     * DTSEL_IMM pair if nonzero.
     *

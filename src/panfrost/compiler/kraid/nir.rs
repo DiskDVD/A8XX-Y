@@ -82,7 +82,7 @@ struct ShaderFromNir<'a> {
     model: &'a dyn Model,
     nir: &'a nir_shader,
     ssa_map: FxHashMap<u32, Vec<SSAValue>>,
-    preload_map: FxHashMap<PreloadReg, SSAValue>,
+    preload_map: FxHashMap<RegRef, (PreloadRegSet, SSARef)>,
     rtz_fp16: bool,
     rtz_fp32: bool,
     ftz_fp32: bool,
@@ -202,15 +202,19 @@ impl<'a> ShaderFromNir<'a> {
         }
     }
 
-    fn preload(
-        &mut self,
-        b: &mut impl SSABuilder,
-        reg: PreloadReg,
-    ) -> SSAValue {
-        *self
+    fn preload(&mut self, b: &mut impl SSABuilder, reg: PreloadReg) -> SSARef {
+        let reg_ref = self.model.preload_reg(reg).expect("Unsupported preload");
+        // Must be register-aligned
+        assert!(reg_ref.bytes() % 4 == 0);
+
+        let bits = u16::from(reg_ref.bytes()) * 8;
+        let (pre, ssa) = self
             .preload_map
-            .entry(reg)
-            .or_insert_with(|| b.alloc_ssa(32))
+            .entry(reg_ref)
+            .or_insert_with(|| (Default::default(), b.alloc_ref(bits)));
+
+        pre.insert(reg);
+        ssa.clone()
     }
 
     fn special_fau(&self, special: SpecialFAU) -> FAURef {
@@ -1188,27 +1192,29 @@ impl<'a> ShaderFromNir<'a> {
                     }
                 };
 
-                let logic_op = if src_is_zero(2) {
-                    LogicOp::None
-                } else {
-                    match alu.op {
-                        nir_op_arshift_and_pan
-                        | nir_op_lshift_and_pan
-                        | nir_op_rshift_and_pan
-                        | nir_op_lrot_and_pan
-                        | nir_op_rrot_and_pan => LogicOp::And,
-                        nir_op_arshift_or_pan
-                        | nir_op_lshift_or_pan
-                        | nir_op_rshift_or_pan
-                        | nir_op_lrot_or_pan
-                        | nir_op_rrot_or_pan => LogicOp::Or,
-                        nir_op_arshift_xor_pan
-                        | nir_op_lshift_xor_pan
-                        | nir_op_rshift_xor_pan
-                        | nir_op_lrot_xor_pan
-                        | nir_op_rrot_xor_pan => LogicOp::Xor,
-                        _ => unreachable!(),
-                    }
+                let logic_op = match alu.op {
+                    nir_op_arshift_and_pan
+                    | nir_op_lshift_and_pan
+                    | nir_op_rshift_and_pan
+                    | nir_op_lrot_and_pan
+                    | nir_op_rrot_and_pan => LogicOp::And,
+                    nir_op_arshift_or_pan
+                    | nir_op_lshift_or_pan
+                    | nir_op_rshift_or_pan
+                    | nir_op_lrot_or_pan
+                    | nir_op_rrot_or_pan => LogicOp::Or,
+                    nir_op_arshift_xor_pan
+                    | nir_op_lshift_xor_pan
+                    | nir_op_rshift_xor_pan
+                    | nir_op_lrot_xor_pan
+                    | nir_op_rrot_xor_pan => LogicOp::Xor,
+                    _ => unreachable!(),
+                };
+
+                // Zero is the identity for OR/XOR
+                let logic_op = match (logic_op, src_is_zero(2)) {
+                    (LogicOp::Or | LogicOp::Xor, true) => LogicOp::None,
+                    (x, _) => x,
                 };
 
                 b.push_op(OpShiftLop {
@@ -1889,9 +1895,9 @@ impl<'a> ShaderFromNir<'a> {
                     self.preload(b, PreloadReg::LocalId2),
                 ];
                 let local_id = [
-                    Src::from(preload[0]).swizzle(Swizzle::widen_u16(0)),
-                    Src::from(preload[0]).swizzle(Swizzle::widen_u16(1)),
-                    Src::from(preload[1]).swizzle(Swizzle::widen_u16(0)),
+                    Src::from(preload[0][0]).swizzle(Swizzle::widen_u16(0)),
+                    Src::from(preload[0][0]).swizzle(Swizzle::widen_u16(1)),
+                    Src::from(preload[1][0]).swizzle(Swizzle::widen_u16(0)),
                 ];
                 let ssa = local_id.into_iter().map(|src| {
                     let def = b.alloc_ssa(32);
@@ -1906,17 +1912,17 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_intrinsic_load_workgroup_id => {
                 let ssa = vec![
-                    self.preload(b, PreloadReg::WorkgroupId0),
-                    self.preload(b, PreloadReg::WorkgroupId1),
-                    self.preload(b, PreloadReg::WorkgroupId2),
+                    self.preload(b, PreloadReg::WorkgroupId0)[0],
+                    self.preload(b, PreloadReg::WorkgroupId1)[0],
+                    self.preload(b, PreloadReg::WorkgroupId2)[0],
                 ];
                 self.set_ssa(&intrin.def, ssa);
             }
             nir_intrinsic_load_global_invocation_id => {
                 let ssa = vec![
-                    self.preload(b, PreloadReg::GlobalId0),
-                    self.preload(b, PreloadReg::GlobalId1),
-                    self.preload(b, PreloadReg::GlobalId2),
+                    self.preload(b, PreloadReg::GlobalId0)[0],
+                    self.preload(b, PreloadReg::GlobalId1)[0],
+                    self.preload(b, PreloadReg::GlobalId2)[0],
                 ];
                 self.set_ssa(&intrin.def, ssa);
             }
@@ -1955,7 +1961,7 @@ impl<'a> ShaderFromNir<'a> {
             | nir_intrinsic_load_instance_id
             | nir_intrinsic_load_draw_id
             | nir_intrinsic_load_idvs_output_buf_index_pan
-            | nir_intrinsic_load_raster_sample_centroid_pan => {
+            | nir_intrinsic_load_sample_centroid_pan => {
                 assert_eq!(intrin.def.bit_size, 32);
                 assert_eq!(intrin.def.num_components, 1);
 
@@ -1967,24 +1973,23 @@ impl<'a> ShaderFromNir<'a> {
                     nir_intrinsic_load_idvs_output_buf_index_pan => {
                         PreloadReg::InternalId
                     }
-                    nir_intrinsic_load_raster_sample_centroid_pan => {
-                        PreloadReg::RasterizerSampleCentroid
+                    nir_intrinsic_load_sample_centroid_pan => {
+                        PreloadReg::SampleCentroidId
                     }
                     _ => unreachable!(),
                 };
                 let ssa = self.preload(b, reg);
-                self.set_ssa(&intrin.def, vec![ssa]);
+                self.set_ssa(&intrin.def, ssa.to_vec());
             }
             nir_intrinsic_load_frame_arg_pan => {
-                let low = self.preload(b, PreloadReg::FrameArgLow);
-                let high = self.preload(b, PreloadReg::FrameArgHigh);
-                self.set_ssa(&intrin.def, vec![low, high]);
+                let ssa = self.preload(b, PreloadReg::FrameArg);
+                self.set_ssa(&intrin.def, ssa.to_vec());
             }
             nir_intrinsic_load_view_index => {
                 assert!(b.arch() >= 14);
                 assert!(self.nir.info.stage() == MESA_SHADER_VERTEX);
                 let ssa = self.preload(b, PreloadReg::ViewId);
-                self.set_ssa(&intrin.def, vec![ssa]);
+                self.set_ssa(&intrin.def, ssa.to_vec());
             }
             nir_intrinsic_load_shader_output_pan => {
                 assert_eq!(intrin.def.bit_size, 32);
@@ -2185,17 +2190,35 @@ impl<'a> ShaderFromNir<'a> {
     fn create_preload_instrs(&mut self) -> Vec<Instr> {
         let mut preloaded: Vec<_> = self.preload_map.drain().collect();
         // All keys are different, we can use an unstable sort
-        preloaded.sort_unstable_by_key(|(reg, _ssa)| *reg);
+        preloaded.sort_unstable_by_key(|(reg, _ssa)| reg.idx);
+
+        // preload regs should never intersect
+        debug_assert!(
+            preloaded
+                .windows(2)
+                .all(|w| w[0].0.intersect(w[1].0).is_none()),
+            "overlapping preloaded registers"
+        );
 
         preloaded
             .into_iter()
-            .map(|(preload, ssa)| {
-                let reg = self.model.preload_reg(preload).unwrap();
-                self.info.register_preload |= 1 << reg.idx;
-                Instr::from(OpRegIn {
-                    dst: ssa.into(),
-                    dst_type: DataType::I32,
-                    reg,
+            .flat_map(|(reg, (preloads, ssa))| {
+                self.info.add_preload(&reg);
+
+                // Split preloads into multiple registers, we don't have any vec
+                // shrink pass and they might pollute liveness
+                assert!(reg.bytes() % 4 == 0);
+                let regs = reg.bytes() / 4;
+                (0..regs).map(move |i| {
+                    Instr::from(OpRegIn {
+                        dst: ssa[i as usize].into(),
+                        dst_type: DataType::I32,
+                        reg: reg.word(i),
+                        preload: Some(PreloadInfo {
+                            set: preloads,
+                            comp: i,
+                        }),
+                    })
                 })
             })
             .collect()

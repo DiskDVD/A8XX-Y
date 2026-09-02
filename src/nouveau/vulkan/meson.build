@@ -1,6 +1,8 @@
 # Copyright © 2022 Collabora Ltd. and Red Hat Inc.
 # SPDX-License-Identifier: MIT
 
+fs = import('fs')
+
 prog_cbindgen = find_program(
   'cbindgen',
   required : true,
@@ -173,6 +175,7 @@ nvk_deps = [
 ]
 
 nvk_include_directories = [
+  fs.relative_to(meson.project_build_root(), meson.current_source_dir()),
   inc_include,
   inc_src,
 ]

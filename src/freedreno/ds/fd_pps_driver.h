@@ -97,6 +97,7 @@ private:
 
    void configure_counters(bool reset, bool wait);
    void collect_countables();
+   uint64_t gpu_timestamp_ticks() const;
 
    int configure_counters_stream();
    bool collect_countables_stream();

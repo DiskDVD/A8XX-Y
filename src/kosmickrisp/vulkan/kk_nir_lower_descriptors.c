@@ -77,30 +77,6 @@ load_per_draw(nir_builder *b, unsigned num_components, unsigned bit_size,
    return load_speculatable(b, num_components, bit_size, addr, align);
 }
 
-static bool
-lower_load_constant(nir_builder *b, nir_intrinsic_instr *load,
-                    const struct lower_descriptors_ctx *ctx)
-{
-   assert(load->intrinsic == nir_intrinsic_load_constant);
-   UNREACHABLE("todo: stick an address in the root descriptor or something");
-
-   uint32_t base = nir_intrinsic_base(load);
-   uint32_t range = nir_intrinsic_range(load);
-
-   b->cursor = nir_before_instr(&load->instr);
-
-   nir_def *offset = nir_iadd_imm(b, load->src[0].ssa, base);
-   nir_def *data = nir_load_ubo(
-      b, load->def.num_components, load->def.bit_size, nir_imm_int(b, 0),
-      offset, .align_mul = nir_intrinsic_align_mul(load),
-      .align_offset = nir_intrinsic_align_offset(load), .range_base = base,
-      .range = range);
-
-   nir_def_rewrite_uses(&load->def, data);
-
-   return true;
-}
-
 /* helper macro for computing root descriptor byte offsets */
 #define kk_root_descriptor_offset(member)                                      \
    offsetof(struct kk_root_descriptor_table, member)
@@ -427,9 +403,6 @@ try_lower_intrin(nir_builder *b, nir_intrinsic_instr *intrin,
                  const struct lower_descriptors_ctx *ctx)
 {
    switch (intrin->intrinsic) {
-   case nir_intrinsic_load_constant:
-      return lower_load_constant(b, intrin, ctx);
-
    case nir_intrinsic_load_vulkan_descriptor:
       return try_lower_load_vulkan_descriptor(b, intrin, ctx);
 
@@ -893,4 +866,67 @@ kk_nir_lower_poly(struct nir_shader *nir)
    bool is_compute = nir->info.stage == MESA_SHADER_COMPUTE;
    return nir_shader_intrinsics_pass(nir, lower_poly, nir_metadata_control_flow,
                                      &is_compute);
+}
+
+static bool
+kk_barrier_is_device_global(mesa_scope scope, nir_variable_mode mode)
+{
+   if (scope != SCOPE_DEVICE && scope != SCOPE_QUEUE_FAMILY)
+      return false;
+
+   return mode & (nir_var_mem_global | nir_var_mem_ssbo);
+}
+
+/* Iterates over the shader to find memory barriers that target device or queue
+ * families to add a "conditional" extra barrier with a load as conditional to
+ * work around the issues in memory_model for M3+. The iteration is done in a
+ * reverse order to iterate once since we break and insert new blocks. */
+bool
+kk_nir_add_device_barrier_workaround(nir_shader *nir)
+{
+   bool progress = false;
+
+   nir_foreach_function_impl(impl, nir) {
+      bool impl_progress = false;
+      nir_builder b = nir_builder_create(impl);
+
+      nir_foreach_block_reverse_safe(block, impl) {
+         nir_foreach_instr_reverse_safe(instr, block) {
+            if (instr->type != nir_instr_type_intrinsic)
+               continue;
+
+            nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
+
+            if (intrin->intrinsic != nir_intrinsic_barrier)
+               continue;
+
+            mesa_scope scope = nir_intrinsic_memory_scope(intrin);
+            nir_variable_mode mode = nir_intrinsic_memory_modes(intrin);
+            if (!kk_barrier_is_device_global(scope, mode))
+               continue;
+
+            b.cursor = nir_after_instr(instr);
+
+            /* The inserted load before the new barrier must not be constant */
+            nir_def *root = nir_load_buffer_ptr_kk(&b, 1, 64, .binding = 0);
+            nir_def *addr = nir_iadd_imm(
+               &b, root, kk_root_descriptor_offset(dynamic_buffers[0].zero));
+            nir_def *zero =
+               nir_build_load_global(&b, 1, 32, addr, .align_mul = 4);
+
+            nir_push_if(&b, nir_ine_imm(&b, zero, 0));
+            nir_barrier(&b, .execution_scope = SCOPE_NONE,
+                        .memory_scope = scope, .memory_modes = mode,
+                        .memory_semantics = NIR_MEMORY_ACQ_REL);
+            nir_pop_if(&b, NULL);
+
+            impl_progress = true;
+         }
+      }
+
+      progress |= impl_progress;
+      nir_progress(impl_progress, impl, nir_metadata_none);
+   }
+
+   return progress;
 }

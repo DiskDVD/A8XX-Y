@@ -294,8 +294,6 @@ etna_screen_can_create_resource(struct pipe_screen *pscreen,
                                 const struct pipe_resource *templat)
 {
    struct etna_screen *screen = etna_screen(pscreen);
-   if (!translate_samples_to_xyscale(templat->nr_samples, NULL, NULL))
-      return false;
 
    /* templat->bind is not set here, so we must use the minimum sizes */
    uint max_size =

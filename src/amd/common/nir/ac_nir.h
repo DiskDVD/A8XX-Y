@@ -233,6 +233,7 @@ typedef struct {
    bool skip_viewport_state_culling;
    /* Use the point-triangle intersection to cull small triangles. */
    bool use_point_tri_intersection;
+   bool rasterizer_discard; /* export 0 primitives and vertices */
 
    /* VS */
    unsigned num_vertices_per_primitive;

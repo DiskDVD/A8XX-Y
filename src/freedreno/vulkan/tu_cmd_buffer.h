@@ -358,7 +358,11 @@ struct tu_render_pass_state
    const char *lrz_write_disable_reason;
    uint32_t lrz_write_disabled_at_draw;
 
-   const char *gmem_disable_reason;
+   /* Which check took the SYSMEM/GMEM decision away from the autotuner, or NULL
+    * if the autotuner was free to choose.
+    */
+   const char *force_render_mode_reason;
+
    const char *cb_disable_reason;
 };
 

@@ -372,13 +372,6 @@ radv_image_view_can_fast_clear(const struct radv_device *device, const struct ra
    return true;
 }
 
-static uint32_t
-radv_surface_max_layer_count(struct radv_image_view *iview)
-{
-   return iview->vk.view_type == VK_IMAGE_VIEW_TYPE_3D ? iview->extent.depth
-                                                       : (iview->vk.base_array_layer + iview->vk.layer_count);
-}
-
 static void
 radv_initialise_color_surface(struct radv_device *device, struct radv_color_buffer_info *cb,
                               struct radv_image_view *iview)
@@ -400,7 +393,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       .width = vk_format_get_plane_width(iview->image->vk.format, iview->plane_id, iview->extent.width),
       .height = vk_format_get_plane_height(iview->image->vk.format, iview->plane_id, iview->extent.height),
       .first_layer = iview->vk.base_array_layer,
-      .last_layer = radv_surface_max_layer_count(iview) - 1,
+      .last_layer = iview->vk.base_array_layer + iview->vk.layer_count - 1,
       .num_layers = num_layers,
       .num_samples = iview->image->vk.samples,
       .num_storage_samples = iview->image->vk.samples,
@@ -425,7 +418,7 @@ radv_initialise_color_surface(struct radv_device *device, struct radv_color_buff
       .num_samples = iview->image->vk.samples,
       .fmask_enabled = radv_image_has_fmask(iview->image),
       .cmask_enabled = radv_image_has_cmask(iview->image),
-      .fast_clear_enabled = !(instance->debug_flags & RADV_DEBUG_NO_FAST_CLEARS),
+      .fast_clear_enabled = !(RADV_DEBUG(instance, NO_FAST_CLEARS)),
       .tc_compat_cmask_enabled = radv_image_is_tc_compat_cmask(iview->image),
       .dcc_enabled = radv_dcc_enabled(iview->image, iview->vk.base_mip_level) &&
                      (pdev->info.gfx_level >= GFX11 || !iview->disable_dcc_mrt),
@@ -451,8 +444,6 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
 
    memset(ds, 0, sizeof(*ds));
 
-   uint32_t max_slice = radv_surface_max_layer_count(iview) - 1;
-
    /* Recommended value for better performance with 4x and 8x. */
    ds->db_render_override2 = S_028010_DECOMPRESS_Z_ON_FLUSH(iview->image->vk.samples >= 4) |
                              S_028010_CENTROID_COMPUTATION_MODE(pdev->info.gfx_level >= GFX10_3);
@@ -467,7 +458,7 @@ radv_initialise_ds_surface(const struct radv_device *device, struct radv_ds_buff
       .num_levels = iview->image->vk.mip_levels,
       .num_samples = iview->image->vk.samples,
       .first_layer = iview->vk.base_array_layer,
-      .last_layer = max_slice,
+      .last_layer = iview->vk.base_array_layer + iview->vk.layer_count - 1,
       .stencil_only = stencil_only,
       .z_read_only = !(ds_aspects & VK_IMAGE_ASPECT_DEPTH_BIT),
       .stencil_read_only = !(ds_aspects & VK_IMAGE_ASPECT_STENCIL_BIT),

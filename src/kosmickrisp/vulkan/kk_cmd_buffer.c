@@ -19,6 +19,7 @@
 #include "kosmickrisp/bridge/vk_to_mtl_map.h"
 
 #include "vk_alloc.h"
+#include "vk_common_entrypoints.h"
 #include "vk_pipeline_layout.h"
 
 static void
@@ -257,6 +258,20 @@ kk_can_ignore_barrier(VkAccessFlags2 access, VkPipelineStageFlags2 stage)
    return (!(access ^ ignore_access)) || (!(stage ^ ignore_stage));
 }
 
+static void
+kk_encoder_state_update_debug(struct kk_cmd_buffer *cmd,
+                              struct kk_encoder_state *es)
+{
+   /* Since there are many Metal command buffers and encoders for each Vulkan
+    * command buffer, we need to copy debug state from Vulkan to Metal when
+    * new Metal objects are created. */
+   if (cmd->vk.base.object_name)
+      kk_encoder_state_set_label(es, cmd->vk.base.object_name);
+
+   util_dynarray_foreach(&cmd->vk.labels, VkDebugUtilsLabelEXT, label)
+      mtl_encoder_push_debug_group(es->encoder, label->pLabelName);
+}
+
 void
 cs_start_render(struct kk_cmd_buffer *cmd)
 {
@@ -270,6 +285,7 @@ cs_start_render(struct kk_cmd_buffer *cmd)
    cmd->gfx.encoder = mtl_new_render_command_encoder_with_descriptor(
       cmd->gfx.cmd_buf, state->render_pass_descriptor);
 
+   kk_encoder_state_update_debug(cmd, &cmd->gfx);
    /* Starting a new render pass means we already flushed and no barrier is
     * needed. */
    state->render.write_available = false;
@@ -310,33 +326,33 @@ cs_get_render(struct kk_cmd_buffer *cmd)
 }
 
 static void
-kk_start_compute_encoder(struct kk_encoder_state *es, mtl_device *handle,
-                         mtl_argument_table *argument_table)
+kk_start_compute_encoder(struct kk_cmd_buffer *cmd, bool pre_gfx)
 {
-   es->cmd_buf = mtl_new_command_buffer(handle);
+   struct kk_encoder_state *es = pre_gfx ? cmd->pre_gfx : cmd->post_gfx;
+
+   es->cmd_buf = mtl_new_command_buffer(kk_cmd_buffer_device(cmd)->mtl_handle);
    mtl_begin_command_buffer(es->cmd_buf, es->allocator);
    es->encoder = mtl_new_compute_command_encoder(es->cmd_buf);
 
    /* Argument table won't ever change */
-   mtl_compute_set_argument_table(es->encoder, argument_table);
+   mtl_compute_set_argument_table(es->encoder, cmd->argument_table);
+
+   kk_encoder_state_update_debug(cmd, es);
 }
 
 mtl_compute_encoder *
 cs_get_compute(struct kk_cmd_buffer *cmd, bool pre_gfx)
 {
-   struct kk_device *dev = kk_cmd_buffer_device(cmd);
    mtl_compute_encoder *encoder;
    /* If we are not inside a render, we can just take pre_gfx. */
    if (!cmd->gfx.encoder || pre_gfx) {
       if (!cmd->pre_gfx->encoder) {
-         kk_start_compute_encoder(cmd->pre_gfx, dev->mtl_handle,
-                                  cmd->argument_table);
+         kk_start_compute_encoder(cmd, true);
       }
       encoder = cmd->pre_gfx->encoder;
    } else {
       if (!cmd->post_gfx->encoder) {
-         kk_start_compute_encoder(cmd->post_gfx, dev->mtl_handle,
-                                  cmd->argument_table);
+         kk_start_compute_encoder(cmd, false);
       }
       encoder = cmd->post_gfx->encoder;
    }
@@ -981,4 +997,91 @@ kk_CmdWriteMarkerToMemoryAMD(VkCommandBuffer commandBuffer,
    write.value = pInfo->marker;
    write.address = pInfo->dstRange.address;
    kk_cmd_write(cmd_buffer, write);
+}
+
+void
+kk_encoder_state_set_label(struct kk_encoder_state *state, const char *label)
+{
+   if (state->encoder)
+      mtl_encoder_set_label(state->encoder, label);
+
+   if (state->cmd_buf)
+      mtl_command_buffer_set_label(state->cmd_buf, label);
+
+   /* Allocator labels are read-only after creation, so they can't be easily
+    * labeled. */
+}
+
+void
+kk_cmd_buffer_set_label(struct kk_cmd_buffer *cmd, const char *label)
+{
+   if (cmd->pre_gfx)
+      kk_encoder_state_set_label(cmd->pre_gfx, label);
+
+   kk_encoder_state_set_label(&cmd->gfx, label);
+
+   if (cmd->post_gfx)
+      kk_encoder_state_set_label(cmd->post_gfx, label);
+}
+
+/* VK_EXT_debug_utils */
+VKAPI_ATTR void VKAPI_CALL
+kk_CmdBeginDebugUtilsLabelEXT(VkCommandBuffer _commandBuffer,
+                              const VkDebugUtilsLabelEXT *pLabelInfo)
+{
+   VK_FROM_HANDLE(kk_cmd_buffer, cmd, _commandBuffer);
+
+   vk_common_CmdBeginDebugUtilsLabelEXT(_commandBuffer, pLabelInfo);
+
+   if (cmd->pre_gfx && cmd->pre_gfx->encoder)
+      mtl_encoder_push_debug_group(cmd->pre_gfx->encoder,
+                                   pLabelInfo->pLabelName);
+
+   if (cmd->gfx.encoder)
+      mtl_encoder_push_debug_group(cmd->gfx.encoder, pLabelInfo->pLabelName);
+
+   if (cmd->post_gfx && cmd->post_gfx->encoder)
+      mtl_encoder_push_debug_group(cmd->pre_gfx->encoder,
+                                   pLabelInfo->pLabelName);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+kk_CmdEndDebugUtilsLabelEXT(VkCommandBuffer _commandBuffer)
+{
+   VK_FROM_HANDLE(kk_cmd_buffer, cmd, _commandBuffer);
+   vk_common_CmdEndDebugUtilsLabelEXT(_commandBuffer);
+
+   if (cmd->pre_gfx && cmd->pre_gfx->encoder)
+      mtl_encoder_pop_debug_group(cmd->pre_gfx->encoder);
+
+   if (cmd->gfx.encoder)
+      mtl_encoder_pop_debug_group(cmd->gfx.encoder);
+
+   if (cmd->post_gfx && cmd->post_gfx->encoder)
+      mtl_encoder_pop_debug_group(cmd->pre_gfx->encoder);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+kk_CmdInsertDebugUtilsLabelEXT(VkCommandBuffer _commandBuffer,
+                               const VkDebugUtilsLabelEXT *pLabelInfo)
+{
+   VK_FROM_HANDLE(kk_cmd_buffer, cmd, _commandBuffer);
+
+   /* We purposely don't call the common implementation here. It makes
+    * debug regions that last until the next vkCmdInsertDebugUtilsLabelEXT()
+    * or vkCmdBeginDebugUtilsLabelEXT() call.
+    * The Metal debug signpost does not need this, and it interferes
+    * with propagating the begin/end debug regions to all of the
+    * Metal command buffers and encoders. */
+   if (cmd->pre_gfx && cmd->pre_gfx->encoder)
+      mtl_encoder_insert_debug_signpost(cmd->pre_gfx->encoder,
+                                        pLabelInfo->pLabelName);
+
+   if (cmd->gfx.encoder)
+      mtl_encoder_insert_debug_signpost(cmd->gfx.encoder,
+                                        pLabelInfo->pLabelName);
+
+   if (cmd->post_gfx && cmd->post_gfx->encoder)
+      mtl_encoder_insert_debug_signpost(cmd->pre_gfx->encoder,
+                                        pLabelInfo->pLabelName);
 }

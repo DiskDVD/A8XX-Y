@@ -130,7 +130,9 @@ bo_free(struct v3dv_device *device,
       return true;
 
    assert(p_atomic_read(&bo->refcnt) == 0);
-   assert(bo->map == NULL);
+
+   if (bo->map)
+      v3dv_bo_unmap(device, bo);
 
    if (!bo->is_import) {
       device->bo_count--;
@@ -328,8 +330,11 @@ v3dv_bo_map_unsynchronized(struct v3dv_device *device,
 {
    assert(bo != NULL && size <= bo->size);
 
-   if (bo->map)
-      return bo->map;
+   if (bo->map) {
+      if (bo->map_size >= size)
+         return true;
+      v3dv_bo_unmap(device, bo);
+   }
 
    struct drm_v3d_mmap_bo map;
    memset(&map, 0, sizeof(map));
@@ -535,9 +540,6 @@ v3dv_bo_free(struct v3dv_device *device,
 
    if (!p_atomic_dec_zero(&bo->refcnt))
       return true;
-
-   if (bo->map)
-      v3dv_bo_unmap(device, bo);
 
    struct timespec time;
    struct v3dv_bo_cache *cache = &device->bo_cache;

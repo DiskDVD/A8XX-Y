@@ -69,7 +69,7 @@ radv_taskmesh_enabled(const struct radv_physical_device *pdev)
 {
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   if (instance->debug_flags & RADV_DEBUG_NO_MESH_SHADER)
+   if (RADV_DEBUG(instance, NO_MESH_SHADER))
       return false;
 
    return pdev->use_ngg && !pdev->use_llvm && pdev->info.gfx_level >= GFX10_3 && radv_compute_queue_enabled(pdev);
@@ -92,7 +92,7 @@ radv_tmz_enabled(const struct radv_physical_device *pdev)
    /* TODO: Fix GFX/SDMA rings hang on GFX9 APUs. */
    const bool radv_supports_tmz = pdev->info.gfx_level >= GFX10 || pdev->info.family == CHIP_VEGA10;
 
-   return pdev->info.has_tmz_support && radv_supports_tmz && !(instance->debug_flags & RADV_DEBUG_NO_TMZ);
+   return pdev->info.has_tmz_support && radv_supports_tmz && !(RADV_DEBUG(instance, NO_TMZ));
 }
 
 bool
@@ -282,7 +282,7 @@ bool
 radv_use_bvh8(const struct radv_physical_device *pdev)
 {
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
-   return pdev->info.gfx_level >= GFX12 && !radv_emulate_rt(pdev) && !(instance->debug_flags & RADV_DEBUG_BVH4);
+   return pdev->info.gfx_level >= GFX12 && !radv_emulate_rt(pdev) && !(RADV_DEBUG(instance, BVH4));
 }
 
 bool
@@ -290,7 +290,7 @@ radv_is_dcc_disabled(const struct radv_physical_device *pdev)
 {
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   return instance->debug_flags & RADV_DEBUG_NO_DCC || pdev->drirc.debug.disable_dcc;
+   return RADV_DEBUG(instance, NO_DCC) || pdev->drirc.debug.disable_dcc;
 }
 
 static bool
@@ -846,7 +846,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_depth_clip_enable = true,
       .EXT_depth_range_unrestricted = true,
       .EXT_descriptor_buffer = true,
-      .EXT_descriptor_heap = !(instance->debug_flags & RADV_DEBUG_NO_HEAP),
+      .EXT_descriptor_heap = !(RADV_DEBUG(instance, NO_HEAP)),
       .EXT_descriptor_indexing = true,
       .EXT_device_address_binding_report = true,
       .EXT_device_fault = true,
@@ -866,7 +866,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_fragment_shader_interlock = radv_has_pops(pdev),
       .EXT_global_priority = true,
       .EXT_global_priority_query = true,
-      .EXT_graphics_pipeline_library = !pdev->use_llvm && !(instance->debug_flags & RADV_DEBUG_NO_GPL),
+      .EXT_graphics_pipeline_library = !pdev->use_llvm && !(RADV_DEBUG(instance, NO_GPL)),
       .EXT_hdr_metadata = true,
       .EXT_host_image_copy = radv_host_image_copy_enabled(pdev),
       .EXT_host_query_reset = true,
@@ -924,7 +924,7 @@ radv_physical_device_get_supported_extensions(const struct radv_physical_device 
       .EXT_shader_float8 = pdev->info.gfx_level >= GFX11_7 && !pdev->use_llvm,
       .EXT_shader_image_atomic_int64 = true,
       .EXT_shader_module_identifier = true,
-      .EXT_shader_object = !pdev->use_llvm && !(instance->debug_flags & RADV_DEBUG_NO_ESO),
+      .EXT_shader_object = !pdev->use_llvm && !(RADV_DEBUG(instance, NO_ESO)),
       .EXT_shader_replicated_composites = true,
       .EXT_shader_split_barrier = radv_split_barrier_enabled(pdev),
       .EXT_shader_stencil_export = true,
@@ -1482,7 +1482,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_EXT_device_fault */
       .deviceFaultEXT = true,
-      .deviceFaultVendorBinaryEXT = instance->debug_flags & RADV_DEBUG_HANG,
+      .deviceFaultVendorBinaryEXT = RADV_DEBUG(instance, HANG),
 
       /* VK_KHR_depth_clamp_zero_one */
       .depthClampZeroOne = true,
@@ -1672,7 +1672,7 @@ radv_physical_device_get_features(const struct radv_physical_device *pdev, struc
 
       /* VK_KHR_device_fault */
       .deviceFault = true,
-      .deviceFaultVendorBinary = instance->debug_flags & RADV_DEBUG_HANG,
+      .deviceFaultVendorBinary = RADV_DEBUG(instance, HANG),
       .deviceFaultReportMasked = true,
       .deviceFaultDeviceLostOnMasked = false,
 
@@ -2621,7 +2621,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    }
    drmFreeVersion(version);
 
-   if (instance->debug_flags & RADV_DEBUG_STARTUP)
+   if (RADV_DEBUG(instance, STARTUP))
       fprintf(stderr, "radv: info: Found device '%s'.\n", path);
 
    struct radv_physical_device *pdev =
@@ -2704,7 +2704,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    /* Allow all devices on a virtual winsys, otherwise do a basic support check. */
    if (!radv_is_gpu_supported(&pdev->info)) {
-      if (instance->debug_flags & RADV_DEBUG_STARTUP)
+      if (RADV_DEBUG(instance, STARTUP))
          fprintf(stderr, "radv: info: device '%s' is not supported by RADV.\n", ac_get_family_name(pdev->info.family));
       result = VK_ERROR_INCOMPATIBLE_DRIVER;
       goto fail;
@@ -2716,7 +2716,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
       goto fail;
    }
 
-   pdev->use_llvm = instance->debug_flags & RADV_DEBUG_LLVM;
+   pdev->use_llvm = RADV_DEBUG(instance, LLVM);
 #if !AMD_LLVM_AVAILABLE
    if (pdev->use_llvm) {
       fprintf(stderr, "ERROR: LLVM compiler backend selected for radv, but LLVM support was not "
@@ -2753,11 +2753,11 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    pdev->dcc_msaa_allowed = (instance->perftest_flags & RADV_PERFTEST_DCC_MSAA);
 
-   pdev->use_fmask = pdev->info.compiler_info.has_fmask && !(instance->debug_flags & RADV_DEBUG_NO_FMASK);
+   pdev->use_fmask = pdev->info.compiler_info.has_fmask && !(RADV_DEBUG(instance, NO_FMASK));
 
    pdev->force_64_byte_sampled_image = !pdev->use_fmask && pdev->drirc.debug.force_64_byte_sampled_image;
 
-   pdev->use_hiz = !(instance->debug_flags & RADV_DEBUG_NO_HIZ);
+   pdev->use_hiz = !(RADV_DEBUG(instance, NO_HIZ));
 
    if (pdev->info.gfx_level == GFX12) {
       const char *gfx12_hiz_wa_str = pdev->drirc.performance.gfx12_hiz_wa;
@@ -2779,14 +2779,14 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
    }
 
    pdev->use_ngg = (pdev->info.gfx_level >= GFX10 && pdev->info.family != CHIP_NAVI14 &&
-                    !(instance->debug_flags & RADV_DEBUG_NO_NGG)) ||
+                    !(RADV_DEBUG(instance, NO_NGG))) ||
                    pdev->info.gfx_level >= GFX11;
 
    /* TODO: Investigate if NGG culling helps on GFX11. */
    pdev->use_ngg_culling = pdev->use_ngg && pdev->info.max_render_backends > 1 &&
                            (pdev->info.gfx_level == GFX10_3 || pdev->info.gfx_level == GFX10 ||
                             (instance->perftest_flags & RADV_PERFTEST_NGGC)) &&
-                           !(instance->debug_flags & RADV_DEBUG_NO_NGGC);
+                           !(RADV_DEBUG(instance, NO_NGGC));
 
    pdev->emulate_ngg_gs_query_pipeline_stat = pdev->use_ngg && pdev->info.gfx_level < GFX11;
 
@@ -2867,7 +2867,7 @@ radv_physical_device_try_create(struct radv_instance *instance, drmDevicePtr drm
 
    radv_get_physical_device_properties(pdev);
 
-   if ((instance->debug_flags & RADV_DEBUG_INFO))
+   if ((RADV_DEBUG(instance, INFO)))
       ac_print_gpu_info(stdout, &pdev->info, fd);
 
    radv_init_physical_device_decoder(pdev);

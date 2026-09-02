@@ -1188,12 +1188,15 @@ va_lower_blend(bi_context *ctx)
       assert(bi_is_equiv(I->dest[0], bi_register(bi_preload_reg(
                                         BI_PRELOAD_BLEND_LINK, ctx->arch))));
 
-      if (I->flow == VA_FLOW_END)
-         bi_iadd_imm_i32_to(&b, I->dest[0], va_zero_lut(), 0);
-      else
-         bi_iadd_imm_i32_to(&b, I->dest[0], pc, prolog_length - 8);
+      bi_instr *link =
+         (I->flow == VA_FLOW_END)
+            ? bi_iadd_imm_i32_to(&b, I->dest[0], va_zero_lut(), 0)
+            : bi_iadd_imm_i32_to(&b, I->dest[0], pc, prolog_length - 8);
 
-      bi_branchzi(&b, va_zero_lut(), I->src[3], BI_CMPF_EQ);
+      bi_instr *call = bi_branchzi(&b, va_zero_lut(), I->src[3], BI_CMPF_EQ);
+
+      link->is_blend_prologue = true;
+      call->is_blend_prologue = true;
 
       /* For fixed function: skip the prologue, or return */
       if (I->flow != VA_FLOW_END)

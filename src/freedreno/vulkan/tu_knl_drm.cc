@@ -23,6 +23,11 @@ tu_allocate_userspace_iova(struct tu_device *dev,
 {
    *iova = 0;
 
+   if (flags & TU_BO_ALLOC_NO_32B_ROLLOVER)
+      dev->vma.nospan_shift = 32;
+   else
+      dev->vma.nospan_shift = 0;
+
    if (flags & TU_BO_ALLOC_REPLAYABLE) {
       if (client_iova) {
          if (util_vma_heap_alloc_addr(&dev->vma, client_iova, size)) {

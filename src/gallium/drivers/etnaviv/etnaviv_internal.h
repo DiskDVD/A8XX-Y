@@ -44,6 +44,7 @@
 #define ETNA_MAX_UNIFORMS (256)
 #define ETNA_MAX_CONST_BUF 16
 #define ETNA_MAX_PIXELPIPES 2
+#define ETNA_MAX_SAMPLES 4
 
 /* 128-bit color emulation reserves the upper half of the render targets for
  * companion targets, so at most this many color RTs can be bound (and be
@@ -217,6 +218,7 @@ struct compiled_framebuffer_state {
 /* Compiled context->create_vertex_elements_state */
 struct compiled_vertex_elements_state {
    unsigned num_elements;
+   bool dummy_element;
    uint32_t FE_VERTEX_ELEMENT_CONFIG[VIVS_FE_VERTEX_ELEMENT_CONFIG__LEN];
    uint32_t NFE_GENERIC_ATTRIB_CONFIG0[VIVS_NFE_GENERIC_ATTRIB__LEN];
    uint32_t NFE_GENERIC_ATTRIB_SCALE[VIVS_NFE_GENERIC_ATTRIB__LEN];

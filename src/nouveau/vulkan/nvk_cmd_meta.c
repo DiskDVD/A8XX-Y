@@ -458,7 +458,11 @@ nvk_CmdCopyMemoryToImageKHR(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(nvk_image, dst, pCopyMemoryInfo->image);
 
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
-   if ((queue_flags & VK_QUEUE_COMPUTE_BIT) &&
+   if ((queue_flags & VK_QUEUE_GRAPHICS_BIT) &&
+       nvk_meta_image_copy_gfx_supported(dst)) {
+      nvk_cmd_copy_memory_to_image_meta(cmd, pCopyMemoryInfo,
+                                        VK_PIPELINE_BIND_POINT_GRAPHICS);
+   } else if ((queue_flags & VK_QUEUE_COMPUTE_BIT) &&
        nvk_meta_image_copy_compute_supported(dst)) {
       nvk_cmd_copy_memory_to_image_meta(cmd, pCopyMemoryInfo,
                                         VK_PIPELINE_BIND_POINT_COMPUTE);

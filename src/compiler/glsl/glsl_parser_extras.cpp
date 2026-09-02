@@ -83,7 +83,7 @@ _mesa_glsl_parse_state::_mesa_glsl_parse_state(struct gl_context *_ctx,
    this->uses_builtin_functions = false;
 
    /* Set default language version and extensions */
-   this->language_version = 110;
+   this->language_version = ctx->Const.DefaultGLSLVersion;
    this->forced_language_version = ctx->Const.ForceGLSLVersion;
    if (ctx->Const.GLSLZeroInit == 1) {
       this->zero_init = (1u << ir_var_auto) | (1u << ir_var_temporary) | (1u << ir_var_shader_out);
@@ -99,7 +99,6 @@ _mesa_glsl_parse_state::_mesa_glsl_parse_state(struct gl_context *_ctx,
 
    /* OpenGL ES 2.0 has different defaults from desktop GL. */
    if (_mesa_is_gles2(ctx)) {
-      this->language_version = 100;
       this->es_shader = true;
       this->ARB_texture_rectangle_enable = false;
    }
@@ -853,6 +852,7 @@ static const _mesa_glsl_extension _mesa_glsl_supported_extensions[] = {
    EXT_AEP(EXT_texture_cube_map_array),
    EXT(EXT_texture_query_lod),
    EXT(EXT_texture_shadow_lod),
+   EXT(EXT_YUV_target),
    EXT(INTEL_conservative_rasterization),
    EXT(INTEL_shader_atomic_float_minmax),
    EXT(INTEL_shader_integer_functions2),
@@ -1355,6 +1355,8 @@ _mesa_ast_type_qualifier_print(const struct ast_type_qualifier *q)
       printf("noperspective ");
    if (q->flags.q.per_primitive)
       printf("per_primitive ");
+   if (q->flags.q.yuv)
+      printf("yuv ");
 }
 
 
@@ -1536,6 +1538,20 @@ ast_expression::print(void) const
       printf("} ");
       break;
    }
+
+   case ast_csc_standard:
+      switch (primary_expression.csc_standard) {
+      case YUV_CSC_STANDARD_601:
+         printf("itu_601 ");
+         break;
+      case YUV_CSC_STANDARD_601_FULL_RANGE:
+         printf("itu_601_full_range ");
+         break;
+      case YUV_CSC_STANDARD_709:
+         printf("itu_709 ");
+         break;
+      }
+      break;
 
    default:
       assert(0);

@@ -3342,7 +3342,7 @@ brw_vectorize_lower_mem_access(brw_pass_tracker *pt)
       OPT(nir_opt_constant_folding);
       OPT(nir_opt_copy_prop);
 
-      if (OPT(brw_nir_rebase_const_offset_ubo_loads)) {
+      if (OPT(intel_nir_rebase_const_offset_ubo_loads)) {
          OPT(nir_opt_cse);
          OPT(nir_opt_copy_prop);
 
@@ -3385,7 +3385,7 @@ brw_vectorize_lower_mem_access(brw_pass_tracker *pt)
       OPT(intel_nir_lower_scratch);
    }
 
-   /* Do this after the vectorization & brw_nir_rebase_const_offset_ubo_loads
+   /* Do this after the vectorization & intel_nir_rebase_const_offset_ubo_loads
     * so that we maximize the offset put into the messages.
     */
    if (devinfo->ver >= 20) {

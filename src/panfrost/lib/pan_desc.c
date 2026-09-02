@@ -97,17 +97,16 @@ pan_warn_on_afbc_reverse_issue_order(const struct pan_attachment_info *att,
 }
 #endif
 
-static bool
-pan_fb_color_attachment_should_crc(const struct pan_fb_color_attachment *rt,
-                                   unsigned tile_size)
+bool
+GENX(pan_image_view_can_crc)(const struct pan_image_view *view,
+                             unsigned tile_size_px)
 {
    uint64_t mod;
 
-   if (!rt->view || rt->discard || !rt->crc_state ||
-       !pan_image_view_has_crc(rt->view))
+   if (!view || !pan_image_view_has_crc(view))
       return false;
 
-   mod = pan_image_view_get_first_plane(rt->view).image->props.modifier;
+   mod = pan_image_view_get_first_plane(view).image->props.modifier;
 
    if (!drm_is_afbc(mod))
       return true;
@@ -120,10 +119,18 @@ pan_fb_color_attachment_should_crc(const struct pan_fb_color_attachment *rt,
    assert(mod & AFBC_FORMAT_MOD_SPARSE);
 
    /* AFBC render block size must fit in a single pass. */
-   if (pan_afbc_superblock_exceeds_tile_size(mod, tile_size))
+   if (pan_afbc_superblock_exceeds_tile_size(mod, tile_size_px))
       return false;
 
    return true;
+}
+
+static bool
+pan_fb_color_attachment_should_crc(const struct pan_fb_color_attachment *rt,
+                                   unsigned tile_size)
+{
+   return !rt->discard && rt->crc_state &&
+          GENX(pan_image_view_can_crc)(rt->view, tile_size);
 }
 
 int
@@ -1116,11 +1123,6 @@ pan_crc_maybe_enable_flushed(struct pan_crc *crc, struct pan_crc_state *state,
 static uint64_t
 pan_crc_clear_color(const struct pan_fb_info *fb)
 {
-   uint64_t base[PAN_MAX_RTS] = { 0, }; /* Compiler auto-vectorization hint */
-   uint64_t crc_clear_flag = 0;
-   uint64_t crc_clear_base = 1ull << 46;
-   uint64_t crc_init = 0;
-
    /* When a tile is clear (i.e. no polygons intersect it), the configured
     * crc_clear_color is written as is as CRC value by the GPU if both CRC
     * write (crc_write_enable flag) and Empty Tile Elimination write
@@ -1149,21 +1151,17 @@ pan_crc_clear_color(const struct pan_fb_info *fb)
     * hash. Clear values in pan_fb_info struct are expected to be packed with
     * respect to the format and dithering of the underlying RTs so that a
     * change of format (without a clear color change) can generate a different
-    * hash. The prime number 16381 is carefully selected so that the 32 bits
-    * of each clear color channel take at most 46 bits after the mul (the next
-    * prime number 16411 takes at most 47 bits). The resulting hash value is
-    * guaranteed not to overflow and can safely be packed. */
+    * hash. */
+   uint64_t base[PAN_MAX_RTS] = {0}; /* Compiler auto-vectorization hint */
 
-   static const uint64_t primes[4] = { 16381ULL, 16369ULL, 16363ULL, 16361ULL };
    for (unsigned i = 0; i < fb->rt_count; ++i)
       if (fb->rts[i].clear)
-         for (unsigned j = 0; j < 4; ++j)
-            base[i] ^= primes[j] * fb->rts[i].clear_value[j] * (i + 1);
+         base[i] = pan_crc_clear_color_hash_rt(i, fb->rts[i].clear_value);
 
-   crc_clear_base |= (base[0] ^ base[1]) ^ (base[2] ^ base[3]) ^
-      (base[4] ^ base[5]) ^ (base[6] ^ base[7]);
+   uint64_t hash = (base[0] ^ base[1]) ^ (base[2] ^ base[3]) ^
+                   (base[4] ^ base[5]) ^ (base[6] ^ base[7]);
 
-   return (crc_clear_flag << 63) | (crc_clear_base << 16) | crc_init;
+   return pan_crc_clear_color_pack(hash);
 }
 #endif
 

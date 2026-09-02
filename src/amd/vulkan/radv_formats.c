@@ -687,7 +687,7 @@ radv_get_modifier_flags(struct radv_physical_device *pdev, VkFormat format, uint
           radv_is_atomic_format_supported(format) || pdev->drirc.debug.disable_dcc_stores)
          features &= ~VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
 
-      if (radv_is_dcc_disabled(pdev) || instance->debug_flags & RADV_DEBUG_NO_DISPLAY_DCC)
+      if (radv_is_dcc_disabled(pdev) || RADV_DEBUG(instance, NO_DISPLAY_DCC))
          return 0;
    }
 

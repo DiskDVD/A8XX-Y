@@ -44,6 +44,10 @@ struct panvk_image {
 
    /* One image each for 2x 4x 8x 16x. We don't support more than 16x. */
    VkImage ms_imgs[4];
+
+   /* If an image can track validity of CRC even when external access is
+    * possible. */
+   bool crc_safe_external;
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
@@ -160,5 +164,17 @@ static inline bool
 panvk_sparse_block_is_valid(struct panvk_sparse_block_desc desc) { return desc.size_B > 0; }
 
 VkSparseImageFormatProperties panvk_get_sparse_image_fmt_props(VkImageType type, VkFormat format);
+
+static inline uint64_t
+panvk_image_plane_crc_header_addr(const struct panvk_image *image)
+{
+   const struct panvk_image_plane *img_plane = &image->planes[0];
+
+   if (!img_plane->image.props.crc || !img_plane->plane.base)
+      return 0;
+
+   return img_plane->plane.base +
+          img_plane->plane.layout.slices[0].crc.header_offset_B;
+}
 
 #endif

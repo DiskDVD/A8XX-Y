@@ -350,32 +350,20 @@ jay_grow_sources(jay_builder *b, jay_inst *I, uint8_t new_num_srcs)
 }
 
 static inline jay_inst *
-jay_add_predicate_else(jay_builder *b,
-                       jay_inst *I,
-                       jay_def predicate,
-                       jay_def default_value)
+jay_add_predicate(jay_builder *b, jay_inst *I, jay_def pred, jay_def default_)
 {
    assert(!I->predication && "pre-condition");
-   assert(jay_is_flag(predicate) && jay_is_ssa(default_value));
+   assert(jay_is_flag(pred) && (jay_is_ssa(default_) || jay_is_null(default_)));
 
    unsigned pred_index = I->num_srcs;
-   I = jay_grow_sources(b, I, pred_index + 2);
-   I->src[pred_index] = predicate;
-   I->src[pred_index + 1] = default_value;
-   I->predication = JAY_PREDICATED_DEFAULT;
-   return I;
-}
+   I->predication = jay_is_null(default_) ? 1 : 2;
+   I = jay_grow_sources(b, I, pred_index + I->predication);
+   I->src[pred_index] = pred;
 
-static inline jay_inst *
-jay_add_predicate(jay_builder *b, jay_inst *I, jay_def predicate)
-{
-   assert(!I->predication && "pre-condition");
-   assert(jay_is_flag(predicate));
+   if (I->predication == 2) {
+      I->src[pred_index + 1] = default_;
+   }
 
-   unsigned pred_index = I->num_srcs;
-   I = jay_grow_sources(b, I, pred_index + 1);
-   I->src[pred_index] = predicate;
-   I->predication = JAY_PREDICATED;
    return I;
 }
 

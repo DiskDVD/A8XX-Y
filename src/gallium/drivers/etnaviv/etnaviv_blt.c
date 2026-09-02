@@ -80,6 +80,11 @@ static bool
 find_blt_conversion(enum pipe_format src_pipe, enum pipe_format dst_pipe,
                     struct blt_conv_swizzle *swizzle)
 {
+   /* An integer conversion changes the stored values, a raw copy cannot. */
+   if (util_format_is_pure_integer(src_pipe) ||
+       util_format_is_pure_integer(dst_pipe))
+      return false;
+
    const uint32_t src_blt = translate_blt_format(src_pipe);
    const uint32_t dst_blt = translate_blt_format(dst_pipe);
 
@@ -253,7 +258,8 @@ emit_blt_copyimage(struct etna_context *ctx, const struct blt_imgcopy_op *op)
    etna_set_state(stream, VIVS_BLT_ENABLE, 0x00000001);
    etna_set_state(stream, VIVS_BLT_CONFIG,
            VIVS_BLT_CONFIG_SRC_ENDIAN(op->src.endian_mode) |
-           VIVS_BLT_CONFIG_DEST_ENDIAN(op->dest.endian_mode));
+           VIVS_BLT_CONFIG_DEST_ENDIAN(op->dest.endian_mode) |
+           COND(op->downsample_one_sample, VIVS_BLT_CONFIG_DOWNSAMPLE_ONE_SAMPLE));
    etna_set_state(stream, VIVS_BLT_SRC_STRIDE, blt_compute_stride_bits(&op->src));
    etna_set_state(stream, VIVS_BLT_SRC_CONFIG,
            blt_compute_src_img_config_bits(&op->src) |
@@ -884,6 +890,9 @@ etna_try_blt_blit(struct pipe_context *pctx,
       op.src.tiling = src->layout;
       op.src.downsample_x = downsample_x;
       op.src.downsample_y = downsample_y;
+
+      op.downsample_one_sample = (downsample_x || downsample_y) &&
+                                 resolve_copies_one_sample(blit_info->dst.format);
       if (has_conversion)
          memcpy(op.src.swizzle, conv_swizzle.src_swizzle, 4);
       else

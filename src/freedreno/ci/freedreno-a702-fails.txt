@@ -1,11 +1,4 @@
 KHR-GLES31.core.polygon_offset_clamp.PolygonOffsetClampMinMax,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_atomic_functions,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_buffer_load,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_cpu_writes,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_framebuffer_readback,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_image_store,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_ssbo_writes,Fail
-KHR-GLES31.core.texture_buffer.texture_buffer_operations_transform_feedback,Fail
 dEQP-GLES2.functional.texture.mipmap.2d.projected.linear_nearest_clamp,Fail
 dEQP-GLES2.functional.texture.mipmap.2d.projected.linear_nearest_mirror,Fail
 dEQP-GLES2.functional.texture.mipmap.2d.projected.linear_nearest_repeat,Fail
@@ -149,9 +142,13 @@ dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_
 dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
 gmem-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_16,Fail
 gmem-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_16,Fail
+gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
+gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
 gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
 nobin-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_16,Fail
 nobin-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_16,Fail
+nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
+nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
 nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
 
 dEQP-VK.ycbcr.copy.a1b5g5r5_unorm_pack16.g8_b8r8_2plane_420_unorm.optimal_optimal,Fail
@@ -170,6 +167,7 @@ gmem-dEQP-VK.memory.pipeline_barrier.host_write_uniform_texel_buffer.65536,Fail
 
 # Some buffer values were incorrect
 dEQP-VK.sparse_resources.buffer.ssbo.read_write.sparse_residency_non_resident_strict,Fail
+gmem-dEQP-VK.sparse_resources.buffer.ssbo.read_write.sparse_residency_non_resident_strict,Fail
 
 #
 # OpenCL-CTS

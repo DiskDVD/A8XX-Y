@@ -906,10 +906,10 @@ anv_shader_create(struct anv_device *device,
 
 
    /* Apply workarounds associated with this shader hash */
-   struct anv_instance *instance = device->physical->instance;
-   if (instance->shader_workarounds != NULL) {
+   struct anv_physical_device *pdevice = device->physical;
+   if (pdevice->shader_workarounds != NULL) {
       struct anv_shader_workaround *workaround =
-         _mesa_hash_table_u64_search(instance->shader_workarounds,
+         _mesa_hash_table_u64_search(pdevice->shader_workarounds,
                                      shader->prog_data->source_hash);
       if (workaround != NULL)
          shader->workaround = *workaround;

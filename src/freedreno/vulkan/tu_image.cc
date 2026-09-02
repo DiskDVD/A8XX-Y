@@ -672,8 +672,7 @@ tu_image_init(struct tu_device *device, struct tu_image *image,
          if (!device->physical_device->info->props
                  .supports_linear_mipmap_threshold_in_blocks &&
              vk_format_is_compressed(image->vk.format) &&
-             pCreateInfo->usage &
-                VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT &&
+             pCreateInfo->flags & VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT &&
              format_list_has_uncompressed_format(fmt_list)) {
             force_disable_linear_fallback = true;
          }
@@ -1318,9 +1317,10 @@ tu_GetPhysicalDeviceSparseImageFormatProperties2(
       vk_format_to_pipe_format(pFormatInfo->format);
 
    if (pFormatInfo->format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-      u_foreach_bit (aspect, aspects) {
+      u_foreach_bit (b, aspects) {
+         VkImageAspectFlags aspect = BIT(b);
          enum pipe_format aspect_format =
-            tu6_plane_format(pFormatInfo->format, aspect);
+            tu6_plane_format(pFormatInfo->format, tu6_plane_index(pFormatInfo->format, aspect));
          vk_outarray_append_typed(VkSparseImageFormatProperties2, &out, props) {
             props->properties =
                tu_fill_sparse_image_fmt_props(aspect, aspect_format,
@@ -1375,7 +1375,8 @@ tu_get_image_sparse_memory_requirements(
       return;
 
    if (image->vk.format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-      u_foreach_bit (aspect, image->vk.aspects) {
+      u_foreach_bit (b, image->vk.aspects) {
+         VkImageAspectFlags aspect = BIT(b);
          const struct fdl_layout *layout =
             &image->layout[tu6_plane_index(image->vk.format, aspect)];
          vk_outarray_append_typed(VkSparseImageMemoryRequirements2, &out, reqs) {

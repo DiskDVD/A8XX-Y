@@ -45,4 +45,6 @@ VkResult kk_cmd_pool_alloc_bo(struct kk_cmd_pool *pool,
 
 void kk_cmd_pool_free_bo_list(struct kk_cmd_pool *pool, struct list_head *bos);
 
+void kk_cmd_pool_set_label(struct kk_cmd_pool *pool, const char *label);
+
 #endif /* KK_CMD_POOL_H */

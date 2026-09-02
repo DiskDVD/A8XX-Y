@@ -118,7 +118,6 @@ struct nir_to_jay_state {
    /* Bitset of defs optimized for ballots */
    BITSET_WORD *zero_inactive;
 
-   unsigned indent;
    bool needs_final_halt;
 
    /* We cache ballot(true), ctz(ballot(true)), and 4*ctz(ballot(true)) within a
@@ -413,7 +412,7 @@ jay_emit_alu(struct nir_to_jay_state *nj, nir_alu_instr *alu)
 
 #define MATH(nir, jay_op)                                                      \
    case nir_op_##nir:                                                          \
-      jay_MATH(b, type, dst, src[0], JAY_MATH_##jay_op, 0);                    \
+      jay_MATH(b, type, dst, src[0], JAY_MATH_##jay_op);                       \
       break;
 
 #define UNOP_UNTYPED(nir, jay_op)                                              \
@@ -1968,19 +1967,6 @@ build_rt_header_and_srcs(struct nir_to_jay_state *nj,
 
    if (instr->intrinsic == nir_intrinsic_trace_ray_intel) {
       jay_def payload = jay_as_gpr(b, nj_src(instr->src[1]));
-
-      if (!synchronous) {
-         jay_def packed_stack_ids =
-            jay_extract_range(nj->payload.u1, 0, s->dispatch_width / 2);
-         jay_def stack_id = jay_alloc_def(b, GPR, 1);
-         jay_CVT(b, JAY_TYPE_U32, stack_id, packed_stack_ids, JAY_TYPE_U16,
-                 JAY_ROUND, 0);
-
-         payload =
-            jay_BFI2_u32(b, s->devinfo->ver >= 20 ? 0x0fff0000 : 0x07ff0000,
-                         stack_id, payload);
-      }
-
       srcs[len++] = payload;
    } else if (instr->intrinsic == nir_intrinsic_btd_retire_intel ||
               instr->intrinsic == nir_intrinsic_btd_spawn_intel) {
@@ -2118,8 +2104,7 @@ jay_emit_dpas(struct nir_to_jay_state *nj, nir_intrinsic_instr *intr)
    jay_DPAS(b, dst, src[0], src[1], src[2], nir_intrinsic_systolic_depth(intr),
             nir_intrinsic_repeat_count(intr),
             jay_type_for_glsl_base_type(nir_intrinsic_dest_base_type(intr)),
-            jay_type_for_glsl_base_type(nir_intrinsic_src_base_type(intr)),
-            /* sbid */ 0)
+            jay_type_for_glsl_base_type(nir_intrinsic_src_base_type(intr)))
       ->saturate = nir_intrinsic_saturate(intr);
 
    nj->s->prog_data->cs.uses_systolic = true;
@@ -3626,14 +3611,6 @@ jay_block_reconverge(struct nir_to_jay_state *nj,
    }
 }
 
-static jay_block *
-jay_create_block(struct nir_to_jay_state *nj)
-{
-   jay_block *block = jay_new_block(nj->f);
-   block->indent = nj->indent;
-   return block;
-}
-
 static void
 jay_emit_if(struct nir_to_jay_state *nj, nir_if *nif)
 {
@@ -3643,16 +3620,14 @@ jay_emit_if(struct nir_to_jay_state *nj, nir_if *nif)
 
    jay_block *converge_block = nj->converge_block;
    jay_block *before_block = nj->current_block;
-   jay_block *after_block = jay_create_block(nj);
+   jay_block *after_block = jay_new_block(nj->f);
 
    /* Push */
-   ++nj->indent;
-
    if (converge_block) {
       util_dynarray_append(&nj->converge_blocks, converge_block);
    }
 
-   jay_block *else_first = jay_create_block(nj);
+   jay_block *else_first = jay_new_block(nj->f);
 
    /* Break and halt instructions in the then block may reconverge at the
     * else block for a non-uniform IF.
@@ -3693,7 +3668,6 @@ jay_emit_if(struct nir_to_jay_state *nj, nir_if *nif)
    jay_block_reconverge(nj, else_last, after_block);
 
    /* Pop */
-   --nj->indent;
    nj->after_block = after_block;
    nj->converge_block = converge_block;
 
@@ -3703,7 +3677,7 @@ jay_emit_if(struct nir_to_jay_state *nj, nir_if *nif)
 
    /* Emit the if-else-endif sequence */
    b->cursor = jay_after_block(before_block);
-   jay_add_predicate(b, jay_IF(b), condition);
+   jay_add_predicate(b, jay_IF(b), condition, jay_null());
 
    b->cursor = jay_before_block(else_first);
    jay_ELSE(b);
@@ -3723,8 +3697,7 @@ jay_emit_loop(struct nir_to_jay_state *nj, nir_loop *nloop)
    unsigned saved_loop_converge = nj->loop_converge_block;
 
    /* Make the block that will be after the loop exit */
-   nj->break_block = jay_create_block(nj);
-   ++nj->indent;
+   nj->break_block = jay_new_block(nj->f);
 
    if (converge_block) {
       util_dynarray_append(&nj->converge_blocks, converge_block);
@@ -3738,7 +3711,7 @@ jay_emit_loop(struct nir_to_jay_state *nj, nir_loop *nloop)
       util_dynarray_num_elements(&nj->converge_blocks, jay_block *);
 
    /* Make a block for the loop body, which is also the loop header */
-   jay_block *loop_header = jay_create_block(nj);
+   jay_block *loop_header = jay_new_block(nj->f);
    loop_header->physical_loop_header = true;
 
    /* The current block falls through to the start of the loop */
@@ -3766,7 +3739,6 @@ jay_emit_loop(struct nir_to_jay_state *nj, nir_loop *nloop)
    }
 
    /* Pop */
-   --nj->indent;
    nj->after_block = nj->break_block;
    nj->break_block = saved_break;
    nj->loop_converge_block = saved_loop_converge;
@@ -3792,7 +3764,7 @@ jay_emit_block(struct nir_to_jay_state *nj, nir_block *nb)
       nj->current_block = nj->after_block;
       nj->after_block = NULL;
    } else {
-      nj->current_block = jay_create_block(nj);
+      nj->current_block = jay_new_block(nj->f);
    }
 
    jay_block *block = nj->current_block;
@@ -3961,7 +3933,7 @@ jay_emit_eot(struct nir_to_jay_state *nj)
          I = jay_SEND(b, .sfid = GEN_SFID_URB, .msg_desc = desc, .srcs = srcs,
                       .nr_srcs = 2, .type = JAY_TYPE_U32, .uniform = true,
                       .eot = true);
-         I = jay_add_predicate(b, I, never);
+         I = jay_add_predicate(b, I, never, jay_null());
       } else {
          /* As above but for HDC URB platforms */
          jay_def data = jay_alloc_def(b, GPR, 1);
@@ -4457,7 +4429,7 @@ jay_setup_payload(struct nir_to_jay_state *nj)
 {
    jay_shader *s = nj->s;
    jay_builder *b = &nj->bld;
-   nj->after_block = jay_create_block(nj);
+   nj->after_block = jay_new_block(nj->f);
    b->cursor = jay_after_block(nj->after_block);
 
    struct payload_builder p = { .b = &nj->bld };
@@ -4654,7 +4626,7 @@ jay_from_nir_function(const struct intel_device_info *devinfo,
       jay_setup_payload(&nj);
    }
 
-   nj.exit_block = jay_create_block(&nj);
+   nj.exit_block = jay_new_block(f);
    nj.zero_inactive = BITSET_CALLOC(f->ssa_alloc);
    jay_emit_cf_list(&nj, &impl->body);
    jay_block_add_successor(nj.current_block, nj.exit_block, GPR);
@@ -4689,6 +4661,24 @@ jay_gather_stats(const jay_shader *s, struct genisa_stats *stats)
    stats->vrt_size =
       intel_vrt_register_file_size(s->devinfo, stats->grf_registers);
    stats->vrt_threads = intel_max_vrt_threads(s->devinfo, stats->vrt_size);
+
+   /* We currently only support up to 2MB of scratch space.  If we need to
+    * support more eventually, the documentation suggests that we could allocate
+    * a larger buffer, and partition it out ourselves.  We'd just have to undo
+    * the hardware's address calculation by subtracting (FFTID * Per Thread
+    * Scratch Space) and then add FFTID * (Larger Per Thread Scratch Space).
+    *
+    * See 3D-Media-GPGPU Engine > Media GPGPU Pipeline > Thread Group Tracking >
+    * Local Memory/Scratch Space.
+    */
+   assert(s->scratch_size <= s->devinfo->max_scratch_size_per_thread &&
+          "maximum scratch size");
+
+   /* Scratch is allocated in 1KiB increments. */
+   if (s->scratch_size > 0) {
+      stats->scratch_memory_size =
+         align(util_next_power_of_two(s->scratch_size), 1024);
+   }
 }
 
 static unsigned
@@ -4809,30 +4799,39 @@ jay_compile_simd(const struct intel_device_info *devinfo,
 
    JAY_PASS(s, jay_register_allocate);
    JAY_PASS(s, jay_lower_post_ra);
-   JAY_PASS(s, jay_schedule);
-   JAY_PASS(s, jay_lower_post_sched, nir->info.float_controls_execution_mode,
-            nir->info.bit_sizes_float);
 
-   if (s->dispatch_width == 32 && s->stage == MESA_SHADER_FRAGMENT) {
-      JAY_PASS(s, jay_insert_payload_swizzle);
+   /* jay_opt_postra_vectorize works on back-to-back moves, which we get coming
+    * out of RA but scheduling will reorder. Vectorize before scheduling.
+    */
+   if (!(jay_debug & JAY_DBG_NOOPT)) {
+      JAY_PASS(s, jay_opt_postra_vectorize);
    }
+
+   JAY_PASS(s, jay_schedule);
 
    if (s->stage == MESA_SHADER_FRAGMENT && s->helpers_tracked) {
       JAY_PASS(s, jay_lower_helpers);
    }
 
    if (!(jay_debug & JAY_DBG_NOOPT)) {
-      JAY_PASS(s, jay_opt_postra_vectorize);
-
       /* jay_assign_accumulators uses a conservative liveness analysis for
        * predication, so assign accumulators before predicating for better
        * results.
        */
       if (!(jay_debug & JAY_DBG_NOACC)) {
          JAY_PASS(s, jay_assign_accumulators);
+         s->post_acc = true;
       }
 
       JAY_PASS(s, jay_opt_predicate);
+   }
+
+   JAY_PASS(s, jay_schedule);
+   JAY_PASS(s, jay_lower_post_sched, nir->info.float_controls_execution_mode,
+            nir->info.bit_sizes_float);
+
+   if (s->dispatch_width == 32 && s->stage == MESA_SHADER_FRAGMENT) {
+      JAY_PASS(s, jay_insert_payload_swizzle);
    }
 
    if (jay_debug & JAY_DBG_SYNC) {
@@ -4896,31 +4895,12 @@ jay_compile_simd(const struct intel_device_info *devinfo,
 
    prog_data->base.program_size = bin->size;
 
-   if (s->scratch_size > 0) {
-      /* We currently only support up to 2MB of scratch space.  If we
-       * need to support more eventually, the documentation suggests
-       * that we could allocate a larger buffer, and partition it out
-       * ourselves.  We'd just have to undo the hardware's address
-       * calculation by subtracting (FFTID * Per Thread Scratch Space)
-       * and then add FFTID * (Larger Per Thread Scratch Space).
-       *
-       * See 3D-Media-GPGPU Engine > Media GPGPU Pipeline >
-       * Thread Group Tracking > Local Memory/Scratch Space.
-       */
-      assert(s->scratch_size <= devinfo->max_scratch_size_per_thread &&
-             "maximum scratch size");
-
-      /* Take the max of any previously compiled variant of the shader. In the
-       * case of bindless shaders with return parts, this will also take the
-       * max of all parts.
-       */
-      prog_data->base.total_scratch =
-         MAX2(prog_data->base.total_scratch,
-              util_next_power_of_two(s->scratch_size));
-   }
-
-   /* Scratch is allocated in 1KiB increments. */
-   prog_data->base.total_scratch = align(prog_data->base.total_scratch, 1024);
+   /* Take the max of any previously compiled variant of the shader. In the
+    * case of bindless shaders with return parts, this will also take the
+    * max of all parts.
+    */
+   prog_data->base.total_scratch =
+      MAX2(prog_data->base.total_scratch, stats->scratch_memory_size);
 
    ralloc_free(s);
    return bin;

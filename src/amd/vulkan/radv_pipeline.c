@@ -36,8 +36,7 @@ radv_pipeline_skip_shaders_cache(const struct radv_device *device, const struct 
     * - shaders are dumped for debugging (RADV_DEBUG=shaders)
     * - binaries are captured (driver shouldn't store data to an internal cache)
     */
-   return (instance->debug_flags & RADV_DEBUG_DUMP_SHADERS) ||
-          (pipeline->create_flags & VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR);
+   return RADV_DEBUG_DUMP_SHADERS(instance) || (pipeline->create_flags & VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR);
 }
 
 void
@@ -350,8 +349,7 @@ radv_postprocess_nir(const struct radv_compiler_info *compiler_info, const struc
    NIR_PASS(_, stage->nir, ac_nir_lower_tex_coords,
             &(ac_nir_lower_tex_coords_options){
                .gfx_level = gfx_level,
-               .lower_array_layer_round_even =
-                  !compiler_info->ac->conformant_trunc_coord && !compiler_info->key.disable_trunc_coord,
+               .lower_array_layer_round_even = !compiler_info->ac->conformant_trunc_coord,
                .fix_derivs_in_divergent_cf = stage->stage == MESA_SHADER_FRAGMENT && !use_llvm,
                .max_wqm_vgprs = 64, // TODO: improve spiller and RA support for linear VGPRs
             });
@@ -1219,7 +1217,7 @@ radv_pipeline_report_pso_history(const struct radv_device *device, struct radv_p
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    FILE *output = instance->pso_history_logfile ? instance->pso_history_logfile : stderr;
 
-   if (!(instance->debug_flags & RADV_DEBUG_PSO_HISTORY))
+   if (!(RADV_DEBUG(instance, PSO_HISTORY)))
       return;
 
    /* Only report PSO history for application pipelines. */

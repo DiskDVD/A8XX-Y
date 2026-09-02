@@ -802,6 +802,8 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
 
       radv_optimize_nir(nir, false);
 
+      NIR_PASS(_, nir, nir_opt_scalar_array_vars_to_vec, nir_var_function_temp | nir_var_mem_shared);
+
       NIR_PASS(_, nir, nir_opt_memcpy);
       NIR_PASS(_, nir, nir_opt_deref);
    }
@@ -932,7 +934,8 @@ radv_shader_spirv_to_nir(const struct radv_compiler_info *compiler_info, struct 
 
 bool
 radv_consider_culling(const struct radv_compiler_info *compiler_info, struct nir_shader *nir, uint64_t ps_inputs_read,
-                      unsigned num_vertices_per_primitive, const struct radv_shader_info *info)
+                      unsigned num_vertices_per_primitive, const struct radv_shader_info *info,
+                      const struct radv_graphics_state_key *gfx_state)
 {
    /* Culling doesn't make sense for meta shaders. */
    if (is_meta_shader(nir))
@@ -961,6 +964,12 @@ radv_consider_culling(const struct radv_compiler_info *compiler_info, struct nir
     * then may be okay to keep the memory stores in the 1st shader part, and delete them from the 2nd.
     */
    if (nir->info.writes_memory)
+      return false;
+
+   /* NGG lowering exports 0 primitives and vertices with rasterizer discard. There's nothing
+    * to cull.
+    */
+   if (gfx_state->rs.rasterizer_discard)
       return false;
 
    /* When the shader relies on the subgroup invocation ID, we'd break it, because the ID changes after the culling.
@@ -1036,6 +1045,7 @@ radv_lower_ngg(const struct radv_compiler_info *compiler_info, struct radv_shade
    options.has_gs_primitives_query = compiler_info->ac->gfx_level < GFX11;
    options.force_vrs = info->force_vrs_per_vertex;
    options.skip_viewport_state_culling = nir->info.outputs_written & (VARYING_BIT_VIEWPORT | VARYING_BIT_VIEWPORT_MASK);
+   options.rasterizer_discard = gfx_state->rs.rasterizer_discard;
 
    if (nir->info.stage == MESA_SHADER_VERTEX || nir->info.stage == MESA_SHADER_TESS_EVAL) {
       assert(info->is_ngg);
@@ -3547,7 +3557,7 @@ radv_create_trap_handler_shader(struct radv_device *device)
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
    struct radv_shader_stage_key stage_key = {0};
    struct radv_shader_stage stage = {0};
-   const bool dump_shader = !!(instance->debug_flags & RADV_DEBUG_DUMP_TRAP_HANDLER);
+   const bool dump_shader = !!(RADV_DEBUG(instance, DUMP_TRAP_HANDLER));
 
    nir_builder b = radv_meta_nir_init_shader(MESA_SHADER_COMPUTE, "meta_trap_handler");
 
@@ -3626,7 +3636,7 @@ radv_compile_rt_prolog(struct radv_device *device, struct radv_shader_stage *sta
    const struct radv_compiler_info *compiler_info = &device->compiler_info;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_instance *instance = radv_physical_device_instance(pdev);
-   bool dump_shader = instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS;
+   bool dump_shader = RADV_DEBUG(instance, DUMP_PROLOGS);
    bool keep_shader_info = radv_device_fault_detection_enabled(device);
 
    struct radv_shader *prolog;
@@ -3676,7 +3686,7 @@ radv_create_vs_prolog(struct radv_device *device, const struct radv_vs_prolog_ke
    const struct radv_compiler_info *compiler_info = &device->compiler_info;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
-   bool dump_shader = instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS;
+   bool dump_shader = RADV_DEBUG(instance, DUMP_PROLOGS);
    bool keep_shader_info = radv_device_fault_detection_enabled(device);
 
    struct radv_shader_part *prolog;
@@ -3747,7 +3757,7 @@ radv_create_ps_epilog(struct radv_device *device, const struct radv_ps_epilog_ke
    const struct radv_compiler_info *compiler_info = &device->compiler_info;
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
-   bool dump_shader = instance->debug_flags & RADV_DEBUG_DUMP_EPILOGS;
+   bool dump_shader = RADV_DEBUG(instance, DUMP_EPILOGS);
    bool keep_shader_info = radv_device_fault_detection_enabled(device);
 
    struct radv_shader_part *epilog;

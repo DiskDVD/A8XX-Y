@@ -576,9 +576,8 @@ emit_barrier_insert_waits(struct cs_builder *b, struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
-void
-panvk_per_arch(emit_barrier)(struct panvk_cmd_buffer *cmdbuf,
-                             struct panvk_cs_deps deps)
+static void
+emit_barrier_csf(struct panvk_cmd_buffer *cmdbuf, struct panvk_cs_deps deps)
 {
    uint32_t wait_subqueue_mask = 0;
    uint32_t utrace_subqueue_mask = 0;
@@ -670,6 +669,53 @@ panvk_per_arch(emit_barrier)(struct panvk_cmd_buffer *cmdbuf,
    }
 }
 
+void
+panvk_per_arch(emit_barrier)(struct panvk_cmd_buffer *cmdbuf,
+                             struct panvk_cs_deps deps)
+{
+   /* Execute CRC invalidation after all source work and before releasing any
+    * destination subqueue. One subqueue performs the state writes.
+    */
+   if (deps.crc.count) {
+      struct panvk_device *dev = to_panvk_device(cmdbuf->vk.base.device);
+      uint32_t mask = deps.crc.dst_subqueue_mask;
+      enum panvk_subqueue_id exec = panvk_crc_exec_subqueue(mask);
+
+      u_foreach_bit(src, deps.crc.src_subqueue_mask) {
+         deps.src[src].wait_sb_mask |= dev->csf.sb.all_iters_mask;
+
+         if (src != exec) {
+            deps.dst[exec].wait_subqueue_mask |= BITFIELD_BIT(src);
+         }
+      }
+
+      struct panvk_cs_crc_deps crc = deps.crc;
+      memset(&deps.crc, 0, sizeof(deps.crc));
+      emit_barrier_csf(cmdbuf, deps);
+
+      struct cs_builder *b = panvk_get_cs_builder(cmdbuf, exec);
+      for (uint32_t i = 0; i < crc.count; i++) {
+         panvk_per_arch(cmd_invalidate_crc)(b, crc.addrs[i]);
+      }
+
+      uint32_t other_dst = crc.dst_subqueue_mask & ~BITFIELD_BIT(exec);
+      if (other_dst) {
+         struct panvk_cs_deps post = {0};
+         post.src[exec].wait_sb_mask = SB_MASK(LS);
+
+         u_foreach_bit(dst, other_dst) {
+            post.dst[dst].wait_subqueue_mask = BITFIELD_BIT(exec);
+         }
+
+         emit_barrier_csf(cmdbuf, post);
+      }
+
+      return;
+   }
+
+   emit_barrier_csf(cmdbuf, deps);
+}
+
 VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
                                     const VkDependencyInfo *pDependencyInfo)
@@ -682,7 +728,20 @@ panvk_per_arch(CmdPipelineBarrier2)(VkCommandBuffer commandBuffer,
    if (deps.needs_fb_barrier)
       panvk_per_arch(cmd_fb_barrier)(cmdbuf);
 
+   uint32_t max_crc_count = pDependencyInfo->imageMemoryBarrierCount;
+   STACK_ARRAY(uint64_t, crc_addrs, max_crc_count);
+
+   if (!crc_addrs) {
+      vk_command_buffer_set_error(&cmdbuf->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return;
+   }
+
+   panvk_per_arch(collect_crc_invalidation_deps)(pDependencyInfo, &deps,
+                                                 crc_addrs);
+
    panvk_per_arch(emit_barrier)(cmdbuf, deps);
+
+   STACK_ARRAY_FINISH(crc_addrs);
 }
 
 static struct cs_buffer
@@ -1084,4 +1143,127 @@ panvk_per_arch(CmdExecuteCommands)(VkCommandBuffer commandBuffer,
     * GPU state if we don't invalidate all our internal tracking.
     */
    panvk_cmd_invalidate_state(primary);
+}
+
+static bool
+image_barrier_invalidates_crc(const VkImageMemoryBarrier2 *barrier,
+                              const struct panvk_image *image)
+{
+   if (barrier->oldLayout == VK_IMAGE_LAYOUT_PREINITIALIZED)
+      return true;
+
+   const bool external_acquire =
+      barrier->srcQueueFamilyIndex != barrier->dstQueueFamilyIndex &&
+      (barrier->srcQueueFamilyIndex == VK_QUEUE_FAMILY_EXTERNAL ||
+       barrier->srcQueueFamilyIndex == VK_QUEUE_FAMILY_FOREIGN_EXT);
+
+   if (!external_acquire)
+      return false;
+
+   if (image->crc_safe_external)
+      return false;
+
+   const VkExternalMemoryAcquireUnmodifiedEXT *unmodified =
+      vk_find_struct_const(barrier->pNext,
+                           EXTERNAL_MEMORY_ACQUIRE_UNMODIFIED_EXT);
+
+   return !unmodified || !unmodified->acquireUnmodifiedMemory;
+}
+
+static uint64_t
+panvk_per_arch(image_barrier_crc_header_addr)(
+   const VkImageMemoryBarrier2 *barrier)
+{
+   const VkImageSubresourceRange *range = &barrier->subresourceRange;
+   if (range->baseMipLevel != 0)
+      return 0;
+
+   if (!(range->aspectMask & VK_IMAGE_ASPECT_COLOR_BIT))
+      return 0;
+
+   VK_FROM_HANDLE(panvk_image, image, barrier->image);
+
+   if (!image_barrier_invalidates_crc(barrier, image))
+      return 0;
+
+   return panvk_image_plane_crc_header_addr(image);
+}
+
+void
+panvk_per_arch(collect_crc_invalidation_deps)(const VkDependencyInfo *info,
+                                              struct panvk_cs_deps *deps,
+                                              uint64_t *crc_addrs)
+{
+   assert(!deps->crc.addrs);
+   assert(!deps->crc.count);
+
+   deps->crc.addrs = crc_addrs;
+
+   for (uint32_t i = 0; i < info->imageMemoryBarrierCount; i++) {
+      const VkImageMemoryBarrier2 *barrier = &info->pImageMemoryBarriers[i];
+      uint64_t addr = panvk_per_arch(image_barrier_crc_header_addr)(barrier);
+
+      if (!addr)
+         continue;
+
+      bool duplicate = false;
+      for (uint32_t j = 0; j < deps->crc.count; j++) {
+         duplicate |= crc_addrs[j] == addr;
+      }
+
+      if (!duplicate) {
+         crc_addrs[deps->crc.count++] = addr;
+      }
+
+      struct panvk_sync_scope src = {
+         barrier->srcStageMask,
+         barrier->srcAccessMask,
+      };
+      struct panvk_sync_scope dst = {
+         barrier->dstStageMask,
+         barrier->dstAccessMask,
+      };
+
+      normalize_dependency(&src, &dst, barrier->srcQueueFamilyIndex,
+                           barrier->dstQueueFamilyIndex);
+
+      deps->crc.src_subqueue_mask |=
+         vk_stages_to_subqueue_mask(src.stages, SYNC_SCOPE_FIRST);
+      deps->crc.dst_subqueue_mask |=
+         vk_stages_to_subqueue_mask(dst.stages, SYNC_SCOPE_SECOND);
+   }
+}
+
+void
+panvk_per_arch(cmd_invalidate_crc)(struct cs_builder *b,
+                                   uint64_t crc_header_addr)
+{
+   if (!crc_header_addr)
+      return;
+
+#if PAN_ARCH == 10
+   struct cs_index addr = cs_scratch_reg64(b, 0);
+   struct cs_index valid = cs_scratch_reg32(b, 2);
+
+   cs_move64_to(b, addr, crc_header_addr);
+   cs_move32_to(b, valid, 0);
+
+   cs_store32(b, valid, addr, PAN_CRC_VALID_OFFSET);
+#elif PAN_ARCH >= 11
+   struct cs_index addr = cs_scratch_reg64(b, 0);
+   struct cs_index init = cs_scratch_reg32(b, 2);
+   struct cs_index mask = cs_scratch_reg32(b, 3);
+
+   cs_move64_to(b, addr, crc_header_addr);
+   cs_load32_to(b, init, addr, PAN_CRC_INIT_OFFSET);
+
+   cs_add_imm32(b, init, init, 1);
+
+   cs_move32_to(b, mask, PAN_CRC_INIT_MASK);
+   cs_and32(b, init, init, mask);
+
+   cs_store32(b, init, addr, PAN_CRC_INIT_OFFSET);
+#endif
+
+   cs_flush_stores(b);
 }

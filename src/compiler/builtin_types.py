@@ -100,6 +100,8 @@ simple_type("dmat4x3", "GL_DOUBLE_MAT4x3", "GLSL_TYPE_DOUBLE", 3, 4)
 
 simple_type("atomic_uint", "GL_UNSIGNED_INT_ATOMIC_COUNTER", "GLSL_TYPE_ATOMIC_UINT", 1, 1)
 
+simple_type("yuvCscStandardEXT", "GL_INVALID_ENUM", "GLSL_TYPE_YUV_CSC_STANDARD_EXT",  1, 1)
+
 sampler_type("sampler",           "GL_SAMPLER_1D",                   "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_1D",   0, 0, "GLSL_TYPE_VOID")
 sampler_type("sampler1D",         "GL_SAMPLER_1D",                   "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_1D",   0, 0, "GLSL_TYPE_FLOAT")
 sampler_type("sampler2D",         "GL_SAMPLER_2D",                   "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_2D",   0, 0, "GLSL_TYPE_FLOAT")
@@ -147,6 +149,8 @@ sampler_type("samplerCubeArrayShadow", "GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW", "GLSL
 sampler_type("sampler2DRectShadow",    "GL_SAMPLER_2D_RECT_SHADOW",        "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_RECT",     1, 0, "GLSL_TYPE_FLOAT")
 
 sampler_type("samplerExternalOES",     "GL_SAMPLER_EXTERNAL_OES",          "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_EXTERNAL", 0, 0, "GLSL_TYPE_FLOAT")
+
+sampler_type("samplerExternal2DY2YEXT", "GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT", "GLSL_TYPE_SAMPLER", "GLSL_SAMPLER_DIM_EXTERNAL_2D_Y2Y", 0, 0, "GLSL_TYPE_FLOAT")
 
 sampler_type("texture1D",         "GL_SAMPLER_1D",                   "GLSL_TYPE_TEXTURE", "GLSL_SAMPLER_DIM_1D",   0, 0, "GLSL_TYPE_FLOAT")
 sampler_type("texture2D",         "GL_SAMPLER_2D",                   "GLSL_TYPE_TEXTURE", "GLSL_SAMPLER_DIM_2D",   0, 0, "GLSL_TYPE_FLOAT")

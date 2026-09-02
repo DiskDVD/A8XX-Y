@@ -679,9 +679,10 @@ pick_regs_from_block(jay_ra_state *ra,
       if (I->predication && !is_src) {
          if (var.file == FLAG && jay_inst_get_predicate(I)->reg != r) {
             continue;
-         } else if (I->predication == JAY_PREDICATED_DEFAULT &&
-                    jay_inst_get_default(I)->reg != r) {
-            cost++;
+         }
+
+         for (unsigned i = 0; i < (I->predication - 1); ++i) {
+            cost += (I->src[I->num_srcs - i].reg != r);
          }
       }
 
@@ -771,7 +772,8 @@ pick_regs(jay_ra_state *ra,
       unsigned cur = r_reg(ra->reg_for_index[jay_channel(var, 0)]);
       struct jay_register_block block = jay_lookup_block(partition, cur, file);
 
-      if (!BITSET_TEST_COUNT(ra->pinned[file], cur, size) &&
+      if (cur + size <= ra->num_regs[file] &&
+          !BITSET_TEST_COUNT(ra->pinned[file], cur, size) &&
           util_is_aligned(cur - block.start_gpr, alignment) &&
           is_block_compatible(block, file, min_stride, max_stride, eot,
                               false) &&
@@ -1154,7 +1156,7 @@ local_ra(jay_ra_state *ra, jay_block *block)
       if (jay_debug & JAY_DBG_PRINTDEMAND) {
          printf("(RA) [G:%u\tU:%u\tF:%u] ", register_demand(ra, GPR),
                 register_demand(ra, UGPR), register_demand(ra, FLAG));
-         jay_print_inst(stdout, block, I, NULL);
+         jay_print_inst(stdout, ra->b.func, I);
       }
    }
 
@@ -1294,7 +1296,7 @@ insert_parallel_copies_for_phis(jay_function *f)
 static void
 map_gpr_to_acc(jay_shader *shader, jay_def *x)
 {
-   if (x->file == GPR) {
+   if (!jay_is_null(*x) && x->file == GPR) {
       struct jay_register_block B =
          jay_lookup_block(&shader->partition, x->reg, GPR);
 

@@ -1166,8 +1166,6 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
 
 static void radeon_vcn_enc_get_param(struct radeon_encoder *enc, struct pipe_picture_desc *picture)
 {
-   enc->enc_pic.enc_params.allowed_max_bitstream_size = enc->bs_size - enc->bs_offset;
-
    if (u_reduce_video_profile(picture->profile) == PIPE_VIDEO_FORMAT_MPEG4_AVC)
       radeon_vcn_enc_h264_get_param(enc, (struct pipe_h264_enc_picture_desc *)picture);
    else if (u_reduce_video_profile(picture->profile) == PIPE_VIDEO_FORMAT_HEVC)
@@ -1874,6 +1872,7 @@ static void radeon_enc_encode_bitstream(struct pipe_video_codec *encoder,
 
    enc->fb->data = radeon_vcn_enc_encode_headers(enc);
    enc->fb->max_bitstream_size = enc->bs_size - enc->bs_offset;
+   enc->enc_pic.enc_params.allowed_max_bitstream_size = enc->fb->max_bitstream_size;
 
    if (vid_buf->base.statistics_data) {
       enc->get_buffer(vid_buf->base.statistics_data, &enc->stats, NULL);
@@ -2056,7 +2055,7 @@ static void radeon_enc_get_feedback(struct pipe_video_codec *encoder, void *feed
                                 PIPE_VIDEO_FEEDBACK_METADATA_TYPE_ENCODE_RESULT;
    metadata->encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_OK;
 
-   if (*size > fb->max_bitstream_size) {
+   if (!*size || *size > fb->max_bitstream_size) {
       metadata->encode_result = PIPE_VIDEO_FEEDBACK_METADATA_ENCODE_FLAG_FAILED;
       *size = fb->max_bitstream_size;
    }

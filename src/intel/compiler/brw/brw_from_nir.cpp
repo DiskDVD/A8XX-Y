@@ -3256,56 +3256,6 @@ emit_coherent_fb_read(const brw_builder &bld, const brw_reg &dst, unsigned targe
    return inst;
 }
 
-static brw_reg
-alloc_temporary(const brw_builder &bld, unsigned size, brw_reg *regs, unsigned n)
-{
-   if (n && regs[0].file != BAD_FILE) {
-      return regs[0];
-
-   } else {
-      const brw_reg tmp = bld.vgrf(BRW_TYPE_F, size);
-
-      for (unsigned i = 0; i < n; i++)
-         regs[i] = tmp;
-
-      return tmp;
-   }
-}
-
-static brw_reg
-alloc_frag_output(nir_to_brw_state &ntb, unsigned l)
-{
-   brw_shader &s = ntb.s;
-
-   assert(s.stage == MESA_SHADER_FRAGMENT);
-   const brw_fs_prog_key *const key =
-      reinterpret_cast<const brw_fs_prog_key *>(s.key);
-
-   if (l == FRAG_RESULT_DUAL_SRC_BLEND)
-      return alloc_temporary(ntb.bld, 4, &s.dual_src_output, 1);
-
-   else if (l == FRAG_RESULT_COLOR)
-      return alloc_temporary(ntb.bld, 4, s.outputs,
-                             MAX2(key->nr_color_regions, 1));
-
-   else if (l == FRAG_RESULT_DEPTH)
-      return alloc_temporary(ntb.bld, 1, &s.frag_depth, 1);
-
-   else if (l == FRAG_RESULT_STENCIL)
-      return alloc_temporary(ntb.bld, 1, &s.frag_stencil, 1);
-
-   else if (l == FRAG_RESULT_SAMPLE_MASK)
-      return alloc_temporary(ntb.bld, 1, &s.sample_mask, 1);
-
-   else if (l >= FRAG_RESULT_DATA0 &&
-            l < FRAG_RESULT_DATA0 + BRW_MAX_DRAW_BUFFERS)
-      return alloc_temporary(ntb.bld, 4,
-                             &s.outputs[l - FRAG_RESULT_DATA0], 1);
-
-   else
-      UNREACHABLE("Invalid location");
-}
-
 static void
 emit_is_helper_invocation(nir_to_brw_state &ntb, brw_reg result)
 {
@@ -3614,6 +3564,38 @@ brw_per_primitive_reg(const brw_builder &bld, int location, unsigned comp)
    }
 }
 
+static bool
+load_reg_equal(nir_scalar a, nir_scalar b)
+{
+   if (a.comp != b.comp)
+      return false;
+
+   if (nir_def_instr(a.def)->type != nir_instr_type_intrinsic ||
+       nir_def_instr(b.def)->type != nir_instr_type_intrinsic)
+      return false;
+
+   nir_intrinsic_instr *a_int = nir_def_as_intrinsic(a.def);
+   nir_intrinsic_instr *b_int = nir_def_as_intrinsic(b.def);
+
+   if (a_int->intrinsic != nir_intrinsic_load_reg ||
+       b_int->intrinsic != nir_intrinsic_load_reg)
+      return false;
+
+   return nir_scalar_equal(nir_scalar_resolved(a_int->src[0].ssa, 0),
+                           nir_scalar_resolved(b_int->src[0].ssa, 0));
+}
+
+static bool
+scalars_equal(nir_scalar a, nir_scalar b)
+{
+
+   return load_reg_equal(a, b) ||
+          nir_scalar_equal(a, b) ||
+          (nir_scalar_is_const(a) &&
+           nir_scalar_is_const(b) &&
+           nir_scalar_as_uint(a) == nir_scalar_as_uint(b));
+}
+
 static void
 brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
                          nir_intrinsic_instr *instr)
@@ -3711,17 +3693,6 @@ brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       brw_reg msaa = brw_uw1_grf(1, 1);
       dest.type = BRW_TYPE_UD;
       bld.ADD(dest, bld.AND(msaa, brw_imm_uw(0xf)), brw_imm_ud(1));
-      break;
-   }
-
-   case nir_intrinsic_store_output: {
-      const brw_reg src = get_nir_src(ntb, instr->src[0], -1);
-      const nir_io_semantics sem = nir_intrinsic_io_semantics(instr);
-      const brw_reg new_dest =
-         offset(retype(alloc_frag_output(ntb, sem.location), src.type),
-                bld, nir_intrinsic_component(instr));
-
-      brw_combine_with_vec(bld, new_dest, src, instr->num_components);
       break;
    }
 
@@ -4059,19 +4030,60 @@ brw_from_nir_emit_fs_intrinsic(nir_to_brw_state &ntb,
       bld.MOV(retype(dest, BRW_TYPE_UD), brw_imm_ud(s.max_polygons));
       break;
 
+   case nir_intrinsic_store_render_target_intel: {
+      struct brw_fs_prog_data *fs_prog_data = brw_fs_prog_data(ntb.s.prog_data);
+
+      if (!s.seen_rt_write)
+         ntb.bld.emit(SHADER_OPCODE_HALT_TARGET);
+
+      brw_reg sources[FB_WRITE_LOGICAL_NUM_SRCS];
+      sources[FB_WRITE_LOGICAL_SRC_COLOR0] = get_nir_src(ntb, instr->src[0], -1);
+      if (!nir_src_is_undef(instr->src[1]))
+          sources[FB_WRITE_LOGICAL_SRC_COLOR1] = get_nir_src(ntb, instr->src[1], -1);
+
+      /* If our alpha happens to match src0_alpha, we can skip sending it, as
+       * the hardware will use our alpha in that case.
+       */
+      if (!nir_src_is_undef(instr->src[2]) &&
+          nir_intrinsic_target(instr) != 0 &&
+          !scalars_equal(nir_scalar_resolved(instr->src[2].ssa, 0),
+                         nir_scalar_resolved(instr->src[0].ssa, 3)))
+         sources[FB_WRITE_LOGICAL_SRC_SRC0_ALPHA] = get_nir_src(ntb, instr->src[2], 0);
+
+      if (!nir_src_is_undef(instr->src[3]) && fs_prog_data->uses_omask)
+         sources[FB_WRITE_LOGICAL_SRC_OMASK] = get_nir_src(ntb, instr->src[3], 0);
+      if (!nir_src_is_undef(instr->src[4]))
+         sources[FB_WRITE_LOGICAL_SRC_SRC_DEPTH] = get_nir_src(ntb, instr->src[4], 0);
+      if (!nir_src_is_undef(instr->src[5]))
+         sources[FB_WRITE_LOGICAL_SRC_SRC_STENCIL] = get_nir_src(ntb, instr->src[5], 0);
+
+      brw_fb_write_inst *write = bld.emit(FS_OPCODE_FB_WRITE_LOGICAL, brw_reg(),
+                                          sources, ARRAY_SIZE(sources))->as_fb_write();
+      write->target     = MAX2(0, (signed) nir_intrinsic_target(instr));
+      write->components = 4;
+      /* Enable null_rt if the shader doesn't write any relevant output. */
+      write->null_rt    = fs_prog_data->alpha_to_coverage == INTEL_NEVER &&
+                          !fs_prog_data->uses_omask &&
+                          !(s.nir->info.outputs_written &
+                            (BITFIELD64_BIT(FRAG_RESULT_DEPTH) |
+                             BITFIELD64_BIT(FRAG_RESULT_STENCIL))) &&
+                          ((signed) nir_intrinsic_target(instr) < 0);
+      write->last_rt    = !nir_instr_next(&instr->instr);
+      write->eot        = !nir_instr_next(&instr->instr);
+
+      if (fs_prog_data->uses_kill) {
+         write->predicate = BRW_PREDICATE_NORMAL;
+         write->flag_subreg = sample_mask_flag_subreg(s);
+      }
+
+      s.seen_rt_write = true;
+      break;
+   }
+
    default:
       brw_from_nir_emit_intrinsic(ntb, bld, instr);
       break;
    }
-}
-
-static bool
-can_use_instruction_offset(enum lsc_addr_surface_type binding_type, int32_t offset)
-{
-   const unsigned max_bits = brw_max_immediate_offset_bits(binding_type);
-   return offset % 4 == 0 &&
-          offset >= u_intN_min(max_bits) &&
-          offset <= u_intN_max(max_bits);
 }
 
 static brw_reg
@@ -4098,7 +4110,7 @@ memory_address(nir_to_brw_state &ntb,
       *address_offset = 0;
    } else if (!nir_intrinsic_has_base(instr) && nir_src_is_const(*nir_src_offset)) {
       const int32_t offset = nir_src_as_int(*nir_src_offset);
-      if (can_use_instruction_offset(binding_type, offset)) {
+      if (brw_lsc_can_use_instruction_offset(binding_type, offset)) {
          address = brw_imm_ud(0);
          *address_offset = offset;
       } else {
@@ -4108,7 +4120,7 @@ memory_address(nir_to_brw_state &ntb,
    } else {
       assert(nir_intrinsic_has_base(instr));
       const int32_t offset = nir_intrinsic_base(instr);
-      assert(can_use_instruction_offset(binding_type, offset));
+      assert(brw_lsc_can_use_instruction_offset(binding_type, offset));
       address = src_offset;
       *address_offset = offset;
    }
@@ -5621,7 +5633,6 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
       brw_reg globals = get_nir_src(ntb, instr->src[0], -1);
       srcs[RT_LOGICAL_SRC_GLOBALS] = bld.emit_uniformize(globals);
       srcs[RT_LOGICAL_SRC_PAYLOADS] = get_nir_src(ntb, instr->src[1], 0);
-      srcs[RT_LOGICAL_SRC_SYNCHRONOUS] = brw_imm_ud(synchronous);
 
       /* Bspec 57508, 47937: Structure_SIMD16TraceRayMessage:: RayQuery Enable
        *
@@ -5631,7 +5642,8 @@ brw_from_nir_emit_intrinsic(nir_to_brw_state &ntb,
        */
       brw_reg dst = synchronous ? bld.vgrf(BRW_TYPE_UD) : bld.null_reg_ud();
 
-      bld.emit(RT_OPCODE_TRACE_RAY_LOGICAL, dst, srcs, RT_LOGICAL_NUM_SRCS);
+      brw_inst *inst = bld.emit(RT_OPCODE_TRACE_RAY_LOGICAL, dst, srcs, RT_LOGICAL_NUM_SRCS);
+      inst->synchronous = synchronous;
 
       /* There is no actual value to use in the destination register of the
        * synchronous trace instruction. All of the communication with the HW
@@ -6597,7 +6609,7 @@ brw_from_nir(brw_shader *s)
 
    brw_from_nir_emit_impl(ntb, nir_shader_get_entrypoint((nir_shader *)ntb.nir));
 
-   if (s->stage >= MESA_SHADER_FRAGMENT)
+   if (s->stage > MESA_SHADER_FRAGMENT)
       ntb.bld.emit(SHADER_OPCODE_HALT_TARGET);
 
    ralloc_free(ntb.mem_ctx);

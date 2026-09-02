@@ -22,83 +22,97 @@
 #include "radv_instance.h"
 #include "radv_wsi.h"
 
+#include "util/bitset.h"
+#include "util/u_debug.h"
 #include "vk_instance.h"
 #include "vk_log.h"
 
-static const struct debug_control radv_debug_options[] = {
-   {"nofastclears", RADV_DEBUG_NO_FAST_CLEARS},
-   {"nodcc", RADV_DEBUG_NO_DCC},
-   {"shaders", RADV_DEBUG_DUMP_SHADERS},
-   {"nocachecompat", RADV_DEBUG_NO_CACHE_COMPAT},
-   {"nocache", RADV_DEBUG_NO_CACHE},
-   {"shaderstats", RADV_DEBUG_DUMP_SHADER_STATS},
-   {"nohiz", RADV_DEBUG_NO_HIZ},
-   {"allbos", RADV_DEBUG_ALL_BOS},
-   {"noibchaining", RADV_DEBUG_NO_IB_CHAINING},
-   {"spirv", RADV_DEBUG_DUMP_SPIRV},
-   {"zerovram", RADV_DEBUG_ZERO_VRAM},
-   {"syncshaders", RADV_DEBUG_SYNC_SHADERS},
-   {"preoptir", RADV_DEBUG_DUMP_PREOPT_IR},
-   {"info", RADV_DEBUG_INFO},
-   {"startup", RADV_DEBUG_STARTUP},
-   {"checkir", RADV_DEBUG_CHECKIR},
-   {"nobinning", RADV_DEBUG_NOBINNING},
-   {"nongg", RADV_DEBUG_NO_NGG},
-   {"metashaders", RADV_DEBUG_DUMP_META_SHADERS},
-   {"llvm", RADV_DEBUG_LLVM},
-   {"forcecompress", RADV_DEBUG_FORCE_COMPRESS},
-   {"hang", RADV_DEBUG_HANG},
-   {"img", RADV_DEBUG_IMG},
-   {"noumr", RADV_DEBUG_NO_UMR},
-   {"nodisplaydcc", RADV_DEBUG_NO_DISPLAY_DCC},
-   {"notccompatcmask", RADV_DEBUG_NO_TC_COMPAT_CMASK},
-   {"novrsflatshading", RADV_DEBUG_NO_VRS_FLAT_SHADING},
-   {"noatocdithering", RADV_DEBUG_NO_ATOC_DITHERING},
-   {"nonggc", RADV_DEBUG_NO_NGGC},
-   {"prologs", RADV_DEBUG_DUMP_PROLOGS},
-   {"nodma", RADV_DEBUG_NO_DMA_BLIT},
-   {"epilogs", RADV_DEBUG_DUMP_EPILOGS},
-   {"nofmask", RADV_DEBUG_NO_FMASK},
-   {"shadowregs", RADV_DEBUG_SHADOW_REGS},
-   {"extra_md", RADV_DEBUG_EXTRA_MD},
-   {"nogpl", RADV_DEBUG_NO_GPL},
-   {"nort", RADV_DEBUG_NO_RT},
-   {"nomeshshader", RADV_DEBUG_NO_MESH_SHADER},
-   {"noeso", RADV_DEBUG_NO_ESO},
-   {"psocachestats", RADV_DEBUG_PSO_CACHE_STATS},
-   {"nirdebuginfo", RADV_DEBUG_NIR_DEBUG_INFO},
-   {"dump_trap_handler", RADV_DEBUG_DUMP_TRAP_HANDLER},
-   {"vs", RADV_DEBUG_DUMP_VS},
-   {"tcs", RADV_DEBUG_DUMP_TCS},
-   {"tes", RADV_DEBUG_DUMP_TES},
-   {"gs", RADV_DEBUG_DUMP_GS},
-   {"ps", RADV_DEBUG_DUMP_PS},
-   {"task", RADV_DEBUG_DUMP_TASK},
-   {"mesh", RADV_DEBUG_DUMP_MESH},
-   {"cs", RADV_DEBUG_DUMP_CS},
-   {"nir", RADV_DEBUG_DUMP_NIR},
-   {"asm", RADV_DEBUG_DUMP_ASM},
-   {"ir", RADV_DEBUG_DUMP_BACKEND_IR},
-   {"pso_history", RADV_DEBUG_PSO_HISTORY},
-   {"bvh4", RADV_DEBUG_BVH4},
-   {"novideo", RADV_DEBUG_NO_VIDEO},
-   {"validatevas", RADV_DEBUG_VALIDATE_VAS},
-   {"bo_history", RADV_DEBUG_DUMP_BO_HISTORY},
-   {"dumpibs", RADV_DEBUG_DUMP_IBS},
-   {"vm", RADV_DEBUG_VM},
-   {"nosmemmitigation", RADV_DEBUG_NO_SMEM_MITIGATION},
-   {"fullsync", RADV_DEBUG_FULL_SYNC},
-   {"notmz", RADV_DEBUG_NO_TMZ},
-   {"noheap", RADV_DEBUG_NO_HEAP},
-   {NULL, 0},
+static const struct debug_control_bitset radv_debug_options[] = {
+#define OPT1(name, bit)                                                                                              \
+   { .string = name, .range = {bit, bit}, }
+#define OPT2(name, start, end)                                                                                        \
+   { .string = name, .range = {start, end}, }
+   OPT1("nofastclears", RADV_DEBUG_NO_FAST_CLEARS),
+   OPT1("nodcc", RADV_DEBUG_NO_DCC),
+   OPT2("shaders", RADV_DEBUG_DUMP_SHADERS_BEGIN, RADV_DEBUG_DUMP_SHADERS_END),
+   OPT1("nocachecompat", RADV_DEBUG_NO_CACHE_COMPAT),
+   OPT1("nocache", RADV_DEBUG_NO_CACHE),
+   OPT1("shaderstats", RADV_DEBUG_DUMP_SHADER_STATS),
+   OPT1("nohiz", RADV_DEBUG_NO_HIZ),
+   OPT1("allbos", RADV_DEBUG_ALL_BOS),
+   OPT1("noibchaining", RADV_DEBUG_NO_IB_CHAINING),
+   OPT1("spirv", RADV_DEBUG_DUMP_SPIRV),
+   OPT1("zerovram", RADV_DEBUG_ZERO_VRAM),
+   OPT1("syncshaders", RADV_DEBUG_SYNC_SHADERS),
+   OPT1("preoptir", RADV_DEBUG_DUMP_PREOPT_IR),
+   OPT1("info", RADV_DEBUG_INFO),
+   OPT1("startup", RADV_DEBUG_STARTUP),
+   OPT1("checkir", RADV_DEBUG_CHECKIR),
+   OPT1("nobinning", RADV_DEBUG_NOBINNING),
+   OPT1("nongg", RADV_DEBUG_NO_NGG),
+   OPT1("metashaders", RADV_DEBUG_DUMP_META_SHADERS),
+   OPT1("llvm", RADV_DEBUG_LLVM),
+   OPT1("forcecompress", RADV_DEBUG_FORCE_COMPRESS),
+   OPT1("hang", RADV_DEBUG_HANG),
+   OPT1("img", RADV_DEBUG_IMG),
+   OPT1("noumr", RADV_DEBUG_NO_UMR),
+   OPT1("nodisplaydcc", RADV_DEBUG_NO_DISPLAY_DCC),
+   OPT1("notccompatcmask", RADV_DEBUG_NO_TC_COMPAT_CMASK),
+   OPT1("novrsflatshading", RADV_DEBUG_NO_VRS_FLAT_SHADING),
+   OPT1("noatocdithering", RADV_DEBUG_NO_ATOC_DITHERING),
+   OPT1("nonggc", RADV_DEBUG_NO_NGGC),
+   OPT1("prologs", RADV_DEBUG_DUMP_PROLOGS),
+   OPT1("nodma", RADV_DEBUG_NO_DMA_BLIT),
+   OPT1("epilogs", RADV_DEBUG_DUMP_EPILOGS),
+   OPT1("nofmask", RADV_DEBUG_NO_FMASK),
+   OPT1("shadowregs", RADV_DEBUG_SHADOW_REGS),
+   OPT1("extra_md", RADV_DEBUG_EXTRA_MD),
+   OPT1("nogpl", RADV_DEBUG_NO_GPL),
+   OPT1("nort", RADV_DEBUG_NO_RT),
+   OPT1("nomeshshader", RADV_DEBUG_NO_MESH_SHADER),
+   OPT1("noeso", RADV_DEBUG_NO_ESO),
+   OPT1("psocachestats", RADV_DEBUG_PSO_CACHE_STATS),
+   OPT1("nirdebuginfo", RADV_DEBUG_NIR_DEBUG_INFO),
+   OPT1("dump_trap_handler", RADV_DEBUG_DUMP_TRAP_HANDLER),
+   OPT1("vs", RADV_DEBUG_DUMP_VS),
+   OPT1("tcs", RADV_DEBUG_DUMP_TCS),
+   OPT1("tes", RADV_DEBUG_DUMP_TES),
+   OPT1("gs", RADV_DEBUG_DUMP_GS),
+   OPT1("ps", RADV_DEBUG_DUMP_PS),
+   OPT1("task", RADV_DEBUG_DUMP_TASK),
+   OPT1("mesh", RADV_DEBUG_DUMP_MESH),
+   OPT1("cs", RADV_DEBUG_DUMP_CS),
+   OPT1("nir", RADV_DEBUG_DUMP_NIR),
+   OPT1("asm", RADV_DEBUG_DUMP_ASM),
+   OPT1("ir", RADV_DEBUG_DUMP_BACKEND_IR),
+   OPT1("pso_history", RADV_DEBUG_PSO_HISTORY),
+   OPT1("bvh4", RADV_DEBUG_BVH4),
+   OPT1("novideo", RADV_DEBUG_NO_VIDEO),
+   OPT1("validatevas", RADV_DEBUG_VALIDATE_VAS),
+   OPT1("bo_history", RADV_DEBUG_DUMP_BO_HISTORY),
+   OPT1("dumpibs", RADV_DEBUG_DUMP_IBS),
+   OPT1("vm", RADV_DEBUG_VM),
+   OPT1("nosmemmitigation", RADV_DEBUG_NO_SMEM_MITIGATION),
+   OPT1("fullsync", RADV_DEBUG_FULL_SYNC),
+   OPT1("notmz", RADV_DEBUG_NO_TMZ),
+   OPT1("noheap", RADV_DEBUG_NO_HEAP),
+   {
+      NULL,
+   }
+#undef OPT1
+#undef OPT2
 };
 
 const char *
 radv_get_debug_option_name(int id)
 {
-   assert(id < ARRAY_SIZE(radv_debug_options));
-   for (uint32_t i = 0; i < ARRAY_SIZE(radv_debug_options); i++) {
-      if (radv_debug_options[i].flag == (1ull << id))
+   assert(id < RADV_DEBUG_COUNT);
+   for (uint32_t i = 0; i < ARRAY_SIZE(radv_debug_options) - 1; i++) {
+      /* Skip aliases like RADV_DEBUG_DUMP_SHADERS. */
+      if (radv_debug_options[i].range[0] != radv_debug_options[i].range[1])
+         continue;
+
+      if (radv_debug_options[i].range[0] == (uint32_t)id)
          return radv_debug_options[i].string;
    }
    return NULL;
@@ -260,33 +274,44 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationC
 
    simple_mtx_init(&instance->shader_dump_mtx, mtx_plain);
 
-   instance->debug_flags = parse_debug_string(os_get_option("RADV_DEBUG"), radv_debug_options);
+   parse_debug_bitset(os_get_option("RADV_DEBUG"), radv_debug_options, instance->debug_flags);
    instance->perftest_flags = parse_debug_string(os_get_option("RADV_PERFTEST"), radv_perftest_options);
    instance->experimental_flags = parse_debug_string(os_get_option("RADV_EXPERIMENTAL"), radv_experimental_options);
    instance->trap_excp_flags = parse_debug_string(os_get_option("RADV_TRAP_HANDLER_EXCP"), radv_trap_excp_options);
    instance->profile_pstate = radv_parse_pstate(debug_get_option("RADV_PROFILE_PSTATE", "peak"));
    instance->queue_disable_flags = parse_debug_string(os_get_option("RADV_QUEUE_DISABLE"), radv_queue_disable_options);
 
-   const uint64_t shader_stage_flags = RADV_DEBUG_DUMP_VS | RADV_DEBUG_DUMP_TCS | RADV_DEBUG_DUMP_TES |
-                                       RADV_DEBUG_DUMP_GS | RADV_DEBUG_DUMP_PS | RADV_DEBUG_DUMP_TASK |
-                                       RADV_DEBUG_DUMP_MESH | RADV_DEBUG_DUMP_CS;
+   const bool has_shader_stage_flags =
+      RADV_DEBUG(instance, DUMP_VS) || RADV_DEBUG(instance, DUMP_TCS) || RADV_DEBUG(instance, DUMP_TES) ||
+      RADV_DEBUG(instance, DUMP_GS) || RADV_DEBUG(instance, DUMP_PS) || RADV_DEBUG(instance, DUMP_TASK) ||
+      RADV_DEBUG(instance, DUMP_MESH) || RADV_DEBUG(instance, DUMP_CS);
 
-   const uint64_t compilation_stage_flags = RADV_DEBUG_DUMP_SPIRV | RADV_DEBUG_DUMP_NIR | RADV_DEBUG_DUMP_PREOPT_IR |
-                                            RADV_DEBUG_DUMP_BACKEND_IR | RADV_DEBUG_DUMP_ASM;
+   const bool has_compilation_stage_flags =
+      RADV_DEBUG(instance, DUMP_SPIRV) || RADV_DEBUG(instance, DUMP_NIR) || RADV_DEBUG(instance, DUMP_PREOPT_IR) ||
+      RADV_DEBUG(instance, DUMP_BACKEND_IR) || RADV_DEBUG(instance, DUMP_ASM);
 
-   if ((instance->debug_flags & shader_stage_flags) && !(instance->debug_flags & compilation_stage_flags)) {
+   if (has_shader_stage_flags && !has_compilation_stage_flags) {
       /* When shader stages are specified but compilation stages aren't:
        * use a default set of compilation stages.
        */
-      instance->debug_flags |= RADV_DEBUG_DUMP_NIR | RADV_DEBUG_DUMP_BACKEND_IR | RADV_DEBUG_DUMP_ASM;
-   } else if (!(instance->debug_flags & shader_stage_flags) && (instance->debug_flags & compilation_stage_flags)) {
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_NIR);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_BACKEND_IR);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_ASM);
+   } else if (!has_shader_stage_flags && has_compilation_stage_flags) {
       /* When compilation stages are specified but shader stages aren't:
        * dump all shader stages.
        */
-      instance->debug_flags |= shader_stage_flags;
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_VS);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_TCS);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_TES);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_GS);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_PS);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_TASK);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_MESH);
+      BITSET_SET(instance->debug_flags, RADV_DEBUG_DUMP_CS);
    }
 
-   if (instance->debug_flags & RADV_DEBUG_PSO_HISTORY) {
+   if (RADV_DEBUG(instance, PSO_HISTORY)) {
       const char *filename = "/tmp/radv_pso_history.log";
 
       instance->pso_history_logfile = fopen(filename, "w");
@@ -297,7 +322,7 @@ radv_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationC
    instance->vk.physical_devices.try_create_for_drm = create_drm_physical_device;
    instance->vk.physical_devices.destroy = radv_physical_device_destroy;
 
-   if (instance->debug_flags & RADV_DEBUG_STARTUP)
+   if (RADV_DEBUG(instance, STARTUP))
       fprintf(stderr, "radv: info: Created an instance.\n");
 
    VG(VALGRIND_CREATE_MEMPOOL(instance, 0, false));

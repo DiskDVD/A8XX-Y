@@ -998,7 +998,7 @@ impl DisplayOp for OpF32ToI32 {
     }
 
     fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, " {}", self.fmt_src(&self.src))
+        write!(f, "{} {}", self.round, self.fmt_src(&self.src))
     }
 }
 
@@ -3155,6 +3155,39 @@ impl Foldable for OpPopCount {
     }
 }
 
+/// Preload description for pretty-printing
+#[derive(Clone, Copy)]
+pub struct PreloadInfo {
+    pub set: PreloadRegSet,
+    pub comp: u8,
+}
+
+impl fmt::Display for PreloadInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        assert!(!self.set.is_empty());
+        if self.set.len() == 1 {
+            let reg = self.set.iter().next().unwrap();
+            write!(f, "{reg}")?;
+            if reg.reg_size() != 1 {
+                debug_assert!(reg.reg_size() <= 4, "need more swizzle names");
+                let swiz = ['x', 'y', 'z', 'w'];
+
+                write!(f, ".{}", swiz[self.comp as usize])?;
+            }
+        } else {
+            // Components are only for single-register preloads.
+            assert!(self.comp == 0);
+            for (i, reg) in self.set.iter().enumerate() {
+                if i != 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{reg}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Opcode)]
 #[variants(dst_type in [I8, I16, I32, I64])]
@@ -3162,6 +3195,7 @@ pub struct OpRegIn {
     pub dst: Dst,
     pub dst_type: DataType,
     pub reg: RegRef,
+    pub preload: Option<PreloadInfo>,
 }
 
 impl DisplayOp for OpRegIn {
@@ -3170,7 +3204,12 @@ impl DisplayOp for OpRegIn {
     }
 
     fn fmt_body(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, " {}", &self.reg)
+        write!(f, " {}", &self.reg)?;
+
+        if let Some(info) = self.preload {
+            write!(f, " ({info})")?;
+        }
+        Ok(())
     }
 }
 

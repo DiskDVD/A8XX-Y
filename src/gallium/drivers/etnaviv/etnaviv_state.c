@@ -45,6 +45,7 @@
 #include "util/u_inlines.h"
 #include "util/u_math.h"
 #include "util/u_memory.h"
+#include "util/u_sample_positions.h"
 #include "util/u_upload_mgr.h"
 
 static void
@@ -76,6 +77,16 @@ etna_set_sample_mask(struct pipe_context *pctx, unsigned sample_mask)
    struct etna_context *ctx = etna_context(pctx);
 
    ctx->sample_mask = sample_mask;
+   ctx->dirty |= ETNA_DIRTY_SAMPLE_MASK;
+}
+
+static void
+etna_set_sample_coverage(struct pipe_context *pctx, float value, bool invert)
+{
+   struct etna_context *ctx = etna_context(pctx);
+
+   ctx->sample_coverage = value;
+   ctx->sample_coverage_invert = invert;
    ctx->dirty |= ETNA_DIRTY_SAMPLE_MASK;
 }
 
@@ -717,6 +728,7 @@ etna_vertex_elements_state_create(struct pipe_context *pctx,
 
       elements = &dummy_element;
       num_elements = 1;
+      cs->dummy_element = true;
    }
 
    cs->num_elements = num_elements;
@@ -1241,10 +1253,15 @@ etna_state_update(struct etna_context *ctx)
 void
 etna_state_init(struct pipe_context *pctx)
 {
+   struct etna_screen *screen = etna_context(pctx)->screen;
+
    pctx->set_blend_color = etna_set_blend_color;
    pctx->set_stencil_ref = etna_set_stencil_ref;
    pctx->set_clip_state = etna_set_clip_state;
    pctx->set_sample_mask = etna_set_sample_mask;
+   pctx->get_sample_position = u_default_get_sample_position;
+   if (VIV_FEATURE(screen, ETNA_FEATURE_MSAA_FRAGMENT_OPERATION))
+      pctx->set_sample_coverage = etna_set_sample_coverage;
    pctx->set_constant_buffer = etna_set_constant_buffer;
    pctx->set_framebuffer_state = etna_set_framebuffer_state;
    pctx->set_polygon_stipple = etna_set_polygon_stipple;

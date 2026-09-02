@@ -25,10 +25,10 @@ interpolated_src_from_intrin(struct nir_builder *b, nir_intrinsic_instr *bary,
          return nir_imm_zero(b, 1, 32);
       case nir_intrinsic_load_barycentric_centroid:
          *loc = PAN_SAMPLE_LOC_CENTROID;
-         return nir_load_raster_sample_centroid_pan(b);
+         return nir_load_sample_centroid_pan(b);
       case nir_intrinsic_load_barycentric_sample:
          *loc = PAN_SAMPLE_LOC_SAMPLE;
-         return nir_load_raster_sample_centroid_pan(b);
+         return nir_load_sample_centroid_pan(b);
       case nir_intrinsic_load_barycentric_at_sample:
          *loc = PAN_SAMPLE_LOC_SAMPLE;
 
@@ -74,7 +74,7 @@ lower_fs_input_load(struct nir_builder *b,
       return false;
 
    const nir_io_semantics sem = nir_intrinsic_io_semantics(load);
-   const nir_alu_type dest_type = nir_intrinsic_dest_type(load);
+   nir_alu_type dest_type = nir_intrinsic_dest_type(load);
 
    /* Indirect array varyings are not yet supported (num_slots > 1) */
    assert(sem.num_slots == 1);
@@ -142,9 +142,19 @@ lower_fs_input_load(struct nir_builder *b,
                                 .io_semantics = sem,
                                 .flags = sample_loc);
       } else {
-         res = nir_load_var_flat_pan(b, load_comps, load->def.bit_size, idx,
+         /* LD_VAR_FLAT doesn't have a 16-bit int type, down-convert manually */
+         bool down_conv =
+            nir_alu_type_get_base_type(dest_type) != nir_type_float &&
+            nir_alu_type_get_type_size(dest_type) == 16;
+         uint8_t load_bit_size = down_conv ? 32 : load->def.bit_size;
+         dest_type = nir_alu_type_get_base_type(dest_type) | load_bit_size;
+
+         res = nir_load_var_flat_pan(b, load_comps, load_bit_size, idx,
                                      .dest_type = dest_type,
                                      .io_semantics = sem);
+
+         if (down_conv)
+            res = nir_u2u16(b, res);
       }
    }
 

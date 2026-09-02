@@ -59,3 +59,6 @@ spec@!opengl 2.0@tex3d-npot
 asan-KHR-GL46.packed_pixels.pbo_rectangle.*
 asan-KHR-GL46.packed_pixels.rectangle.*
 asan-KHR-GL46.packed_pixels.varied_rectangle.*
+
+# https://gitlab.freedesktop.org/mesa/mesa/-/work_items/16212
+spec@arb_timer_query@timestamp-get

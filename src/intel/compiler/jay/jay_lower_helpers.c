@@ -96,7 +96,8 @@ setup_exit_block(jay_builder *b, struct ctx *ctx)
       send = jay_SEND(b, .sfid = GEN_SFID_RENDER_CACHE,
                       .msg_desc = desc | (ex_desc << 32), .nr_srcs = 1,
                       .srcs = &dummy, .type = JAY_TYPE_U32, .eot = true);
-      send = jay_add_predicate(b, send, jay_negate(ctx->helper_flag));
+      send =
+         jay_add_predicate(b, send, jay_negate(ctx->helper_flag), jay_null());
    }
 }
 
@@ -120,7 +121,7 @@ process_block(struct ctx *ctx, jay_builder *b, jay_block *block)
          }
 
          jay_inst *cmp = jay_CMP(b, I->type, cond, ctx->helper_flag, x, y);
-         jay_add_predicate(b, cmp, jay_negate(ctx->helper_flag));
+         jay_add_predicate(b, cmp, jay_negate(ctx->helper_flag), jay_null());
          jay_remove_instruction(I);
 
          /* We are allowed to halt after a demote if all lanes are inactive
@@ -136,12 +137,10 @@ process_block(struct ctx *ctx, jay_builder *b, jay_block *block)
           */
          if (ctx->instr_left > 6 && !ctx->uses_terminate) {
             jay_inst *halt = jay_HALT(b, true);
-            halt = jay_add_predicate(b, halt, ctx->helper_flag);
+            halt = jay_add_predicate(b, halt, ctx->helper_flag, jay_null());
             ctx->halted = true;
 
             jay_block *split = jay_new_block(b->func);
-            split->indent = block->indent;
-
             list_partition(&block->instructions, &split->instructions,
                            &halt->link);
             list_addtail(&split->link, &block->link);
@@ -175,15 +174,15 @@ process_block(struct ctx *ctx, jay_builder *b, jay_block *block)
          mov->type = jay_flag_type(b->func);
          jay_remove_instruction(I);
       } else if (I->op == JAY_OPCODE_SEND && jay_send_skip_helpers(I)) {
-         if (jay_is_no_mask(I)) {
+         if (I->uniform) {
             /* I->cond_flag has been reserved for our use */
             jay_inst *not = jay_NOT(b, jay_null(), ctx->helper_flag);
             not->type = jay_flag_type(b->func);
             not->uniform = true;
             jay_set_conditional_mod(b, not, I->cond_flag, GEN_CONDITION_NE);
-            jay_add_predicate(b, I, I->cond_flag);
+            jay_add_predicate(b, I, I->cond_flag, jay_null());
          } else {
-            jay_add_predicate(b, I, jay_negate(ctx->helper_flag));
+            jay_add_predicate(b, I, jay_negate(ctx->helper_flag), jay_null());
          }
       }
 

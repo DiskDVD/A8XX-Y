@@ -39,9 +39,6 @@ KHR-GLES31.core.internalformat.copy_tex_image.alpha,Fail
 KHR-GLES31.core.draw_indirect.advanced-twoPass-transformFeedback-arrays,Fail
 KHR-GLES31.core.draw_indirect.advanced-twoPass-transformFeedback-elements,Fail
 
-# msm 900000.mdss: [drm:a5xx_irq] *ERROR* gpu fault ring 0 fence 2c54ef status E40801C1 rb 0162/0162 ib1 000000000104B000/0000 ib2 000000000104C000/0000
-KHR-GLES31.core.texture_buffer.texture_buffer_atomic_functions,Fail
-
 KHR-GLES31.core.shader_image_load_store.basic-allTargets-loadStoreCS,Fail
 
 # Many failures, across formats
@@ -127,7 +124,6 @@ spec@arb_transform_feedback3@gl_skipcomponents3,Fail
 spec@arb_transform_feedback3@gl_skipcomponents4,Fail
 spec@arb_transform_feedback_instanced@draw-auto instanced,Fail
 spec@arb_vertex_type_2_10_10_10_rev@attrib-p-type-size-match,Fail
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 spec@egl_mesa_configless_context@basic,Fail
 spec@ext_framebuffer_object@fbo-alphatest-nocolor,Fail
@@ -240,6 +236,7 @@ spec@arb_framebuffer_object@execution@msaa-alpha-to-coverage_alpha-to-one,Fail
 spec@arb_framebuffer_object@execution@msaa-alpha-to-one,Fail
 spec@arb_framebuffer_object@framebuffer-blit-oblong tall,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-refcount,Fail
+spec@ext_transform_feedback2@draw-auto offset,Fail
 
 spec@!opengl 1.1@polygon-mode-facing,Fail
 spec@!opengl 1.1@polygon-mode-offset,Fail
@@ -2028,7 +2025,6 @@ KHR-GLES31.core.compute_shader.sso-compute-pipeline,Fail
 KHR-GLES31.core.compute_shader.work-group-size,Fail
 KHR-GLES31.core.draw_indirect.advanced-twoPass-Compute-arrays,Fail
 KHR-GLES31.core.draw_indirect.advanced-twoPass-Compute-elements,Fail
-KHR-GLES31.core.gpu_shader5.images_array_indexing,Fail
 KHR-GLES31.core.shader_atomic_counters.advanced-usage-many-counters,Fail
 KHR-GLES31.core.shader_atomic_counters.advanced-usage-many-dispatches,Fail
 KHR-GLES31.core.shader_atomic_counters.advanced-usage-many-draw-calls2,Fail

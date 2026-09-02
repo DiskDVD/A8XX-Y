@@ -739,7 +739,8 @@ RatInstr::emit_ssbo_store(nir_intrinsic_instr *instr, Shader& shader)
       PRegister v = vf.temp_register(0);
       shader.emit_instruction(new AluInstr(op1_mov, v, value, AluInstr::write));
       auto value_vec = RegisterVec4(v, nullptr, nullptr, nullptr, pin_chan);
-      auto store = new RatInstr(cf_mem_rat,
+      const bool coherent = nir_intrinsic_access(instr) & ACCESS_COHERENT;
+      auto store = new RatInstr(unlikely(coherent) ? cf_mem_rat_cacheless : cf_mem_rat,
                                 RatInstr::STORE_TYPED,
                                 value_vec,
                                 addr_vec,
@@ -749,6 +750,8 @@ RatInstr::emit_ssbo_store(nir_intrinsic_instr *instr, Shader& shader)
                                 1,
                                 0);
       shader.emit_instruction(store);
+      if (unlikely(coherent))
+         store->set_ack();
    }
 
    return true;

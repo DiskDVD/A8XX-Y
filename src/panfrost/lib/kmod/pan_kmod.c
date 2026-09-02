@@ -284,8 +284,13 @@ pan_kmod_queue_bo_map_sync(struct pan_kmod_bo *bo, uint64_t bo_offset,
        MAX_PENDING_SYNC_OPS)
       pan_kmod_flush_bo_map_syncs_locked(dev);
 
-   uint64_t start = bo_offset & ~((uint64_t)util_cache_granularity() - 1);
-   uint64_t end = ALIGN_POT(bo_offset + range, util_cache_granularity());
+   /* Architectures that use cache_ops_null.c will always return 0 for
+    * util_cache_granularity(). But using that result would make
+    * pan_kmod_deferred_bo_sync be initialized with size = 0.
+    */
+   uint64_t granularity = util_has_cache_ops() ? util_cache_granularity() : 64;
+   uint64_t start = bo_offset & ~(granularity - 1);
+   uint64_t end = ALIGN_POT(bo_offset + range, granularity);
 
    struct pan_kmod_deferred_bo_sync new_sync = {
       .bo = bo,

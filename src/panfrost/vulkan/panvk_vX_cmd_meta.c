@@ -33,6 +33,47 @@ copy_to_image_use_gfx_pipeline(struct panvk_image *dst_img)
    return false;
 }
 
+#if PAN_ARCH >= 10
+/* Compute copies bypass framebuffer CRC tracking, so writes touching the
+ * mip-0 CRC region must invalidate its state explicitly.
+ */
+static bool
+copy_buffer_to_image_touches_crc(const struct panvk_image *dst_img,
+                                 const VkCopyDeviceMemoryImageInfoKHR *info)
+{
+   if (!panvk_image_plane_crc_header_addr(dst_img))
+      return false;
+
+   for (uint32_t i = 0; i < info->regionCount; i++) {
+      const VkImageSubresourceLayers *dst = &info->pRegions[i].imageSubresource;
+
+      if (dst->mipLevel == 0 &&
+          panvk_plane_index(dst_img, dst->aspectMask) == 0)
+         return true;
+   }
+
+   return false;
+}
+
+static bool
+copy_image_touches_crc(const struct panvk_image *dst_img,
+                       const VkCopyImageInfo2 *info)
+{
+   if (!panvk_image_plane_crc_header_addr(dst_img))
+      return false;
+
+   for (uint32_t i = 0; i < info->regionCount; i++) {
+      const VkImageSubresourceLayers *dst = &info->pRegions[i].dstSubresource;
+
+      if (dst->mipLevel == 0 &&
+          panvk_plane_index(dst_img, dst->aspectMask) == 0)
+         return true;
+   }
+
+   return false;
+}
+#endif /* PAN_ARCH >= 10 */
+
 static void
 meta_compute_start(struct panvk_cmd_buffer *cmdbuf,
                    struct panvk_cmd_meta_compute_save_ctx *save_ctx)
@@ -460,6 +501,15 @@ panvk_per_arch(CmdCopyMemoryToImageKHR)(
       struct panvk_cmd_meta_compute_save_ctx save = {0};
 
       meta_compute_start(cmdbuf, &save);
+#if PAN_ARCH >= 10
+      if (copy_buffer_to_image_touches_crc(img, pCopyMemoryInfo)) {
+         struct cs_builder *b =
+            panvk_get_cs_builder(cmdbuf, PANVK_SUBQUEUE_COMPUTE);
+
+         panvk_per_arch(cmd_invalidate_crc)(
+            b, panvk_image_plane_crc_header_addr(img));
+      }
+#endif
       vk_meta_copy_memory_to_image(&cmdbuf->vk, &dev->meta,
                                    pCopyMemoryInfo, &img_props,
                                    VK_PIPELINE_BIND_POINT_COMPUTE);
@@ -655,6 +705,15 @@ panvk_per_arch(CmdCopyImage2)(VkCommandBuffer commandBuffer,
       struct panvk_cmd_meta_compute_save_ctx save = {0};
 
       meta_compute_start(cmdbuf, &save);
+#if PAN_ARCH >= 10
+      if (copy_image_touches_crc(dst_img, pCopyImageInfo)) {
+         struct cs_builder *b =
+            panvk_get_cs_builder(cmdbuf, PANVK_SUBQUEUE_COMPUTE);
+
+         panvk_per_arch(cmd_invalidate_crc)(
+            b, panvk_image_plane_crc_header_addr(dst_img));
+      }
+#endif
       vk_meta_copy_image(&cmdbuf->vk, &dev->meta, pCopyImageInfo,
                          &src_img_props, &dst_img_props,
                          VK_PIPELINE_BIND_POINT_COMPUTE);

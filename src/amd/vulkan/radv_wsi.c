@@ -52,7 +52,7 @@ radv_wsi_get_prime_blit_queue(VkDevice _device)
       return &device->private_sdma_queue->vk;
    }
 
-   if (pdev->info.gfx_level >= GFX9 && !(instance->debug_flags & RADV_DEBUG_NO_DMA_BLIT)) {
+   if (pdev->info.gfx_level >= GFX9 && !RADV_DEBUG(instance, NO_DMA_BLIT)) {
 
       uint32_t queue_family_index = pdev->num_queues;
       for (uint32_t i = 0; i < pdev->num_queues; i++) {

@@ -13,8 +13,8 @@ panvk_entrypoints = custom_target(
     '--out-h', '@OUTPUT0@', '--out-c', '@OUTPUT1@', '--prefix', 'panvk',
     '--device-prefix', 'panvk_v6', '--device-prefix', 'panvk_v7',
     '--device-prefix', 'panvk_v9', '--device-prefix', 'panvk_v10',
-    '--device-prefix', 'panvk_v12', '--device-prefix', 'panvk_v13',
-    '--device-prefix', 'panvk_v14',
+    '--device-prefix', 'panvk_v11', '--device-prefix', 'panvk_v12',
+    '--device-prefix', 'panvk_v13', '--device-prefix', 'panvk_v14',
     '--beta', with_vulkan_beta.to_string()
   ],
   depend_files : vk_entrypoints_gen_depend_files,
@@ -78,7 +78,7 @@ bifrost_files = [
   'bifrost/panvk_vX_meta_desc_copy.c',
 ]
 
-valhall_archs = [9, 10]
+valhall_archs = [9, 10, 11]
 valhall_inc_dir = ['valhall']
 valhall_files = []
 
@@ -99,7 +99,7 @@ jm_files = [
   'jm/panvk_vX_gpu_queue.c',
 ]
 
-csf_archs = [10, 12, 13, 14]
+csf_archs = [10, 11, 12, 13, 14]
 csf_inc_dir = ['csf']
 csf_files = [
   'csf/panvk_vX_cmd_buffer.c',
@@ -142,7 +142,7 @@ common_per_arch_files = [
   sha1_h,
 ]
 
-foreach arch : [6, 7, 10, 12, 13, 14]
+foreach arch : [6, 7, 10, 11, 12, 13, 14]
   per_arch_files = common_per_arch_files
   inc_panvk_per_arch = []
 

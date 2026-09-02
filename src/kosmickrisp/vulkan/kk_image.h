@@ -138,4 +138,6 @@ mtl_texture *kk_image_plane_create_texture(struct kk_image_plane *plane,
                                            struct kk_image_layout *layout,
                                            uint64_t offset_B);
 
+void kk_image_set_label(struct kk_image *image, const char *label);
+
 #endif

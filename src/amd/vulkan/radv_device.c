@@ -159,7 +159,7 @@ radv_device_init_vs_prologs(struct radv_device *device)
    radv_shader_part_cache_init(&device->vs_prologs, &vs_prolog_ops);
 
    /* don't pre-compile prologs if we want to print them */
-   if (instance->debug_flags & RADV_DEBUG_DUMP_PROLOGS)
+   if (RADV_DEBUG(instance, DUMP_PROLOGS))
       return VK_SUCCESS;
 
    struct radv_vs_prolog_key key;
@@ -648,7 +648,7 @@ radv_device_init_device_fault_detection(struct radv_device *device)
    /* Wait for idle after every draw/dispatch to identify the
     * first bad call.
     */
-   instance->debug_flags |= RADV_DEBUG_SYNC_SHADERS;
+   BITSET_SET(instance->debug_flags, RADV_DEBUG_SYNC_SHADERS);
 
    radv_dump_enabled_options(device, stderr);
 
@@ -703,7 +703,7 @@ radv_device_init_tools(struct radv_device *device)
    if (result != VK_SUCCESS)
       return result;
 
-   if (instance->debug_flags & RADV_DEBUG_VALIDATE_VAS) {
+   if (RADV_DEBUG(instance, VALIDATE_VAS)) {
       result = radv_init_va_validation(device);
       if (result != VK_SUCCESS)
          return result;
@@ -1123,7 +1123,7 @@ radv_device_is_cache_disabled(const struct radv_device *device)
    /* Pipeline caches can be disabled with RADV_DEBUG=nocache, with MESA_GLSL_CACHE_DISABLE=1 and
     * when ACO_DEBUG is used. MESA_GLSL_CACHE_DISABLE is done elsewhere.
     */
-   if ((instance->debug_flags & RADV_DEBUG_NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags()))
+   if (RADV_DEBUG(instance, NO_CACHE) || (pdev->use_llvm ? 0 : aco_get_codegen_flags()))
       return true;
 
    return false;
@@ -1137,21 +1137,21 @@ radv_device_init_compiler_info(struct radv_device *device)
    VkShaderStageFlags dump_shaders = 0;
    uint32_t nggc_max_ps_params = 0;
 
-   if (instance->debug_flags & RADV_DEBUG_DUMP_VS)
+   if (RADV_DEBUG(instance, DUMP_VS))
       dump_shaders |= VK_SHADER_STAGE_VERTEX_BIT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_TCS)
+   if (RADV_DEBUG(instance, DUMP_TCS))
       dump_shaders |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_TES)
+   if (RADV_DEBUG(instance, DUMP_TES))
       dump_shaders |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_GS)
+   if (RADV_DEBUG(instance, DUMP_GS))
       dump_shaders |= VK_SHADER_STAGE_GEOMETRY_BIT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_PS)
+   if (RADV_DEBUG(instance, DUMP_PS))
       dump_shaders |= VK_SHADER_STAGE_FRAGMENT_BIT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_TASK)
+   if (RADV_DEBUG(instance, DUMP_TASK))
       dump_shaders |= VK_SHADER_STAGE_TASK_BIT_EXT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_MESH)
+   if (RADV_DEBUG(instance, DUMP_MESH))
       dump_shaders |= VK_SHADER_STAGE_MESH_BIT_EXT;
-   if (instance->debug_flags & RADV_DEBUG_DUMP_CS)
+   if (RADV_DEBUG(instance, DUMP_CS))
       dump_shaders |= VK_SHADER_STAGE_COMPUTE_BIT | RADV_RT_STAGE_BITS;
 
    if (pdev->use_ngg_culling) {
@@ -1230,12 +1230,12 @@ radv_device_init_compiler_info(struct radv_device *device)
             .force_64_byte_sampled_image = pdev->force_64_byte_sampled_image,
             .robust_buffer_access = pdev->use_llvm && (device->vk.enabled_features.robustBufferAccess2 ||
                                                        device->vk.enabled_features.robustBufferAccess),
-            .mitigate_smem_oob = pdev->info.compiler_info.has_smem_oob_access_bug &&
-                                 !(instance->debug_flags & RADV_DEBUG_NO_SMEM_MITIGATION),
+            .mitigate_smem_oob =
+               pdev->info.compiler_info.has_smem_oob_access_bug && !RADV_DEBUG(instance, NO_SMEM_MITIGATION),
             .mitigate_smem_with_null_prt =
                pdev->info.compiler_info.has_smem_with_null_prt_bug && radv_sparse_enabled(pdev),
             .bvh8 = radv_use_bvh8(pdev),
-            .no_rt = !!(instance->debug_flags & RADV_DEBUG_NO_RT),
+            .no_rt = RADV_DEBUG(instance, NO_RT),
             .rt_cps = !!(instance->perftest_flags & RADV_PERFTEST_RT_CPS),
             .clear_lds = pdev->drirc.misc.clear_lds,
             .disable_aniso_single_level = pdev->drirc.debug.disable_aniso_single_level,
@@ -1251,7 +1251,7 @@ radv_device_init_compiler_info(struct radv_device *device)
             .no_implicit_varying_subgroup_size = pdev->drirc.debug.no_implicit_varying_subgroup_size,
             .force_nan_preserve_min_max = pdev->drirc.debug.force_nan_preserve_min_max,
             .enable_custom_border_on_compute_queue = pdev->drirc.features.enable_custom_border_on_compute_queue,
-            .nir_debug_info = !!(instance->debug_flags & RADV_DEBUG_NIR_DEBUG_INFO),
+            .nir_debug_info = RADV_DEBUG(instance, NIR_DEBUG_INFO),
             .force_aniso = device->force_aniso,
             /* Use CHIP_UNKNOWN for increased compatiblity between caches. */
             .family = pdev->use_llvm ? pdev->info.family : CHIP_UNKNOWN,
@@ -1265,15 +1265,15 @@ radv_device_init_compiler_info(struct radv_device *device)
       /* Debug/tracing */
       .debug =
          {
-            .dump_spirv = !!(instance->debug_flags & RADV_DEBUG_DUMP_SPIRV),
-            .dump_backend_ir = !!(instance->debug_flags & RADV_DEBUG_DUMP_BACKEND_IR),
-            .dump_preopt_ir = !!(instance->debug_flags & RADV_DEBUG_DUMP_PREOPT_IR),
-            .dump_nir = !!(instance->debug_flags & RADV_DEBUG_DUMP_NIR),
-            .dump_asm = !!(instance->debug_flags & RADV_DEBUG_DUMP_ASM),
-            .dump_meta_shaders = !!(instance->debug_flags & RADV_DEBUG_DUMP_META_SHADERS),
-            .dump_shader_stats = !!(instance->debug_flags & RADV_DEBUG_DUMP_SHADER_STATS),
+            .dump_spirv = RADV_DEBUG(instance, DUMP_SPIRV),
+            .dump_backend_ir = RADV_DEBUG(instance, DUMP_BACKEND_IR),
+            .dump_preopt_ir = RADV_DEBUG(instance, DUMP_PREOPT_IR),
+            .dump_nir = RADV_DEBUG(instance, DUMP_NIR),
+            .dump_asm = RADV_DEBUG(instance, DUMP_ASM),
+            .dump_meta_shaders = RADV_DEBUG(instance, DUMP_META_SHADERS),
+            .dump_shader_stats = RADV_DEBUG(instance, DUMP_SHADER_STATS),
             .dump_shaders = dump_shaders,
-            .check_ir = !!(instance->debug_flags & RADV_DEBUG_CHECKIR),
+            .check_ir = RADV_DEBUG(instance, CHECKIR),
             .printf_enabled = !!device->debug_nir.printf.buffer_addr,
             .trap_enabled = !!device->trap_handler_shader,
             .trap_excp_flags = instance->trap_excp_flags,
@@ -1282,9 +1282,9 @@ radv_device_init_compiler_info(struct radv_device *device)
             .shader_abort = &device->shader_abort,
             .shader_dump_mtx = &instance->shader_dump_mtx,
             .keep_shader_info = device->keep_shader_info,
-            .capture_shaders = (instance->debug_flags & RADV_DEBUG_DUMP_SHADERS) || device->keep_shader_info,
+            .capture_shaders = RADV_DEBUG_DUMP_SHADERS(instance) || device->keep_shader_info,
             /* Capture shader statistics when RGP is enabled to correlate shader hashes with Fossilize. */
-            .capture_shader_stats = (instance->debug_flags & (RADV_DEBUG_DUMP_SHADER_STATS | RADV_DEBUG_PSO_HISTORY)) ||
+            .capture_shader_stats = RADV_DEBUG(instance, DUMP_SHADER_STATS) || RADV_DEBUG(instance, PSO_HISTORY) ||
                                     device->keep_shader_info || (instance->vk.trace_mode & RADV_TRACE_MODE_RGP),
             .family = pdev->info.family,
          },
@@ -1544,7 +1544,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->overallocation_disallowed = overallocation_disallowed;
    mtx_init(&device->overallocation_mutex, mtx_plain);
 
-   if (pdev->info.has_kernelq_reg_shadowing || instance->debug_flags & RADV_DEBUG_SHADOW_REGS)
+   if (pdev->info.has_kernelq_reg_shadowing || RADV_DEBUG(instance, SHADOW_REGS))
       device->uses_shadow_regs = true;
 
    bool video_dec_queue = false;
@@ -1614,7 +1614,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    if (result != VK_SUCCESS)
       goto fail;
 
-   device->pbb_allowed = pdev->info.gfx_level >= GFX9 && !(instance->debug_flags & RADV_DEBUG_NOBINNING);
+   device->pbb_allowed = pdev->info.gfx_level >= GFX9 && !RADV_DEBUG(instance, NOBINNING);
 
    /* The maximum number of scratch waves. Scratch space isn't divided
     * evenly between CUs. The number is only a function of the number of CUs.
@@ -1706,7 +1706,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          goto fail;
    }
 
-   if (pdev->info.has_graphics && !(instance->debug_flags & RADV_DEBUG_NO_IB_CHAINING))
+   if (pdev->info.has_graphics && !RADV_DEBUG(instance, NO_IB_CHAINING))
       radv_create_gfx_preamble(device);
 
    if (device->vk.enabled_features.performanceCounterQueryPools) {

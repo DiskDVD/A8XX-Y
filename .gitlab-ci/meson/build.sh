@@ -205,7 +205,7 @@ meson setup _build \
       ${GALLIUM_ST} \
       -D gallium-drivers=${GALLIUM_DRIVERS:-[]} \
       -D vulkan-drivers=${VULKAN_DRIVERS:-[]} \
-      -D video-codecs=all \
+      -D video-codecs=${VIDEO_CODECS:-all} \
       -D werror=true \
       -D b_lto=${LTO} \
       -D backend_max_links=${MAX_LD} \

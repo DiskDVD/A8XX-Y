@@ -1409,7 +1409,7 @@ vn_multisample_info_pnext_init(
    VkPipelineSampleLocationsStateCreateInfoEXT *sl =
       &fix_tmp->sl_infos[index];
 
-   VkBaseOutStructure *cur = (void *)fix_tmp->infos[index].pMultisampleState;
+   void *cur = (void *)fix_tmp->infos[index].pMultisampleState;
 
    vk_foreach_struct_const(sType, src, info->pNext) {
       void *next = NULL;
@@ -1423,12 +1423,12 @@ vn_multisample_info_pnext_init(
       }
 
       if (next) {
-         cur->pNext = next;
+         vk_pnext_set_next(cur, next);
          cur = next;
       }
    }
 
-   cur->pNext = NULL;
+   vk_pnext_set_next(cur, NULL);
 }
 
 static void
@@ -1517,7 +1517,7 @@ vn_graphics_pipeline_create_info_pnext_init(
    VkRenderingAttachmentLocationInfo *ral = &fix_tmp->ral_infos[index];
    VkRenderingInputAttachmentIndexInfo *riai = &fix_tmp->riai_infos[index];
 
-   VkBaseOutStructure *cur = (void *)&fix_tmp->infos[index];
+   void *cur = &fix_tmp->infos[index];
 
    vk_foreach_struct_const(sType, src, info->pNext) {
       void *next = NULL;
@@ -1563,12 +1563,12 @@ vn_graphics_pipeline_create_info_pnext_init(
       }
 
       if (next) {
-         cur->pNext = next;
+         vk_pnext_set_next(cur, next);
          cur = next;
       }
    }
 
-   cur->pNext = NULL;
+   vk_pnext_set_next(cur, NULL);
 }
 
 static void
@@ -1645,7 +1645,7 @@ vn_fix_graphics_pipeline_create_infos(
  * VK_EXT_pipeline_creation_feedback, the pNext chain was input-only.
  */
 static void
-vn_invalidate_pipeline_creation_feedback(const VkBaseInStructure *chain)
+vn_invalidate_pipeline_creation_feedback(const void *chain)
 {
    const VkPipelineCreationFeedbackCreateInfo *feedback_info =
       vk_find_struct_const(chain, PIPELINE_CREATION_FEEDBACK_CREATE_INFO);
@@ -1726,8 +1726,7 @@ vn_CreateGraphicsPipelines(VkDevice device,
          pipeline->layout = vn_pipeline_layout_ref(dev, layout);
       }
 
-      vn_invalidate_pipeline_creation_feedback(
-         (const VkBaseInStructure *)pCreateInfos[i].pNext);
+      vn_invalidate_pipeline_creation_feedback(pCreateInfos[i].pNext);
    }
 
    struct vn_ring *target_ring = vn_get_target_ring(dev);
@@ -1795,8 +1794,7 @@ vn_CreateComputePipelines(VkDevice device,
           VN_PIPELINE_CREATE_SYNC_MASK)
          want_sync = true;
 
-      vn_invalidate_pipeline_creation_feedback(
-         (const VkBaseInStructure *)pCreateInfos[i].pNext);
+      vn_invalidate_pipeline_creation_feedback(pCreateInfos[i].pNext);
    }
 
    struct vn_ring *target_ring = vn_get_target_ring(dev);
@@ -1881,8 +1879,7 @@ vn_CreateRayTracingPipelinesKHR(
           VN_PIPELINE_CREATE_SYNC_MASK)
          want_sync = true;
 
-      vn_invalidate_pipeline_creation_feedback(
-         (const VkBaseInStructure *)pCreateInfos[i].pNext);
+      vn_invalidate_pipeline_creation_feedback(pCreateInfos[i].pNext);
    }
 
    /* TODO take deferredOperation into consideration */

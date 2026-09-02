@@ -33,7 +33,7 @@ get_surface_count(const struct anv_device *device,
 {
 #if GFX_VERx10 >= 125
    if (shader->vk.stage == MESA_SHADER_COMPUTE &&
-       !device->physical->instance->drirc.perf.cs_surface_prefetch)
+       !device->physical->drirc.perf.cs_surface_prefetch)
       return 0;
 #endif
    return shader->bind_map.surface_count;
@@ -52,7 +52,7 @@ get_sampler_count(const struct anv_device *device,
     */
    return 0;
 #else
-   if (!device->physical->instance->drirc.perf.sampler_prefetch)
+   if (!device->physical->drirc.perf.sampler_prefetch)
       return 0;
 
    return DIV_ROUND_UP(
@@ -533,7 +533,7 @@ emit_vs_shader(struct anv_batch *batch,
    }
 #endif
 
-   if (device->physical->instance->drirc.perf.vf_comp_packing) {
+   if (device->physical->drirc.perf.vf_comp_packing) {
       anv_shader_emit(batch, shader, vs.vf_component_packing,
                       GENX(3DSTATE_VF_COMPONENT_PACKING), vfc) {
          vfc.VertexElementEnablesDW[0] = vs_prog_data->vf_component_packing[0];

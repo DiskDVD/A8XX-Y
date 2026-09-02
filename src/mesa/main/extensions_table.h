@@ -216,6 +216,7 @@ EXT(ATI_texture_mirror_once                 , ATI_texture_mirror_once           
 EXT(EXT_EGL_image_storage                   , EXT_EGL_image_storage                  , GLL, GLC , x ,  30, 2018)
 EXT(EXT_EGL_image_storage_compression       , EXT_EGL_image_storage                  , GLL, GLC , x ,  30, 2021)
 EXT(EXT_EGL_sync                            , dummy_true                             , GLL, GLC,  x ,  x , 2019)
+EXT(EXT_YUV_target                          , EXT_YUV_target                         ,  x ,  x ,  x ,  30, 2013)
 EXT(EXT_abgr                                , dummy_true                             , GLL, GLC,  x ,  x , 1995)
 EXT(EXT_base_instance                       , ARB_base_instance                      ,  x ,  x ,  x ,  30, 2014)
 EXT(EXT_bgra                                , dummy_true                             , GLL,  x ,  x ,  x , 1995)

@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2023 Collabora Ltd.
  * Copyright (C) 2026 Arm Ltd.
+ * Copyright (C) 2026 NXP
  * SPDX-License-Identifier: MIT
  */
 
@@ -1406,6 +1407,20 @@ GENX(csf_launch_xfb)(struct panfrost_batch *batch,
 
    /* XXX: Choose correctly */
    cs_run_compute(b, 1, MALI_TASK_AXIS_Z, cs_shader_res_sel(0, 0, 0, 0));
+
+   /* Flush GPU caches so that XFB buffer writes are visible to the
+    * subsequent vertex fetch. cs_defer(BIT(RENDER), SB_LS) makes the flush
+    * wait for the RENDER scoreboard slot (where the XFB compute ran) before
+    * executing, replacing the previously explicit cs_wait_slot(RENDER). The
+    * tiler flush mode is NONE because XFB is a pure compute pass with no
+    * tiler activity.
+    */
+   struct cs_index flush_id = cs_reg32(b, 74);
+   cs_move32_to(b, flush_id, 0);
+   cs_flush_caches(b, MALI_CS_FLUSH_MODE_CLEAN, MALI_CS_FLUSH_MODE_NONE,
+                   MALI_CS_OTHER_FLUSH_MODE_INVALIDATE, flush_id,
+                   cs_defer(BITFIELD_BIT(PANFROST_SB_RENDER), PANFROST_SB_LS));
+   cs_wait_slot(b, PANFROST_SB_LS);
 }
 
 static void

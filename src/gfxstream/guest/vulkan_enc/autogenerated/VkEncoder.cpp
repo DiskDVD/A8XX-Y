@@ -25115,10 +25115,12 @@ VkResult VkEncoder::vkCreatePrivateDataSlotEXT(VkDevice device,
     memcpy(*streamPtrPtr, (uint64_t*)&cgen_var_2, 8);
     *streamPtrPtr += 8;
     /* is handle, possibly out */;
+    stream->setHandleMapping(sResourceTracker->createMapping());
     uint64_t cgen_var_3;
     stream->read((uint64_t*)&cgen_var_3, 8);
     stream->handleMapping()->mapHandles_u64_VkPrivateDataSlot(
         &cgen_var_3, (VkPrivateDataSlot*)pPrivateDataSlot, 1);
+    stream->unsetHandleMapping();
     VkResult vkCreatePrivateDataSlotEXT_VkResult_return = (VkResult)0;
     stream->read(&vkCreatePrivateDataSlotEXT_VkResult_return, sizeof(VkResult));
     ++encodeCount;
@@ -25199,6 +25201,8 @@ void VkEncoder::vkDestroyPrivateDataSlotEXT(VkDevice device, VkPrivateDataSlot p
                                               (VkAllocationCallbacks*)(local_pAllocator),
                                               streamPtrPtr);
     }
+    sResourceTracker->destroyMapping()->mapHandles_VkPrivateDataSlot(
+        (VkPrivateDataSlot*)&privateDataSlot);
     stream->flush();
     ++encodeCount;
     if (0 == encodeCount % POOL_CLEAR_INTERVAL) {

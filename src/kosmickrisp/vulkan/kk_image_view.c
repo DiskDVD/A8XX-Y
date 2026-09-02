@@ -298,3 +298,17 @@ kk_DestroyImageView(VkDevice _device, VkImageView imageView,
    kk_image_view_finish(dev, view);
    vk_free2(&dev->vk.alloc, pAllocator, view);
 }
+
+void
+kk_image_view_set_label(struct kk_image_view *iview, const char *label)
+{
+   for (uint8_t i = 0; i < iview->plane_count; i++) {
+      if (iview->planes[i].mtl_handle_sampled)
+         mtl_resource_set_label(iview->planes[i].mtl_handle_sampled, label);
+      if (iview->planes[i].mtl_handle_storage)
+         mtl_resource_set_label(iview->planes[i].mtl_handle_storage, label);
+      if (iview->planes[i].mtl_handle_subres)
+         mtl_resource_set_label(iview->planes[i].mtl_handle_subres, label);
+      /* mtl_handle_render and mtl_handle_input might be the VkImage's handle */
+   }
+}

@@ -50,11 +50,8 @@ kk_get_image_plane_format_features(struct kk_physical_device *pdev,
 
    if (va_format->filter) {
       features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
-      features |=
-         VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_MINMAX_BIT; // TODO_KOSMICKRISP
-                                                              // Understand if
-                                                              // we want to
-                                                              // expose this
+      if (pdev->vk.supported_extensions.EXT_sampler_filter_minmax)
+         features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_MINMAX_BIT;
    }
 
    /* TODO: VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT */
@@ -861,6 +858,9 @@ kk_image_plane_bind(struct kk_device *dev, struct kk_image *image,
    plane->mem = mem;
    plane->mem_offset_B = *offset_B;
    plane->mtl_handle = kk_image_plane_create_texture(plane, &plane->layout, 0u);
+   if (image->vk.base.object_name)
+      mtl_resource_set_label(plane->mtl_handle, image->vk.base.object_name);
+
    plane->addr = mem->bo->gpu + *offset_B;
 
    /* Create auxiliary 2D array texture for 3D images so we can use 2D views of
@@ -875,6 +875,9 @@ kk_image_plane_bind(struct kk_device *dev, struct kk_image *image,
       array_layout.depth_px = 1u;
       plane->mtl_handle_array = mtl_new_texture_with_descriptor(
          mem->bo->mtl_handle, &array_layout, *offset_B);
+      if (image->vk.base.object_name)
+         mtl_resource_set_label(plane->mtl_handle_array,
+                                image->vk.base.object_name);
    }
 
    *offset_B += plane_size_B;
@@ -1173,4 +1176,15 @@ kk_TransitionImageLayoutEXT(
 {
    /* We don't do anything with layouts so this should be a no-op */
    return VK_SUCCESS;
+}
+
+void
+kk_image_set_label(struct kk_image *image, const char *label)
+{
+   for (uint8_t i = 0; i < image->plane_count; i++) {
+      if (image->planes[i].mtl_handle)
+         mtl_resource_set_label(image->planes[i].mtl_handle, label);
+      if (image->planes[i].mtl_handle_array)
+         mtl_resource_set_label(image->planes[i].mtl_handle_array, label);
+   }
 }

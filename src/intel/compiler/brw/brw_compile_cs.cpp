@@ -193,6 +193,7 @@ brw_compile_cs(const struct brw_compiler *compiler,
          .nir = shader,
          .dispatch_width = dispatch_width,
          .compiler = compiler,
+         .key = &key->base,
          .archiver = params->base.archiver,
       };
 

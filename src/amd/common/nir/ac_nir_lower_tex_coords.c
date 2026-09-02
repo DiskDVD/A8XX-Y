@@ -394,6 +394,7 @@ move_tex_coords(struct move_tex_coords_state *state, nir_function_impl *impl, ni
    case GLSL_SAMPLER_DIM_3D:
    case GLSL_SAMPLER_DIM_CUBE:
    case GLSL_SAMPLER_DIM_EXTERNAL:
+   case GLSL_SAMPLER_DIM_EXTERNAL_2D_Y2Y:
       break;
    case GLSL_SAMPLER_DIM_RECT:
    case GLSL_SAMPLER_DIM_BUF:

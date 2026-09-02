@@ -131,6 +131,19 @@ variables:
     - job: debian-x86_64
       artifacts: false
 
+.lava-x86_64-test-video-no_gfx_compute:
+  extends:
+    - .use-debian/x86_64_test-video
+    - .lava-x86_64-test
+  variables:
+    S3_ARTIFACT_NAME: mesa-x86_64-no_gfx_compute-debugoptimized
+  needs:
+    - job: debian/x86_64_test-video
+      artifacts: false
+      optional: true
+    - job: debian-x86_64-no_gfx_compute
+      artifacts: false
+
 .lava-x86_64-test-vk:
   extends:
     - .use-debian/x86_64_test-vk

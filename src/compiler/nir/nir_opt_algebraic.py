@@ -716,6 +716,13 @@ for i in [1, 2, 16, 24]:
     ])
 
 optimizations.extend([
+   # Common, more generic versions of the patterns above that can happen
+   # after lowering IO to byte addresses.
+   (('ishl@32', ('iand', a, 0x3fffffff), '#b(is_first_5_bits_uge_2)'), ('ishl', a, b)),
+   (('ishl@32', ('iand', a, 0x7fffffff), '#b(is_5lsb_not_zero)'), ('ishl', a, b)),
+   (('ishl@32', ('ushr', 'a(is_unsigned_multiple_of_4)', 2), '#b(is_first_5_bits_uge_2)'), ('ishl', a, ('isub', b, 2))),
+   (('ishl@32', ('ushr', 'a(is_unsigned_multiple_of_2)', 1), '#b(is_5lsb_not_zero)'), ('ishl', a, ('isub', b, 1))),
+
    # This is common for address calculations.  Reassociating may enable the
    # 'a<<c' to be CSE'd.  It also helps architectures that have an ISHLADD
    # instruction or a constant offset field for in load / store instructions.

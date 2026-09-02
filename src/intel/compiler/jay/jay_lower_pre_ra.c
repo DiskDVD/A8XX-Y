@@ -268,7 +268,7 @@ jay_lower_pre_ra(jay_shader *s)
              * booleans. RA forcibly ties the flags for this case, so insert
              * copies to legalize that. These copies are usually coalesced.
              */
-            if (I->predication == JAY_PREDICATED_DEFAULT) {
+            if (I->predication > 1) {
                b.cursor = jay_before_inst(I);
                jay_def copy = jay_alloc_def(&b, FLAG, 1);
                jay_MOV(&b, copy, I->src[I->num_srcs - 1])->type =

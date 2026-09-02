@@ -23,7 +23,7 @@ enum amd_gfx_level;
 
 nir_builder PRINTFLIKE(2, 3) radv_meta_nir_init_shader(mesa_shader_stage stage, const char *name, ...);
 
-nir_shader *radv_meta_nir_build_vs_generate_vertices(void);
+nir_shader *radv_meta_nir_build_vs_generate_vertices(bool layered);
 nir_shader *radv_meta_nir_build_fs_noop(void);
 
 nir_def *radv_meta_nir_get_global_ids(nir_builder *b, unsigned num_components);

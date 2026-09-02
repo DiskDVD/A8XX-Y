@@ -389,6 +389,7 @@ struct pipe_blend_state
    unsigned max_rt:3;            /* index of max rt, Ie. # of cbufs minus 1 */
    unsigned advanced_blend_func:4;
    unsigned blend_coherent:1;
+   unsigned is_yuv:1;            /**< YUV render target (GL_EXT_YUV_target) */
    struct pipe_rt_blend_state rt[PIPE_MAX_COLOR_BUFS];
 };
 

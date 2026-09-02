@@ -734,7 +734,9 @@ impl ByteCopies<'_> {
         let Some(copy) = self.copies.get(&src_ssa) else {
             return;
         };
-        let Some(copy_src) = copy.as_src(src.swizzle.bytes_read(4)) else {
+        let src_bytes = instr.src_type(src).total_bytes();
+        let Some(copy_src) = copy.as_src(src.swizzle.bytes_read(src_bytes))
+        else {
             return;
         };
         let Some(swizzle) = copy_src.swizzle.swizzle(src.swizzle) else {

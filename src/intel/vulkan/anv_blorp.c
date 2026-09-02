@@ -129,7 +129,7 @@ anv_device_init_blorp(struct anv_device *device)
       .use_unrestricted_depth_range =
          device->vk.enabled_extensions.EXT_depth_range_unrestricted,
       .use_cached_dynamic_states = true,
-      .enable_tbimr = device->physical->instance->drirc.debug.tbimr,
+      .enable_tbimr = device->physical->drirc.debug.tbimr,
    };
 
    blorp_init_brw(&device->blorp.context, device, &device->isl_dev,
@@ -184,7 +184,7 @@ anv_blorp_batch_init(struct anv_cmd_buffer *cmd_buffer,
     */
    flags |= BLORP_BATCH_EMIT_3DSTATE_VF;
 
-   if (!cmd_buffer->device->physical->instance->drirc.debug.vf_distribution)
+   if (!cmd_buffer->device->physical->drirc.debug.vf_distribution)
       flags |= BLORP_BATCH_DISABLE_VF_DISTRIBUTION;
 
    blorp_batch_init(&cmd_buffer->device->blorp.context, batch, cmd_buffer, flags);
@@ -605,6 +605,20 @@ is_image_stc_ccs_compressed(const struct anv_image *image)
    return image->planes[plane].aux_usage == ISL_AUX_USAGE_STC_CCS;
 }
 
+static bool
+is_image_mcs_compressed(const struct anv_image *image)
+{
+   if (!(image->vk.aspects & VK_IMAGE_ASPECT_COLOR_BIT))
+      return false;
+
+   const uint32_t plane =
+      anv_image_aspect_to_plane(image,
+                                image->vk.aspects &
+                                VK_IMAGE_ASPECT_COLOR_BIT);
+
+   return isl_aux_usage_has_mcs(image->planes[plane].aux_usage);
+}
+
 bool
 anv_blorp_execute_on_companion(struct anv_cmd_buffer *cmd_buffer,
                                const struct anv_image *src_image,
@@ -630,6 +644,16 @@ anv_blorp_execute_on_companion(struct anv_cmd_buffer *cmd_buffer,
       /* On Xe3 compute supports blits but not clear operations. */
       if (!src_image)
          return true;
+
+      if (is_image_mcs_compressed(dst_image)) {
+         /* TODO: HSD 14017185931 recommends decompressing the MCS before
+          * doing image stores, but we need to do that on the compute
+          * queue for the blit to be effective there too.
+          */
+         anv_perf_warn(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
+                       "MSAA Image stores don't work with MCS");
+         return true;
+      }
    }
 
    if (anv_cmd_buffer_is_blitter_queue(cmd_buffer)) {

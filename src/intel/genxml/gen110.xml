@@ -1709,28 +1709,6 @@
       <field name="Chroma Offsets Ext" dword="0" bits="31:0" type="HCP_WEIGHTOFFSET_CHROMA_EXT_ENTRY" />
     </group>
   </instruction>
-  <instruction name="HUC_STREAM_OBJECT" bias="2" length="5" engine="video">
-    <field name="DWord Length" dword="0" bits="11:0" type="uint" />
-    <field name="SubOpcode" dword="0" bits="22:16" type="uint" default="32" />
-    <field name="Media Command Opcode" dword="0" bits="26:23" type="uint" default="11" />
-    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Indirect Stream-In Data Length" dword="1" bits="31:0" type="uint" />
-    <field name="Indirect Stream-In - Address" dword="2" bits="28:0" type="address" />
-    <field name="HuC Processing" dword="2" bits="31:31" type="bool" />
-    <field name="Indirect Stream-Out - Address" dword="3" bits="28:0" type="address" />
-    <field name="Start Code Byte [0]" dword="4" bits="7:0" type="uint" />
-    <field name="Start Code Byte [1]" dword="4" bits="15:8" type="uint" />
-    <field name="Start Code Byte [2]" dword="4" bits="23:16" type="uint" />
-    <field name="Start Code Search Engine" dword="4" bits="24:24" type="bool" />
-    <field name="Emulation Prevention Byte Removal" dword="4" bits="25:25" type="bool" />
-    <field name="Stream-Out" dword="4" bits="26:26" type="bool" />
-    <field name="DRM Length Mode" dword="4" bits="28:27" type="uint">
-      <value name="Start Code Mode" value="0" />
-      <value name="Length Mode" value="1" />
-    </field>
-    <field name="HUC Bitstream Enable" dword="4" bits="29:29" type="bool" />
-  </instruction>
   <instruction name="MEDIA_OBJECT" bias="2" engine="render">
     <field name="DWord Length" dword="0" bits="14:0" type="uint" default="4" />
     <field name="Media Command Sub-Opcode" dword="0" bits="23:16" type="uint" default="0" />

@@ -7,8 +7,12 @@
 
 #include "kk_device.h"
 
+#include "kk_buffer.h"
+#include "kk_buffer_view.h"
 #include "kk_cmd_buffer.h"
 #include "kk_entrypoints.h"
+#include "kk_image.h"
+#include "kk_image_view.h"
 #include "kk_instance.h"
 #include "kk_physical_device.h"
 #include "kk_shader.h"
@@ -462,4 +466,44 @@ kk_device_make_resources_resident(struct kk_device *dev)
    mtl_residency_set_commit(dev->residency_set.handle);
    mtl_residency_set_request_residency(dev->residency_set.handle);
    simple_mtx_unlock(&dev->residency_set.mutex);
+}
+
+/* VK_EXT_debug_utils */
+VKAPI_ATTR VkResult VKAPI_CALL
+kk_SetDebugUtilsObjectNameEXT(VkDevice device,
+                              const VkDebugUtilsObjectNameInfoEXT *pNameInfo)
+{
+   VkResult result = vk_common_SetDebugUtilsObjectNameEXT(device, pNameInfo);
+   if (result != VK_SUCCESS)
+      return result;
+
+   if (pNameInfo->pObjectName == NULL)
+      return result;
+
+#define CASE(obj_type, kk_type, vk_type)                                       \
+   case VK_OBJECT_TYPE_##obj_type: {                                           \
+      VK_FROM_HANDLE(kk_type, obj, (vk_type)pNameInfo->objectHandle);          \
+      kk_type##_set_label(obj, pNameInfo->pObjectName);                        \
+      break;                                                                   \
+   }
+
+   switch (pNameInfo->objectType) {
+      CASE(COMMAND_BUFFER, kk_cmd_buffer, VkCommandBuffer);
+      CASE(COMMAND_POOL, kk_cmd_pool, VkCommandPool);
+      CASE(DEVICE_MEMORY, kk_device_memory, VkDeviceMemory);
+      CASE(BUFFER, kk_buffer, VkBuffer);
+      CASE(BUFFER_VIEW, kk_buffer_view, VkBufferView);
+      CASE(IMAGE, kk_image, VkImage);
+      CASE(IMAGE_VIEW, kk_image_view, VkImageView);
+      CASE(DESCRIPTOR_POOL, kk_descriptor_pool, VkDescriptorPool);
+      /* TODO: it would be nice to label pipelines and shaders, but we don't
+       * have easy access to the relevant vulkan runtime objects inside
+       * kk_compile_shaders(), where the Metal objects are set up.
+       */
+   default:
+      break;
+   }
+#undef CASE
+
+   return VK_SUCCESS;
 }

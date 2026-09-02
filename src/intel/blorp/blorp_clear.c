@@ -105,7 +105,7 @@ blorp_params_get_clear_kernel_fs(struct blorp_batch *batch,
    nir_variable *frag_color = nir_variable_create(b.shader, nir_var_shader_out,
                                                   glsl_vec4_type(),
                                                   "gl_FragColor");
-   frag_color->data.location = FRAG_RESULT_COLOR;
+   frag_color->data.location = FRAG_RESULT_DATA0;
    nir_store_var(&b, frag_color, color, 0xf);
 
    const bool multisample_fbo = false;
@@ -1539,7 +1539,7 @@ blorp_params_get_mcs_partial_resolve_kernel(struct blorp_batch *batch,
    nir_variable *frag_color =
       nir_variable_create(b.shader, nir_var_shader_out,
                           glsl_vec4_type(), "gl_FragColor");
-   frag_color->data.location = FRAG_RESULT_COLOR;
+   frag_color->data.location = FRAG_RESULT_DATA0;
 
    /* Do an MCS fetch and check if it is equal to the magic clear value */
    nir_def *mcs =

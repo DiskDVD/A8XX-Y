@@ -321,7 +321,7 @@ lower_ray_query_intrinsic(nir_builder *b,
           * tracing call.
           */
          brw_nir_trace_ray(b, nir_load_ray_query_global_intel(b),
-                           level, ctrl, true);
+                           level, ctrl, true, state->devinfo);
 
          struct brw_nir_rt_mem_hit_defs hit_in = {};
          brw_nir_rt_load_mem_hit_from_addr(b, &hit_in, hw_stack_addr, false,

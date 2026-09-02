@@ -42,11 +42,6 @@
 
 BITSET_WORD intel_debug[BITSET_WORDS(INTEL_DEBUG_MAX)] = {0};
 
-struct debug_control_bitset {
-   const char *string;
-   uint32_t range[2];
-};
-
 static const struct debug_control_bitset debug_control[] = {
 #define OPT1(name, bit) \
    { .string = name, .range = { bit, bit }, }
@@ -191,44 +186,10 @@ uint32_t intel_debug_bkp_before_dispatch_count = 0;
 uint32_t intel_debug_bkp_after_dispatch_count = 0;
 
 static void
-parse_debug_bitset(const char *env, const struct debug_control_bitset *tbl)
-{
-   /* Check if env is NULL or empty */
-   if (!env || !*env)
-      return;
-
-   char *copy = strdup(env);
-   if (!copy)
-      return;
-
-   /* Tokenize the string by space or comma */
-   for (char *tok = strtok(copy, ", "); tok; tok = strtok(NULL, ", ")) {
-      /* Check for negation prefix, useful if user would like to disable certian flags */
-      bool negate = (*tok == '~' || *tok == '-');
-      if (negate)
-         tok++;
-
-      for (unsigned i = 0; tbl[i].string; i++) {
-         if (strcasecmp(tok, tbl[i].string) != 0)
-            continue;
-
-         for (unsigned bit = tbl[i].range[0]; bit <= tbl[i].range[1]; bit++) {
-            if (negate)
-               BITSET_CLEAR(intel_debug, bit);
-            else
-               BITSET_SET(intel_debug, bit);
-         }
-         break;
-      }
-   }
-   free(copy);
-}
-
-static void
 process_intel_debug_variable_once(void)
 {
    BITSET_ZERO(intel_debug);
-   parse_debug_bitset(os_get_option("INTEL_DEBUG"), debug_control);
+   parse_debug_bitset(os_get_option("INTEL_DEBUG"), debug_control, intel_debug);
 
    intel_simd = parse_debug_string(os_get_option("INTEL_SIMD_DEBUG"), simd_control);
    intel_debug_batch_frame_start =

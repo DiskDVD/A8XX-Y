@@ -62,7 +62,7 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
                                                            total_scratch,
                                                            protected);
 #if GFX_VER >= 20
-      switch (cmd_buffer->device->physical->instance->drirc.perf.stack_ids) {
+      switch (cmd_buffer->device->physical->drirc.perf.stack_ids) {
       case 256:  cfe.StackIDControl = StackIDs256;  break;
       case 512:  cfe.StackIDControl = StackIDs512;  break;
       case 1024: cfe.StackIDControl = StackIDs1024; break;
@@ -73,7 +73,7 @@ genX(cmd_buffer_ensure_cfe_state)(struct anv_cmd_buffer *cmd_buffer,
 
 #if GFX_VER >= 30
       cfe.DynamicStackIDControl =
-         cmd_buffer->device->physical->instance->drirc.perf.dynamic_stack_id_control;
+         cmd_buffer->device->physical->drirc.perf.dynamic_stack_id_control;
 #endif
 
       cfe.OverDispatchControl = 2; /* 50% overdispatch */
@@ -371,12 +371,12 @@ static inline void
 cmd_buffer_pre_dispatch_wa(struct anv_cmd_buffer *cmd_buffer, bool rt)
 {
 #if GFX_VERx10 >= 125
-   const struct anv_instance *instance = cmd_buffer->device->physical->instance;
+   const struct anv_physical_device *pdevice = cmd_buffer->device->physical;
 
    if (!rt &&
        cmd_buffer->state.internal_compute_command == 0 &&
        cmd_buffer->state.last_cmd_type == ANV_CMD_TYPE_DISPATCH &&
-       instance->drirc.debug.b2b_dispatch_dataport_flush) {
+       pdevice->drirc.debug.b2b_dispatch_dataport_flush) {
       anv_add_pending_pipe_bits(cmd_buffer,
                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -395,14 +395,14 @@ cmd_buffer_post_dispatch_wa(struct anv_cmd_buffer *cmd_buffer, bool rt)
 #if GFX_VERx10 >= 125
    struct anv_cmd_compute_state *comp_state = &cmd_buffer->state.compute;
    const struct anv_shader *shader = comp_state->shader;
-   const struct anv_instance *instance = cmd_buffer->device->physical->instance;
+   const struct anv_physical_device *pdevice = cmd_buffer->device->physical;
 
    if (!rt) {
       /* Workaround WaW hazards in applications that clear a buffer and start
        * writing to it immediately without a barrier between the clear & write
        * operations.
        */
-      if ((instance->drirc.debug.barrier_post_typed_clear_shader &&
+      if ((pdevice->drirc.debug.barrier_post_typed_clear_shader &&
            (shader->bind_map.inferred_behavior & ANV_PIPELINE_BEHAVIOR_CLEAR_TYPED)) ||
           shader->workaround.force_typed_barrier_after_dispatch_to_top) {
          anv_add_pending_pipe_bits(cmd_buffer,
@@ -417,7 +417,7 @@ cmd_buffer_post_dispatch_wa(struct anv_cmd_buffer *cmd_buffer, bool rt)
                                    ANV_PIPE_HDC_PIPELINE_FLUSH_BIT,
                                    "clear shader typed L1 flush app wa");
       }
-      if ((instance->drirc.debug.barrier_post_untyped_clear_shader &&
+      if ((pdevice->drirc.debug.barrier_post_untyped_clear_shader &&
            (comp_state->shader->bind_map.inferred_behavior & ANV_PIPELINE_BEHAVIOR_CLEAR_UNTYPED)) ||
           shader->workaround.force_untyped_barrier_after_dispatch_to_top) {
          anv_add_pending_pipe_bits(cmd_buffer,
@@ -1345,9 +1345,9 @@ cmd_buffer_flush_rt_state(struct anv_cmd_buffer *cmd_buffer,
 #endif
 
    anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_BTD), btd) {
-      const struct anv_instance *instance = device->physical->instance;
+      const struct anv_physical_device *pdevice = device->physical;
       uint32_t dispatch_timeout_counter =
-         instance->drirc.perf.rt_dispatch_timeout;
+         pdevice->drirc.perf.rt_dispatch_timeout;
       uint32_t clamped_timeout_counter =
          genX(anv_get_btd_dispatch_timeout_counter)(dispatch_timeout_counter);
 #if GFX_VERx10 >= 200
@@ -1384,7 +1384,7 @@ cmd_buffer_flush_rt_state(struct anv_cmd_buffer *cmd_buffer,
       btd.DynamicstackmanagementmechanismHITREWARD = HIT_REWARD_1;
       btd.DynamicstackmanagementmechanismSCALINGFACTOR = SCALING_FACTOR_4;
       btd.DynamicstackmanagementmechanismREDUCTIONCAP =
-         get_stack_id_reduction_cap(cmd_buffer->device->physical->instance->drirc.perf.stack_ids);
+         get_stack_id_reduction_cap(cmd_buffer->device->physical->drirc.perf.stack_ids);
 #endif
    }
 

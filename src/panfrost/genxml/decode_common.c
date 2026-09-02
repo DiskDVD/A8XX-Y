@@ -417,6 +417,9 @@ pandecode_interpret_cs(struct pandecode_context *ctx, uint64_t queue_gpu_va,
    case 10:
       pandecode_interpret_cs_v10(ctx, queue_gpu_va, size, gpu_id, regs);
       break;
+   case 11:
+      pandecode_interpret_cs_v11(ctx, queue_gpu_va, size, gpu_id, regs);
+      break;
    case 12:
       pandecode_interpret_cs_v12(ctx, queue_gpu_va, size, gpu_id, regs);
       break;

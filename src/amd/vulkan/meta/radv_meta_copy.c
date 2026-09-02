@@ -92,8 +92,10 @@ transfer_copy_memory_image(struct radv_cmd_buffer *cmd_buffer, VkAddressCopyFlag
       if (!radv_gang_init(cmd_buffer))
          return;
 
-      if (radv_flush_gang_leader_semaphore(cmd_buffer))
+      if (radv_flush_gang_leader_semaphore(cmd_buffer)) {
          radv_wait_gang_leader(cmd_buffer);
+         cmd_buffer->gang.flush_bits |= RADV_CMD_FLAG_INV_L2;
+      }
 
       radv_gang_cache_flush(cmd_buffer);
 
@@ -135,7 +137,7 @@ radv_fixup_copy_dst_htile_metadata(struct radv_cmd_buffer *cmd_buffer, struct ra
 {
    const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
-   const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf, cmd_buffer->qf);
+   const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf);
    if (!radv_layout_is_htile_compressed(device, image, subresource->mipLevel, image_layout, queue_mask))
       return;
 
@@ -225,7 +227,7 @@ gfx_or_compute_copy_memory_to_image(struct radv_cmd_buffer *cmd_buffer, VkAddres
       radv_blit_surf_for_image_level_layer(image, region->imageLayout, &region->imageSubresource);
 
    if (!radv_is_buffer_format_supported(img_bsurf.format, NULL)) {
-      const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf, cmd_buffer->qf);
+      const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf);
       const VkFormat raw_format = vk_format_for_size(vk_format_get_blocksize(img_bsurf.format));
 
       if (!radv_dcc_formats_compatible(pdev->info.gfx_level, img_bsurf.format, raw_format, NULL) &&
@@ -452,7 +454,7 @@ compute_copy_image_to_memory(struct radv_cmd_buffer *cmd_buffer, VkAddressCopyFl
       radv_blit_surf_for_image_level_layer(image, region->imageLayout, &region->imageSubresource);
 
    if (!radv_is_buffer_format_supported(img_info.format, NULL)) {
-      const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf, cmd_buffer->qf);
+      const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf);
       const VkFormat raw_format = vk_format_for_size(vk_format_get_blocksize(img_info.format));
 
       if (!radv_dcc_formats_compatible(pdev->info.gfx_level, img_info.format, raw_format, NULL) &&
@@ -602,8 +604,10 @@ transfer_copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_i
       if (!radv_gang_init(cmd_buffer))
          return;
 
-      if (radv_flush_gang_leader_semaphore(cmd_buffer))
+      if (radv_flush_gang_leader_semaphore(cmd_buffer)) {
          radv_wait_gang_leader(cmd_buffer);
+         cmd_buffer->gang.flush_bits |= RADV_CMD_FLAG_INV_L2;
+      }
 
       radv_gang_cache_flush(cmd_buffer);
 
@@ -703,10 +707,10 @@ gfx_or_compute_copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image 
    struct radv_meta_blit2d_surf b_dst =
       radv_blit_surf_for_image_level_layer(dst_image, dst_image_layout, &region->dstSubresource);
 
-   uint32_t dst_queue_mask = radv_image_queue_family_mask(dst_image, cmd_buffer->qf, cmd_buffer->qf);
+   uint32_t dst_queue_mask = radv_image_queue_family_mask(dst_image, cmd_buffer->qf);
    bool dst_compressed =
       radv_layout_dcc_compressed(device, dst_image, region->dstSubresource.mipLevel, dst_image_layout, dst_queue_mask);
-   uint32_t src_queue_mask = radv_image_queue_family_mask(src_image, cmd_buffer->qf, cmd_buffer->qf);
+   uint32_t src_queue_mask = radv_image_queue_family_mask(src_image, cmd_buffer->qf);
    bool src_compressed =
       radv_layout_dcc_compressed(device, src_image, region->srcSubresource.mipLevel, src_image_layout, src_queue_mask);
    bool need_dcc_sign_reinterpret = false;

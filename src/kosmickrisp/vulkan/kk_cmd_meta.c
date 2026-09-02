@@ -11,6 +11,7 @@
 
 #include "kk_buffer.h"
 #include "kk_cmd_buffer.h"
+#include "kk_physical_device.h"
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
 
@@ -90,7 +91,7 @@ struct kk_meta_save {
 
 static void
 kk_meta_begin(struct kk_cmd_buffer *cmd, struct kk_meta_save *save,
-              VkPipelineBindPoint bind_point)
+              VkPipelineBindPoint bind_point, const char *debug_label)
 {
    struct kk_descriptor_state *desc = kk_get_descriptors_state(cmd, bind_point);
 
@@ -131,6 +132,12 @@ kk_meta_begin(struct kk_cmd_buffer *cmd, struct kk_meta_save *save,
    static_assert(sizeof(save->push) == sizeof(desc->root.push),
                  "Size mismatch for push in meta_save");
    memcpy(save->push, desc->root.push, sizeof(save->push));
+
+   if (kk_device_physical(kk_cmd_buffer_device(cmd))
+          ->settings.gpu_capture_enabled) {
+      VkDebugUtilsLabelEXT label_info = {.pLabelName = debug_label};
+      kk_CmdBeginDebugUtilsLabelEXT(kk_cmd_buffer_to_handle(cmd), &label_info);
+   }
 }
 
 static void
@@ -139,6 +146,11 @@ kk_meta_end(struct kk_cmd_buffer *cmd, struct kk_meta_save *save,
 {
    struct kk_descriptor_state *desc = kk_get_descriptors_state(cmd, bind_point);
    desc->root_dirty = true;
+
+   if (kk_device_physical(kk_cmd_buffer_device(cmd))
+          ->settings.gpu_capture_enabled) {
+      kk_CmdEndDebugUtilsLabelEXT(kk_cmd_buffer_to_handle(cmd));
+   }
 
    if (save->desc0) {
       desc->sets[0] = save->desc0;
@@ -190,30 +202,32 @@ kk_meta_end(struct kk_cmd_buffer *cmd, struct kk_meta_save *save,
 
 VKAPI_ATTR void VKAPI_CALL
 kk_CmdFillMemoryKHR(VkCommandBuffer commandBuffer,
-                    const VkDeviceAddressRangeKHR* dstRange,
-                    VkAddressCommandFlagsKHR dstFlags,
-                    uint32_t data)
+                    const VkDeviceAddressRangeKHR *dstRange,
+                    VkAddressCommandFlagsKHR dstFlags, uint32_t data)
 {
    VK_FROM_HANDLE(kk_cmd_buffer, cmd, commandBuffer);
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE);
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE,
+                 "meta:vkCmdFillMemoryKHR");
    vk_meta_fill_memory(&cmd->vk, &dev->meta, dstRange, dstFlags, data);
    kk_meta_end(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE);
 }
 
 VKAPI_ATTR void VKAPI_CALL
-kk_CmdUpdateBuffer(VkCommandBuffer commandBuffer, VkBuffer dstBuffer,
-                   VkDeviceSize dstOffset, VkDeviceSize dstRange,
-                   const void *pData)
+kk_CmdUpdateMemoryKHR(VkCommandBuffer commandBuffer,
+                      const VkDeviceAddressRangeKHR *pDstRange,
+                      VkAddressCommandFlagsKHR dstFlags, VkDeviceSize dataSize,
+                      const void *pData)
 {
    VK_FROM_HANDLE(kk_cmd_buffer, cmd, commandBuffer);
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE);
-   vk_meta_update_buffer(&cmd->vk, &dev->meta, dstBuffer, dstOffset, dstRange,
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE,
+                 "meta:vkCmdUpdateMemoryKHR");
+   vk_meta_update_memory(&cmd->vk, &dev->meta, pDstRange, dstFlags, dataSize,
                          pData);
    kk_meta_end(cmd, &save, VK_PIPELINE_BIND_POINT_COMPUTE);
 }
@@ -226,7 +240,8 @@ kk_CmdBlitImage2(VkCommandBuffer commandBuffer,
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                 "meta:vkCmdBlitImage2");
    vk_meta_blit_image2(&cmd->vk, &dev->meta, pBlitImageInfo);
    kk_meta_end(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
 }
@@ -239,7 +254,8 @@ kk_CmdResolveImage2(VkCommandBuffer commandBuffer,
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                 "meta:vkCmdResolveImage2");
    vk_meta_resolve_image2(&cmd->vk, &dev->meta, pResolveImageInfo);
    kk_meta_end(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
 }
@@ -284,7 +300,8 @@ kk_CmdClearAttachments(VkCommandBuffer commandBuffer, uint32_t attachmentCount,
    struct kk_conditional_rendering_state cond_render = cmd->state.cond_render;
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                 "meta:vkCmdClearAttachments");
    cmd->state.cond_render = cond_render;
    vk_meta_clear_attachments(&cmd->vk, &dev->meta, &render_info,
                              attachmentCount, pAttachments, rectCount, pRects);
@@ -306,7 +323,8 @@ kk_meta_resolve_rendering(struct kk_cmd_buffer *cmd,
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    struct kk_meta_save save;
-   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
+   kk_meta_begin(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                 "meta:resolve_rendering");
    vk_meta_resolve_rendering(&cmd->vk, &dev->meta, pRenderingInfo);
    kk_meta_end(cmd, &save, VK_PIPELINE_BIND_POINT_GRAPHICS);
 }

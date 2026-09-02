@@ -127,3 +127,10 @@ kk_DestroyBufferView(VkDevice _device, VkBufferView bufferView,
    mtl_release(view->mtl_texel_buffer_handle);
    vk_buffer_view_destroy(&dev->vk, pAllocator, &view->vk);
 }
+
+void
+kk_buffer_view_set_label(struct kk_buffer_view *bview, const char *label)
+{
+   if (bview->mtl_texel_buffer_handle)
+      mtl_resource_set_label(bview->mtl_texel_buffer_handle, label);
+}

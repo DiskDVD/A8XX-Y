@@ -64,6 +64,8 @@ etna_blit_save_state(struct etna_context *ctx, bool render_cond)
    util_blitter_save_depth_stencil_alpha(ctx->blitter, ctx->zsa);
    util_blitter_save_stencil_ref(ctx->blitter, &ctx->stencil_ref_s);
    util_blitter_save_sample_mask(ctx->blitter, ctx->sample_mask, 0);
+   util_blitter_save_sample_coverage(ctx->blitter, ctx->sample_coverage,
+                                     ctx->sample_coverage_invert);
 
    /* Save the framebuffer without the appended 128-bit companion slots, the
     * restore goes through etna_set_framebuffer_state(..) which appends them

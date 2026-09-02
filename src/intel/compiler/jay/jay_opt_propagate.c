@@ -206,8 +206,7 @@ propagate_forwards(jay_function *f)
              * ISA restrictions forbid 8-bit immediates, don't even try.
              */
             if ((I->src[s].file == def->src[0].file) ||
-                ((!jay_inst_has_default(I) ||
-                  &I->src[s] != jay_inst_get_default(I)) &&
+                (s <= I->num_srcs - I->predication &&
                  !(I->src[s].file == UFLAG && !jay_is_imm(def->src[0])) &&
                  !(I->src[s].file == FLAG) &&
                  !(I->predication &&
@@ -316,7 +315,7 @@ fuse_flag_op(jay_function *f, jay_inst *I, jay_inst *use, BITSET_WORD *defined)
    I->uniform = jay_is_uniform(use->dst);
    jay_def pred = use->op == JAY_OPCODE_OR ? jay_negate(other) : other;
    jay_builder b = jay_init_builder(f, jay_before_inst(I));
-   jay_add_predicate_else(&b, I, pred, other);
+   jay_add_predicate(&b, I, pred, other);
    return true;
 }
 

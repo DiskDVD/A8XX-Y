@@ -423,6 +423,17 @@ lower_load_vulkan_descriptor(nir_builder *b, nir_intrinsic_instr *intrin)
    nir_def_replace(&intrin->def, new_index);
 }
 
+static nir_def *
+bindless_resource_ir3(nir_builder *b, unsigned base, nir_def *desc_offset,
+                      bool can_speculate_descriptor)
+{
+   return nir_bindless_resource_ir3(b, 32, desc_offset,
+                                    .desc_set = base,
+                                    .access = can_speculate_descriptor ?
+                                    ACCESS_CAN_SPECULATE :
+                                    (gl_access_qualifier)0);
+}
+
 static bool
 lower_ssbo_ubo_intrinsic(struct tu_device *dev,
                          nir_builder *b, nir_intrinsic_instr *intrin)
@@ -463,11 +474,8 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
    if (nir_scalar_is_const(scalar_idx)) {
       bool can_speculate_descriptor = intrin->instr.pass_flags;
       nir_def *bindless =
-         nir_bindless_resource_ir3(b, 32, descriptor_idx,
-                                   .desc_set = nir_scalar_as_uint(scalar_idx),
-                                   .access = can_speculate_descriptor ?
-                                   ACCESS_CAN_SPECULATE :
-                                   (gl_access_qualifier)0);
+         bindless_resource_ir3(b, nir_scalar_as_uint(scalar_idx),
+                               descriptor_idx, can_speculate_descriptor);
       nir_src_rewrite(&intrin->src[buffer_src], bindless);
       return true;
    }
@@ -477,8 +485,7 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
       /* if (base_idx == i) { ... */
       nir_if *nif = nir_push_if(b, nir_ieq_imm(b, base_idx, i));
 
-      nir_def *bindless =
-         nir_bindless_resource_ir3(b, 32, descriptor_idx, .desc_set = i);
+      nir_def *bindless = bindless_resource_ir3(b, i, descriptor_idx, false);
 
       nir_intrinsic_instr *copy =
          nir_intrinsic_instr_create(b->shader, intrin->intrinsic);
@@ -521,6 +528,29 @@ lower_ssbo_ubo_intrinsic(struct tu_device *dev,
       nir_def_rewrite_uses(&intrin->def, result);
    nir_instr_remove(&intrin->instr);
    return true;
+}
+
+/* Returns whether the descriptor contents can be speculatively prefetched.
+ *
+ * This is true whenever the access is definitely within bounds of the
+ * descriptor array, because the descriptor array must be backed by valid
+ * memory. If it wasn't definitely in bounds, then speculating that load
+ * outside of a potential bounds check conditional or executing it when the
+ * shader has 0 invocations could cause a fault from accessing outside of the
+ * descriptor set.
+ *
+ * This is necessary but not sufficient for the loaded descriptor to be used
+ * speculatively, see can_speculate_resource() for that.
+ */
+static bool
+can_speculate_descriptor_load(nir_src array_index,
+                              const struct tu_descriptor_set_layout *set_layout,
+                              unsigned binding)
+{
+   return nir_src_is_const(array_index) &&
+       (!set_layout->has_variable_descriptors ||
+        binding == set_layout->binding_count - 1) &&
+       nir_src_as_uint(array_index) < set_layout->binding[binding].array_size;
 }
 
 static nir_def *
@@ -606,21 +636,14 @@ build_bindless(struct tu_device *dev, nir_builder *b,
       nir_def *arr_index = deref->arr.index.ssa;
       desc_offset = nir_iadd(b, desc_offset,
                              nir_imul_imm(b, arr_index, descriptor_stride));
-      if (!nir_src_is_const(deref->arr.index) ||
-          (set_layout->has_variable_descriptors &&
-           binding == set_layout->binding_count - 1) ||
-          nir_src_as_uint(deref->arr.index) >= bind_layout->array_size)
-         can_speculate_descriptor = false;
+      can_speculate_descriptor =
+         can_speculate_descriptor_load(deref->arr.index, set_layout, binding);
    }
 
    *descriptor_valid = !bind_layout->partially_bound &&
       can_speculate_descriptor;
 
-   return nir_bindless_resource_ir3(b, 32, desc_offset,
-                                    .desc_set = set,
-                                    .access = can_speculate_descriptor ?
-                                    ACCESS_CAN_SPECULATE :
-                                    (gl_access_qualifier)0);
+   return bindless_resource_ir3(b, set, desc_offset, can_speculate_descriptor);
 }
 
 static nir_def *
@@ -708,8 +731,8 @@ lower_image_deref(struct tu_device *dev, nir_builder *b,
                                       &descriptor_valid);
    if ((instr->intrinsic == nir_intrinsic_image_deref_load ||
         instr->intrinsic == nir_intrinsic_image_deref_sparse_load ||
-        instr->intrinsic == nir_intrinsic_image_size ||
-        instr->intrinsic == nir_intrinsic_image_samples) &&
+        instr->intrinsic == nir_intrinsic_image_deref_size ||
+        instr->intrinsic == nir_intrinsic_image_deref_samples) &&
        descriptor_valid) {
       nir_intrinsic_set_access(instr,
                                (gl_access_qualifier)(nir_intrinsic_access(instr) |
@@ -1196,28 +1219,47 @@ lower_inline_ubo(nir_builder *b, nir_intrinsic_instr *intrin, void *cb_data)
    return true;
 }
 
-/* Instructions using descriptors are all bounds-checked, so they are valid to
+/* Returns whether we can speculatively access through a Vulkan descriptor.
+ * Used for SSBO/UBO accesses, where vtn produces
+ * vulkan_resource_index/load_vulkan_descriptor. See build_bindless() for the
+ * image case.
+ *
+ * Instructions using descriptors are all bounds-checked, so they are valid to
  * speculate as long as the descriptor is valid. There are two cases:
  *
  * 1. If the descriptor set is fully bound (i.e. no PARTIALLY_BOUND_BIT), then
  *    all descriptors statically used must be valid. That means the descriptor
  *    and load using the descriptor is free to speculate as long as it
  *    is always in-bounds.
- * 2. If the descriptor set isn't fully bound, the descriptor may not be
- *    valid. However it may still be valid to speculatively prefetch the
- *    descriptor, as long as the descriptor is always in-bounds,
- *    since descriptors must have memory backing them if they are statically
- *    used.
+ * 2. If the descriptor set isn't fully bound, the descriptor contents may not
+ *    be valid if no shader invocation dynamically executes the access. This
+ *    is even true if the access post-dominates the exit, because early
+ *    preambles can execute speculative resource access even when there would
+ *    be no shader invocations dynamically executed. However it may still be
+ *    valid to speculatively prefetch the descriptor, as long as the
+ *    descriptor is always in-bounds, since descriptor sets must have memory
+ *    backing them if they are statically used.
  */
-
 static bool
 can_speculate_resource(nir_def *def,
                        const struct tu_pipeline_layout *layout,
                        bool *can_speculate_descriptor)
 {
-   nir_instr *instr = nir_def_instr(def);
-
    *can_speculate_descriptor = false;
+
+   /* We're looking for a pattern like this:
+    *
+    * %desc_index = vulkan_resource_index %const (desc_set=..., binding=...)
+    * %desc_with_offset = load_vulkan_descriptor %desc_index
+    * %desc = vec2 %desc_with_offset.x, %desc_with_offset.y
+    */
+   nir_scalar comp1 = nir_scalar_resolved(def, 0);
+   nir_scalar comp2 = nir_scalar_resolved(def, 1);
+
+   if (comp1.def != comp2.def || comp1.comp != 0 || comp2.comp != 1)
+      return false;
+
+   nir_instr *instr = nir_def_instr(comp1.def);
 
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -1240,10 +1282,9 @@ can_speculate_resource(nir_def *def,
    struct tu_descriptor_set_binding_layout *bind_layout =
       &set_layout->binding[binding];
 
-   *can_speculate_descriptor = nir_src_is_const(resource_intr->src[0]) &&
-      (binding != set_layout->binding_count - 1 ||
-       !set_layout->has_variable_descriptors) &&
-      nir_src_as_uint(resource_intr->src[0]) < bind_layout->array_size;
+   *can_speculate_descriptor =
+      can_speculate_descriptor_load(resource_intr->src[0], set_layout,
+                                    binding);
 
    return *can_speculate_descriptor && !bind_layout->partially_bound;
 }
@@ -3104,6 +3145,8 @@ tu_upload_shader(struct tu_device *dev,
    /* We emit an empty VPC including streamout state in the binning draw state */
    if (binning || v->type == MESA_SHADER_GEOMETRY) {
       size += vpc_size;
+      if (safe_const)
+         size += vpc_size;
    }
 
    pthread_mutex_lock(&dev->pipeline_mutex);

@@ -35,6 +35,158 @@
 static simple_mtx_t physical_budgets_mutex = SIMPLE_MTX_INITIALIZER;
 static struct list_head physical_budgets = {&physical_budgets, &physical_budgets};
 
+static void
+anv_drirc_shader_cb(const void *hash_data,
+                    uint32_t hash_size,
+                    const driOptionInfo *option,
+                    const driOptionValue *value,
+                    void *shaderOptionCallbackData)
+{
+   /* Should always be 8 bytes or more. Our compiler prog_data only holds the
+    * first 64bits, so just use that for the hash table.
+    */
+   assert(hash_size >= 8);
+   uint64_t shader_hash = ((uint64_t *)hash_data)[0];
+
+   struct anv_physical_device *device = shaderOptionCallbackData;
+
+   if (device->shader_workarounds == NULL)
+      device->shader_workarounds = _mesa_hash_table_u64_create(NULL);
+
+   struct anv_shader_workaround *workaround =
+      _mesa_hash_table_u64_search(device->shader_workarounds, shader_hash);
+   if (workaround == NULL) {
+      workaround = vk_zalloc(&device->instance->vk.alloc,
+                             sizeof(*workaround), 8,
+                             VK_SYSTEM_ALLOCATION_SCOPE_INSTANCE);
+      if (workaround == NULL) {
+         device->drirc_status = vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
+         return;
+      }
+      _mesa_hash_table_u64_insert(device->shader_workarounds,
+                                  shader_hash, workaround);
+   }
+
+   assert(workaround != NULL);
+
+   if (strcmp(option->name, "force_vk_typed_barrier_after_dispatch_to_compute") == 0)
+      workaround->force_typed_barrier_after_dispatch_to_compute = true;
+   else if (strcmp(option->name, "force_vk_untyped_barrier_after_dispatch_to_compute") == 0)
+      workaround->force_untyped_barrier_after_dispatch_to_compute = true;
+   else if (strcmp(option->name, "force_vk_typed_barrier_after_dispatch_to_top") == 0)
+      workaround->force_typed_barrier_after_dispatch_to_top = true;
+   else if (strcmp(option->name, "force_vk_untyped_barrier_after_dispatch_to_top") == 0)
+      workaround->force_untyped_barrier_after_dispatch_to_top = true;
+   else if (strcmp(option->name, "brw_prefer_simd32_fs") == 0)
+      workaround->prefer_simd32_fs = true;
+   else if (strcmp(option->name, "anv_xe2_force_simd32_cs") == 0)
+      workaround->force_xe2_simd32_cs = true;
+   else
+      UNREACHABLE("invalid shader option");
+}
+
+static VkResult
+anv_physical_device_init_drirc(struct anv_physical_device *device)
+{
+   struct anv_instance *instance = device->instance;
+
+   device->drirc_status = VK_SUCCESS;
+
+   char verx10_str[16];
+   snprintf(verx10_str, sizeof(verx10_str), "%u", device->info.verx10);
+
+   anv_parse_dri_options(&device->drirc,
+                         &(driConfigFileParseParams) {
+                            .driverName = "anv",
+                            .deviceVersion = verx10_str,
+                            .applicationName = instance->vk.app_info.app_name,
+                            .applicationVersion = instance->vk.app_info.app_version,
+                            .engineName = instance->vk.app_info.engine_name,
+                            .engineVersion = instance->vk.app_info.engine_version,
+                            .shaderOptionCallback = anv_drirc_shader_cb,
+                            .shaderOptionCallbackData = device,
+                         });
+
+   if (device->drirc_status != VK_SUCCESS) {
+      driDestroyOptionCache(&device->drirc.options);
+      driDestroyOptionInfo(&device->drirc.available_options);
+      if (device->shader_workarounds != NULL) {
+         hash_table_u64_foreach(device->shader_workarounds, entry)
+            vk_free(&device->instance->vk.alloc, entry.data);
+         _mesa_hash_table_u64_destroy(device->shader_workarounds);
+      }
+      return device->drirc_status;
+   }
+
+   if (instance->vk.app_info.engine_name &&
+       !strcmp(instance->vk.app_info.engine_name, "DXVK")) {
+      /* Since 2.3.1+, DXVK uses the application version to signal D3D9. */
+      const bool is_d3d9 = instance->vk.app_info.app_version & 0x1;
+
+      /* This driconf bit enables D3D10+ behaviour for texture coordinate
+       * rounding. As D3D9 wants the Vulkan behaviour instead, apply the
+       * workaround only to D3D10+.
+       */
+      device->drirc.debug.force_filter_addr_rounding &= !is_d3d9;
+   }
+
+   switch (device->drirc.perf.stack_ids) {
+   case 256:
+   case 512:
+   case 1024:
+   case 2048:
+      break;
+   default:
+      mesa_logw("Invalid value provided for drirc anv_stack_id=%u, reverting to 512.",
+                device->drirc.perf.stack_ids);
+      device->drirc.perf.stack_ids = 512;
+      break;
+   }
+
+   switch(device->drirc.perf.rt_dispatch_timeout) {
+   case 64:
+   case 128:
+   case 192:
+   case 256:
+   case 384:
+   case 512:
+   case 640:
+   case 768:
+   case 896:
+   case 1024:
+   case 1152:
+   case 1280:
+   case 1408:
+   case 1536:
+   case 1664:
+   case 1792:
+   case 1920:
+   case 2048:
+   case 4096:
+      break;
+   default:
+      mesa_logw("Invalid value provided for drirc anv_rt_dispatch_timeout=%u, reverting to 512.",
+                device->drirc.perf.rt_dispatch_timeout);
+      device->drirc.perf.rt_dispatch_timeout = 512;
+      break;
+   }
+
+   return VK_SUCCESS;
+}
+
+static void
+anv_physical_device_finish_drirc(struct anv_physical_device *device)
+{
+   driDestroyOptionCache(&device->drirc.options);
+   driDestroyOptionInfo(&device->drirc.available_options);
+
+   if (device->shader_workarounds) {
+      hash_table_u64_foreach(device->shader_workarounds, entry)
+         vk_free(&device->instance->vk.alloc, entry.data);
+      _mesa_hash_table_u64_destroy(device->shader_workarounds);
+   }
+}
+
 static struct anv_memory_budget *
 get_physical_device_budget(int64_t local_major, int64_t local_minor)
 {
@@ -181,7 +333,6 @@ static void
 get_device_extensions(const struct anv_physical_device *device,
                       struct vk_device_extension_table *ext)
 {
-   const struct anv_instance *instance = device->instance;
    const bool rt_enabled = ANV_SUPPORT_RT && device->info.has_ray_tracing;
    const bool hw_video_encode_supported = device->info.verx10 <= 125;
 
@@ -191,7 +342,7 @@ get_device_extensions(const struct anv_physical_device *device,
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage                      = true,
-      .KHR_16bit_storage                     = !instance->drirc.debug.no_16bit,
+      .KHR_16bit_storage                     = !device->drirc.debug.no_16bit,
       .KHR_acceleration_structure            = rt_enabled,
       .KHR_bind_memory2                      = true,
       .KHR_buffer_device_address             = true,
@@ -277,7 +428,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_shader_constant_data              = true,
       .KHR_shader_draw_parameters            = true,
       .KHR_shader_expect_assume              = true,
-      .KHR_shader_float16_int8               = !instance->drirc.debug.no_16bit,
+      .KHR_shader_float16_int8               = !device->drirc.debug.no_16bit,
       .KHR_shader_float_controls             = true,
       .KHR_shader_float_controls2            = true,
       .KHR_shader_fma                        = true,
@@ -306,7 +457,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_video_queue                       = video_decode_enabled || video_encode_enabled,
       .KHR_video_decode_queue                = video_decode_enabled,
       .KHR_video_decode_h264                 = VIDEO_CODEC_H264DEC && video_decode_enabled,
-      .KHR_video_decode_h265                 = VIDEO_CODEC_H265DEC && video_decode_enabled,
+      .KHR_video_decode_h265                 = VIDEO_CODEC_H265DEC && video_decode_enabled && device->has_huc,
       .KHR_video_decode_av1                  = device->info.ver >= 12 && VIDEO_CODEC_AV1DEC && video_decode_enabled,
       .KHR_video_decode_vp9                  = VIDEO_CODEC_VP9DEC && video_decode_enabled,
       .KHR_video_encode_queue                = video_encode_enabled,
@@ -455,7 +606,8 @@ get_device_extensions(const struct anv_physical_device *device,
       .AMD_texture_gather_bias_lod           = device->info.ver >= 20,
       .GOOGLE_decorate_string                = true,
 #ifdef ANV_USE_WSI_PLATFORM
-      .GOOGLE_display_timing = wsi_instance_supports_google_display_timing(&instance->vk, &instance->drirc.options),
+      .GOOGLE_display_timing = wsi_instance_supports_google_display_timing(&device->instance->vk,
+                                                                           &device->drirc.options),
 #endif
       .GOOGLE_hlsl_functionality1            = true,
       .GOOGLE_user_type                      = true,
@@ -526,7 +678,7 @@ get_features(const struct anv_physical_device *pdevice,
        * read/writes, on Gfx11 & Gfx12.0 we emulate for 3 formats.
        */
       .shaderStorageImageReadWithoutFormat      = pdevice->info.verx10 >= 125 ||
-                                                  instance->drirc.debug.read_without_format_emu,
+                                                  pdevice->drirc.debug.read_without_format_emu,
       .shaderStorageImageWriteWithoutFormat     = true,
       .shaderUniformBufferArrayDynamicIndexing  = true,
       .shaderSampledImageArrayDynamicIndexing   = true,
@@ -535,7 +687,7 @@ get_features(const struct anv_physical_device *pdevice,
       .shaderClipDistance                       = true,
       .shaderCullDistance                       = true,
       .shaderFloat64                            = pdevice->info.has_64bit_float ||
-                                                  instance->drirc.debug.fp64_emu,
+                                                  pdevice->drirc.debug.fp64_emu,
       .shaderInt64                              = true,
       .shaderInt16                              = true,
       .shaderResourceMinLod                     = true,
@@ -553,8 +705,8 @@ get_features(const struct anv_physical_device *pdevice,
       .inheritedQueries                         = true,
 
       /* Vulkan 1.1 */
-      .storageBuffer16BitAccess            = !instance->drirc.debug.no_16bit,
-      .uniformAndStorageBuffer16BitAccess  = !instance->drirc.debug.no_16bit,
+      .storageBuffer16BitAccess            = !pdevice->drirc.debug.no_16bit,
+      .uniformAndStorageBuffer16BitAccess  = !pdevice->drirc.debug.no_16bit,
       .storagePushConstant16               = true,
       .storageInputOutput16                = true,
       .multiview                           = true,
@@ -574,8 +726,8 @@ get_features(const struct anv_physical_device *pdevice,
       .storagePushConstant8                = true,
       .shaderBufferInt64Atomics            = true,
       .shaderSharedInt64Atomics            = false,
-      .shaderFloat16                       = !instance->drirc.debug.no_16bit,
-      .shaderInt8                          = !instance->drirc.debug.no_16bit,
+      .shaderFloat16                       = !pdevice->drirc.debug.no_16bit,
+      .shaderInt8                          = !pdevice->drirc.debug.no_16bit,
 
       .descriptorIndexing                                 = true,
       .shaderInputAttachmentArrayDynamicIndexing          = false,
@@ -673,7 +825,7 @@ get_features(const struct anv_physical_device *pdevice,
       /* VK_EXT_custom_border_color */
       .customBorderColors = true,
       .customBorderColorWithoutFormat =
-         instance->drirc.debug.custom_border_colors_without_format,
+         pdevice->drirc.debug.custom_border_colors_without_format,
 
       /* VK_KHR_depth_clamp_zero_one */
       .depthClampZeroOne = true,
@@ -954,7 +1106,7 @@ get_features(const struct anv_physical_device *pdevice,
       .cooperativeMatrix = pdevice->has_cooperative_matrix,
 
       /* VK_NV_cooperative_matrix2 */
-      .cooperativeMatrixPerElementOperations = pdevice->has_cooperative_matrix,
+      .cooperativeMatrixPerElementOperationsNV = pdevice->has_cooperative_matrix,
 
       /* VK_KHR_shader_maximal_reconvergence */
       .shaderMaximalReconvergence = true,
@@ -1430,8 +1582,8 @@ get_properties(const struct anv_physical_device *pdevice,
    *props = (struct vk_properties) {
       .apiVersion = ANV_API_VERSION,
       .driverVersion = vk_get_driver_version(),
-      .vendorID = pdevice->instance->drirc.debug.force_vk_vendor != 0 ?
-                  pdevice->instance->drirc.debug.force_vk_vendor : 0x8086,
+      .vendorID = pdevice->drirc.debug.force_vk_vendor != 0 ?
+                  pdevice->drirc.debug.force_vk_vendor : 0x8086,
       .deviceID = pdevice->info.pci_device_id,
       .deviceType = pdevice->info.has_local_mem ?
                     VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU :
@@ -1585,8 +1737,8 @@ get_properties(const struct anv_physical_device *pdevice,
    };
 
    snprintf(props->deviceName, sizeof(props->deviceName),
-            "%s", (strlen(pdevice->instance->drirc.debug.force_vk_devicename) > 0) ?
-                  pdevice->instance->drirc.debug.force_vk_devicename : pdevice->info.name);
+            "%s", (strlen(pdevice->drirc.debug.force_vk_devicename) > 0) ?
+                  pdevice->drirc.debug.force_vk_devicename : pdevice->info.name);
    memcpy(props->pipelineCacheUUID,
           pdevice->pipeline_cache_uuid, VK_UUID_SIZE);
 
@@ -1778,7 +1930,7 @@ get_properties(const struct anv_physical_device *pdevice,
       props->degenerateLinesRasterized = false;
 
       const bool fully_covered =
-         pdevice->instance->drirc.features.fully_covered &&
+         pdevice->drirc.features.fully_covered &&
          pdevice->info.verx10 >= 125;
 
       props->fullyCoveredFragmentShaderInputVariable = fully_covered;
@@ -2472,7 +2624,7 @@ anv_physical_device_init_heaps(struct anv_physical_device *device, int fd)
     * is now inconsistent with some of the memory types, but the game doesn't
     * seem to care about it.
     */
-   if (device->instance->drirc.debug.fake_nonlocal_mem &&
+   if (device->drirc.debug.fake_nonlocal_mem &&
        !anv_physical_device_has_vram(device)) {
       const uint32_t base_types_count = device->memory.type_count;
       for (int i = 0; i < base_types_count; i++) {
@@ -2921,17 +3073,9 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    if (result != VK_SUCCESS)
       goto fail_base;
 
-   /* Avoid BTP+BTI RCC cache keying on non LSC platforms for now. On those
-    * not using the binding table is difficult.
-    */
-   const bool platform_supports_btp_bit_rcc =
-      devinfo.has_lsc &&
-      (device->info.kmd_type == INTEL_KMD_TYPE_I915 ||
-       device->info.xe_has_state_cache_perf_fix);
-
-   device->rt_change_needs_flush =
-      !instance->drirc.perf.state_cache_perf_fix ||
-      !platform_supports_btp_bit_rcc;
+   result = anv_physical_device_init_drirc(device);
+   if (result != VK_SUCCESS)
+      goto fail_base;
 
    device->gtt_size = device->info.gtt_size ? device->info.gtt_size :
                                               device->info.aperture_bytes;
@@ -2939,7 +3083,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    if (device->gtt_size < (4ULL << 30 /* GiB */)) {
       vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                 "GTT size too small: 0x%016"PRIx64, device->gtt_size);
-      goto fail_base;
+      goto fail_drirc;
    }
 
    /* We currently only have the right bits for instructions in Gen12+. If the
@@ -2949,11 +3093,15 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->has_protected_contexts = device->info.ver >= 12 &&
       intel_gem_supports_protected_context(fd, device->info.kmd_type);
 
+   device->has_huc = intel_gem_supports_huc(fd, device->info.kmd_type);
+   if (!device->has_huc)
+      debug_warn_once("HuC firmware is not loaded, disabling H.265 video decoding");
+
    /* Just pick one; they're all the same */
    device->has_astc_ldr =
       isl_format_supports_sampling(&device->info,
                                    ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16);
-   if (!device->has_astc_ldr && instance->drirc.features.require_astc)
+   if (!device->has_astc_ldr && device->drirc.features.require_astc)
       device->emu_astc_ldr = true;
    if (devinfo.ver == 9 && !intel_device_info_is_9lp(&devinfo)) {
       device->flush_astc_ldr_void_extent_denorms =
@@ -2961,29 +3109,11 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
    device->brw_disable_subgroup_size_control =
       !intel_use_jay(&device->info, MESA_SHADER_COMPUTE) &&
-      instance->drirc.debug.disable_subgroup_size_control;
+      device->drirc.debug.disable_subgroup_size_control;
 
    result = anv_physical_device_init_heaps(device, fd);
    if (result != VK_SUCCESS)
-      goto fail_base;
-
-   device->has_cooperative_matrix =
-      device->info.has_systolic || debug_get_bool_option("INTEL_LOWER_DPAS", false);
-
-   /* Because of Xe2 PAT selected compression and the Vulkan spec requirement
-    * to always return the same memory types for Images with same properties
-    * we can't support EXT_image_compression_control on Xe2+.
-    */
-   device->has_compression_control = device->info.ver < 20;
-
-   /* Whether we want to expose the extension depends on DRIRC (for platforms
-    * that support this or fake on Xe2+ due to Android VP17 profile
-    * requirement).
-    */
-   device->expose_compression_control =
-      instance->drirc.features.compression_control_enabled &&
-      (device->info.ver < 20 ||
-       instance->drirc.features.fake_image_compression_control_xe2_plus);
+      goto fail_drirc;
 
    if (is_virtio) {
       struct util_sync_provider *sync = intel_virtio_sync_provider(fd);
@@ -3002,12 +3132,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    device->vk.pipeline_cache_import_ops = anv_cache_import_ops;
 
-   device->indirect_descriptors =
-      !intel_has_extended_bindless(&devinfo) ||
-      instance->drirc.debug.force_indirect_descriptors;
-
-   device->alloc_aux_tt_mem =
-      device->info.has_aux_map && device->info.verx10 >= 125;
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
    device->has_reg_timestamp = intel_gem_read_render_timestamp(fd,
@@ -3029,12 +3153,49 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       }
    }
    if (device->sparse_type == ANV_SPARSE_TYPE_NOT_SUPPORTED) {
-      if (instance->drirc.features.fake_sparse)
+      if (device->drirc.features.fake_sparse)
          device->sparse_type = ANV_SPARSE_TYPE_FAKE;
    }
 
+   device->has_cooperative_matrix =
+      device->info.has_systolic || debug_get_bool_option("INTEL_LOWER_DPAS", false);
+
+   /* Because of Xe2 PAT selected compression and the Vulkan spec requirement
+    * to always return the same memory types for Images with same properties
+    * we can't support EXT_image_compression_control on Xe2+.
+    */
+   device->has_compression_control = device->info.ver < 20;
+
+   /* Whether we want to expose the extension depends on DRIRC (for platforms
+    * that support this or fake on Xe2+ due to Android VP17 profile
+    * requirement).
+    */
+   device->expose_compression_control =
+      device->drirc.features.compression_control_enabled &&
+      (device->info.ver < 20 ||
+       device->drirc.features.fake_image_compression_control_xe2_plus);
+
+   device->indirect_descriptors =
+      !intel_has_extended_bindless(&devinfo) ||
+      device->drirc.debug.force_indirect_descriptors;
+
+   device->alloc_aux_tt_mem =
+      device->info.has_aux_map && device->info.verx10 >= 125;
+
+   /* Avoid BTP+BTI RCC cache keying on non LSC platforms for now. On those
+    * not using the binding table is difficult.
+    */
+   const bool platform_supports_btp_bit_rcc =
+      devinfo.has_lsc &&
+      (device->info.kmd_type == INTEL_KMD_TYPE_I915 ||
+       device->info.xe_has_state_cache_perf_fix);
+
+   device->rt_change_needs_flush =
+      !device->drirc.perf.state_cache_perf_fix ||
+      !platform_supports_btp_bit_rcc;
+
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
-      instance->drirc.debug.always_flush_cache;
+      device->drirc.debug.always_flush_cache;
 
    /* The ring buffer mechanism for page fault reporting is not supported until
     * PVC (unsupported by our Mesa driver), so we keep the scratch page enabled
@@ -3042,7 +3203,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
     */
    device->has_scratch_page =
       device->info.ver < 20 || device->info.kmd_type == INTEL_KMD_TYPE_I915 ||
-      instance->drirc.features.scratch_page;
+      device->drirc.features.scratch_page;
 
    device->can_get_vm_faults =
       !device->has_scratch_page && xe_gem_supports_get_vm_faults(device->local_fd);
@@ -3050,18 +3211,18 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->compiler = brw_compiler_create(NULL, &device->info);
    if (device->compiler == NULL) {
       result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-      goto fail_base;
+      goto fail_drirc;
    }
    device->compiler->shader_debug_log = compiler_debug_log;
    device->compiler->shader_perf_log = compiler_perf_log;
-   device->compiler->spilling_rate = instance->drirc.debug.shader_spilling_rate;
+   device->compiler->spilling_rate = device->drirc.debug.shader_spilling_rate;
    device->compiler->limit_trig_input_range =
-      instance->drirc.debug.limit_trig_input_range;
+      device->drirc.debug.limit_trig_input_range;
 
    isl_device_init(&device->isl_dev, &device->info);
    device->isl_dev.buffer_length_in_aux_addr = !intel_needs_workaround(device->isl_dev.info, 14019708328);
-   device->isl_dev.sampler_route_to_lsc = instance->drirc.debug.sampler_route_to_lsc;
-   device->isl_dev.l1_storage_wt = instance->drirc.debug.storage_l1_wt;
+   device->isl_dev.sampler_route_to_lsc = device->drirc.debug.sampler_route_to_lsc;
+   device->isl_dev.l1_storage_wt = device->drirc.debug.storage_l1_wt;
    device->isl_dev.requires_padding = !device->has_scratch_page;
 
    result = anv_physical_device_init_uuids(device);
@@ -3148,6 +3309,8 @@ fail_perf:
    anv_physical_device_free_disk_cache(device);
 fail_compiler:
    ralloc_free(device->compiler);
+fail_drirc:
+   anv_physical_device_finish_drirc(device);
 fail_base:
    vk_physical_device_finish(&device->vk);
 fail_alloc:
@@ -3173,6 +3336,7 @@ anv_physical_device_destroy(struct vk_physical_device *vk_device)
    ralloc_free(device->compiler);
    release_physical_device_budget(device->memory.heaps_budget);
    intel_perf_free(device->perf);
+   anv_physical_device_finish_drirc(device);
    intel_virtio_unref_fd(device->local_fd);
    close(device->local_fd);
    if (device->master_fd >= 0)

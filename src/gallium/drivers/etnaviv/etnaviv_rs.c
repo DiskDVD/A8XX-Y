@@ -181,6 +181,7 @@ etna_compile_rs_state(struct etna_context *ctx, struct compiled_rs_state *cs,
    }
    cs->source_ts_valid = rs->source_ts_valid;
    cs->single_buffer = screen->specs.single_buffer;
+   cs->downsample_one_sample = rs->downsample_one_sample;
 
    if (cs->single_buffer)
       assert(!src_multi && !dst_multi);
@@ -251,10 +252,13 @@ etna_submit_rs_state(struct etna_context *ctx,
       /*29   */ EMIT_STATE(RS_FILL_VALUE(3), cs->RS_FILL_VALUE[3]);
       /*30/31*/ EMIT_STATE(RS_EXTRA_CONFIG, cs->RS_EXTRA_CONFIG);
 
-      if (cs->single_buffer)
-         EMIT_STATE(RS_SINGLE_BUFFER, VIVS_RS_SINGLE_BUFFER_ENABLE);
+      if (cs->single_buffer || cs->downsample_one_sample)
+         EMIT_STATE(RS_SINGLE_BUFFER,
+                    COND(cs->single_buffer, VIVS_RS_SINGLE_BUFFER_ENABLE) |
+                    COND(cs->downsample_one_sample, VIVS_RS_SINGLE_BUFFER_DOWNSAMPLE_ONE_SAMPLE));
+
       /*32/33*/ EMIT_STATE(RS_KICKER, 0xbeebbeeb);
-      if (cs->single_buffer)
+      if (cs->single_buffer || cs->downsample_one_sample)
          EMIT_STATE(RS_SINGLE_BUFFER, 0x0);
       etna_coalesce_end(stream, &coalesce);
    } else {
@@ -752,6 +756,11 @@ etna_try_rs_blit(struct pipe_context *pctx,
       return false;
    }
 
+   if ((downsample_x || downsample_y) &&
+       util_format_is_pure_integer(blit_info->dst.format) &&
+       !VIV_FEATURE(ctx->screen, ETNA_FEATURE_HALTI5))
+      return false;
+
    if (blit_info->scissor_enable ||
        blit_info->swizzle_enable ||
        blit_info->dst.box.depth != blit_info->src.box.depth ||
@@ -913,6 +922,8 @@ etna_try_rs_blit(struct pipe_context *pctx,
       .dest_padded_height = dst_lev->padded_height,
       .downsample_x = downsample_x,
       .downsample_y = downsample_y,
+      .downsample_one_sample = (downsample_x || downsample_y) &&
+                               resolve_copies_one_sample(blit_info->dst.format),
       /* Swap R<->B when requested by the caller (shared resource flush) or
        * for transfer blits of RB_SWAP formats on non-shared resources. */
       .swap_rb = ctx->blit_rb_swap ||

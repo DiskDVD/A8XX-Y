@@ -231,4 +231,4 @@ spec@ext_texture_array@copyteximage 1d_array samples=8,Fail
 
 # uprev Piglit in Mesa
 spec@arb_texture_view@tex-view,Fail
-vulkan@shaders@cmat-uniform-ctor,Fail
+

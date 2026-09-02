@@ -539,14 +539,13 @@ kk_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-kk_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPool,
-                           uint32_t firstQuery, uint32_t queryCount,
-                           VkBuffer dstBuffer, VkDeviceSize dstOffset,
-                           VkDeviceSize stride, VkQueryResultFlags flags)
+kk_CmdCopyQueryPoolResultsToMemoryKHR(
+   VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t firstQuery,
+   uint32_t queryCount, const VkStridedDeviceAddressRangeKHR *pDstRange,
+   VkAddressCommandFlagsKHR dstFlags, VkQueryResultFlags flags)
 {
    VK_FROM_HANDLE(kk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(kk_query_pool, pool, queryPool);
-   VK_FROM_HANDLE(kk_buffer, dst_buf, dstBuffer);
    struct kk_device *dev = kk_cmd_buffer_device(cmd);
 
    /* Timestamp results are resolved into the pool BO on a deferred command
@@ -568,8 +567,8 @@ kk_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPool,
       .availability = pool->bo->gpu,
       .results = results_bo->gpu + pool->query_start,
       .oq_index = pool->bo->gpu + pool->index_start,
-      .dst_addr = dst_buf->vk.device_address + dstOffset,
-      .dst_stride = stride,
+      .dst_addr = pDstRange->address,
+      .dst_stride = pDstRange->stride,
       .first_query = firstQuery,
       .flags = flags,
       .reports_per_query = kk_reports_per_query(pool),

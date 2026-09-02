@@ -497,11 +497,7 @@ spec@arb_texture_rg@texwrap formats-float bordercolor@GL_RG16F- border color onl
 
 spec@arb_vertex_program@big-param,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
-
 spec@egl_khr_surfaceless_context@viewport,Fail
-
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 
 spec@ext_framebuffer_object@fbo-alphatest-formats,Fail
 spec@ext_framebuffer_object@fbo-alphatest-formats@GL_INTENSITY12,Fail
@@ -586,25 +582,6 @@ spec@ext_texture_srgb@texwrap formats@GL_SRGB8- swizzled,Fail
 spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8,Fail
 spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8- NPOT,Fail
 spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8- swizzled,Fail
-
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-ivec3,Fail
-
-# Precision issues with the idiv lowered to RCP
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-ivec4,Fail
 
 spec@glsl-1.10@execution@built-in-functions@vs-pow-float-float,Fail
 spec@glsl-1.10@execution@built-in-functions@vs-pow-vec2-vec2,Fail
@@ -704,4 +681,3 @@ spec@arb_texture_cube_map@copyteximage cube samples=6,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=2,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=4,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=6,Fail
-

@@ -1241,6 +1241,7 @@ ir3_get_ra_size_align_bytes(const glsl_type *type, unsigned *size, unsigned *ali
    case GLSL_TYPE_UINT:
    case GLSL_TYPE_INT:
    case GLSL_TYPE_FLOAT:
+   case GLSL_TYPE_YUV_CSC_STANDARD_EXT:
    case GLSL_TYPE_DOUBLE:
    case GLSL_TYPE_UINT64:
    case GLSL_TYPE_INT64: {
@@ -1521,6 +1522,17 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so,
          nir_shader_gather_info(s, nir_shader_get_entrypoint(s));
       }
    }
+
+   const enum nir_lower_non_uniform_access_type non_uniform_access_types =
+      nir_lower_non_uniform_ubo_access | nir_lower_non_uniform_ssbo_access |
+      nir_lower_non_uniform_get_ssbo_size |
+      nir_lower_non_uniform_texture_access |
+      nir_lower_non_uniform_texture_offset_access |
+      nir_lower_non_uniform_texture_query | nir_lower_non_uniform_image_access |
+      nir_lower_non_uniform_image_query;
+
+   if (nir_has_non_uniform_access(s, non_uniform_access_types))
+      progress |= OPT(s, nir_opt_non_uniform_access);
 
    /* Move large constant variables to the constants attached to the NIR
     * shader, which we will upload in the immediates range.  This generates
@@ -2098,10 +2110,11 @@ ir3_nir_get_global_offset(nir_builder *b, struct ir3_compiler *compiler,
    };
 }
 
-/* Early preamble may execute even if the shader doesn't. In order for this to
- * be safe, every instruction must be speculatable, i.e. it cannot cause faults
- * no matter what data the user throws at it. Generally this means descriptors
- * are in-bounds and (if loading from descriptors) they contain valid data.
+/* Early preamble may execute even if no shader invocations are dynamically
+ * executed. In order for this to be safe, every instruction must be
+ * speculatable, i.e. it cannot cause faults no matter what data the user throws
+ * at it. Generally this means descriptors are in-bounds and (if loading from
+ * descriptors) they contain valid data.
  */
 
 bool

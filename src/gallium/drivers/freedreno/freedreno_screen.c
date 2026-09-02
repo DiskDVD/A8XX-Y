@@ -125,7 +125,7 @@ fd_screen_get_timestamp(struct pipe_screen *pscreen)
    if (screen->has_timestamp) {
       uint64_t n;
       fd_pipe_get_param(screen->pipe, FD_TIMESTAMP, &n);
-      return ticks_to_ns(n);
+      return fd_ticks_to_ns(n);
    } else {
       int64_t cpu_time = os_time_get_nano();
       return cpu_time + screen->cpu_gpu_time_delta;
@@ -135,7 +135,7 @@ fd_screen_get_timestamp(struct pipe_screen *pscreen)
 static uint64_t
 fd_screen_convert_timestamp(struct pipe_screen *pscreen, uint64_t raw_timestamp)
 {
-   return ticks_to_ns(raw_timestamp);
+   return fd_ticks_to_ns(raw_timestamp);
 }
 
 static void
@@ -351,11 +351,11 @@ fd_init_compute_caps(struct fd_screen *screen)
    caps->max_grid_size[1] = options->max_workgroup_count[1];
    caps->max_grid_size[2] = options->max_workgroup_count[2];
 
-   caps->max_block_size[0] = 1024;
-   caps->max_block_size[1] = 1024;
-   caps->max_block_size[2] = 64;
-
    caps->max_threads_per_block = options->max_workgroup_invocations;
+
+   caps->max_block_size[0] =
+   caps->max_block_size[1] =
+   caps->max_block_size[2] = MIN2(1024, caps->max_threads_per_block);
 
    caps->max_global_size = os_get_gpu_heap_size(1.0f, NULL);
 
@@ -468,7 +468,7 @@ fd_init_screen_caps(struct fd_screen *screen)
 
    caps->surface_sample_count = is_a6xx(screen);
 
-   caps->depth_clip_disable = is_a3xx(screen) || is_a4xx(screen) || is_a6xx(screen);
+   caps->depth_clip_disable = !is_a2xx(screen);
 
    caps->post_depth_coverage =
    caps->depth_clip_disable_separate =
@@ -625,9 +625,7 @@ fd_init_screen_caps(struct fd_screen *screen)
       (is_a5xx(screen) ? 0 : 1);
 
    /* Stream output. */
-   caps->max_vertex_streams =
-      (is_a6xx(screen) && !screen->info->props.is_a702) ?  /* has SO + GS */
-         PIPE_MAX_SO_BUFFERS : 0;
+   caps->max_vertex_streams = screen->info->props.num_xfb_streams;
    caps->max_stream_output_buffers = is_ir3(screen) ? PIPE_MAX_SO_BUFFERS : 0;
    caps->stream_output_pause_resume =
    caps->stream_output_interleave_buffers =
@@ -666,7 +664,7 @@ fd_init_screen_caps(struct fd_screen *screen)
    caps->query_time_elapsed =
       /* only a4xx, requires new enough kernel so we know max_freq: */
       (screen->max_freq > 0) && (is_a4xx(screen) || is_a5xx(screen) || is_a6xx(screen));
-   caps->timer_resolution = ticks_to_ns(1);
+   caps->timer_resolution = fd_ticks_to_ns(1);
    caps->query_buffer_object =
    caps->query_so_overflow =
    caps->query_pipeline_statistics_single = is_a6xx(screen);

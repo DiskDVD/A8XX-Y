@@ -266,14 +266,35 @@ brw_nir_trace_ray(nir_builder *b,
                   nir_def *globals,
                   nir_def *bvh_level,
                   nir_def *trace_ray_control,
-                  bool synchronous)
+                  bool synchronous,
+                  const struct intel_device_info *devinfo)
 {
+   nir_def *payload_ldw = nir_bfi(b,
+                                  nir_imm_int(b, INTEL_MASK(10, 8)),
+                                  nir_u2u32(b, trace_ray_control),
+                                  nir_u2u32(b, bvh_level));
+
    nir_trace_ray_intel(b,
                        globals,
+                       /* ATSM PRMs, Volume 2d: Command Reference: Structures, Trace Ray Message
+                        *    "The maximum number of StackIDs can be 2^11 - 1."
+                        * Xe2+, Bspec 64643:
+                        *    "StackID": The maximum number of StackIDs can be 2^12- 1.
+                        *
+                        * When doing synchronous traversal, the HW implicitly
+                        * computes the stack_id using the following formula :
+                        *
+                        *    EUID[3:0] & THREAD_ID[2:0] & SIMD_LANE_ID[3:0]
+                        *
+                        * Only in the asynchronous case we need to set the
+                        * stack_id given from the payload register.
+                        *
+                        */
+                       synchronous ? payload_ldw :
                        nir_bfi(b,
-                               nir_imm_int(b, INTEL_MASK(10, 8)),
-                               nir_u2u32(b, trace_ray_control),
-                               nir_u2u32(b, bvh_level)),
+                               nir_imm_int(b, devinfo->ver >= 20 ? 0x0fff0000 : 0x07ff0000),
+                               nir_u2u32(b, nir_load_btd_stack_id_intel(b)),
+                               payload_ldw),
                        .synchronous = synchronous);
 }
 

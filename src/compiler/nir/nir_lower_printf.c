@@ -153,6 +153,10 @@ lower_printf_intrin(nir_builder *b, nir_intrinsic_instr *prntf, void *_options)
          nir_deref_instr *arg_deref = nir_build_deref_struct(b, args, i);
          nir_def *arg = nir_load_deref(b, arg_deref);
          const struct glsl_type *arg_type = arg_deref->type;
+         if (glsl_type_is_boolean(arg_type)) {
+            arg = nir_b2i32(b, arg);
+            arg_type = glsl_vector_type(GLSL_TYPE_UINT, arg->num_components);
+         }
 
          unsigned field_offset = glsl_get_struct_field_offset(args->type, i);
          nir_def *arg_offset =

@@ -929,7 +929,7 @@ atomic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr,
    P(ctx, "%s_explicit((%s atomic_%s*)", atomic_op, scope,
      msl_type_for_def(ctx->types, &instr->def));
    if (shared)
-      P(ctx, "&shared_data[");
+      P(ctx, "&shared_data[%u + ", nir_intrinsic_base(instr));
    src_to_msl(ctx, &instr->src[0]);
    if (shared)
       P(ctx, "]");
@@ -951,7 +951,7 @@ atomic_swap_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr,
    src_to_msl(ctx, &instr->src[1]);
    P(ctx, "; %s_explicit((%s atomic_%s*)", atomic_op, scope, type);
    if (shared)
-      P(ctx, "&shared_data[");
+      P(ctx, "&shared_data[%u + ", nir_intrinsic_base(instr));
    src_to_msl(ctx, &instr->src[0]);
    if (shared)
       P(ctx, "]");
@@ -1508,16 +1508,15 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
       P_IND(ctx, "return;\n");
       break;
    case nir_intrinsic_load_shared:
-      assert(nir_intrinsic_base(instr) == 0);
-      P(ctx, "*(threadgroup %s*)&shared_data[",
-        msl_type_for_def(ctx->types, &instr->def));
+      P(ctx, "*(threadgroup %s*)&shared_data[%u + ",
+        msl_type_for_def(ctx->types, &instr->def), nir_intrinsic_base(instr));
       src_to_msl(ctx, &instr->src[0]);
       P(ctx, "];\n");
       break;
    case nir_intrinsic_store_shared:
-      assert(nir_intrinsic_base(instr) == 0);
-      P_IND(ctx, "(*(threadgroup %s*)&shared_data[",
-            msl_type_for_src(ctx->types, &instr->src[0]));
+      P_IND(ctx, "(*(threadgroup %s*)&shared_data[%u + ",
+            msl_type_for_src(ctx->types, &instr->src[0]),
+            nir_intrinsic_base(instr));
       src_to_msl(ctx, &instr->src[1]);
       P(ctx, "])");
       writemask_to_msl(ctx, nir_intrinsic_write_mask(instr),
@@ -1528,6 +1527,12 @@ intrinsic_to_msl(struct nir_to_msl_ctx *ctx, nir_intrinsic_instr *instr)
          writemask_to_msl(ctx, nir_intrinsic_write_mask(instr),
                           instr->num_components);
       P(ctx, ";\n");
+      break;
+   case nir_intrinsic_load_constant:
+      P(ctx, "*(constant %s*)((constant uchar *)constant_data + %u + ",
+        msl_type_for_def(ctx->types, &instr->def), nir_intrinsic_base(instr));
+      src_to_msl(ctx, &instr->src[0]);
+      P(ctx, ");\n");
       break;
    case nir_intrinsic_load_scratch:
       P(ctx, "*(thread %s*)&scratch[",
@@ -2269,6 +2274,9 @@ msl_preprocess_nir(struct nir_shader *nir)
             nir_var_function_temp | nir_var_shader_in | nir_var_shader_out);
    NIR_PASS(_, nir, nir_lower_alu_to_scalar, kk_scalarize_filter, NULL);
 
+   NIR_PASS(_, nir, nir_opt_large_constants, glsl_get_natural_size_align_bytes,
+            32);
+
    /* If we do 256 here MSL compiler crashes with
     * dEQP-VK.graphicsfuzz.stable-binarysearch-tree-nested-if-and-conditional */
    NIR_PASS(_, nir, nir_lower_vars_to_scratch, 32,
@@ -2457,6 +2465,28 @@ predeclare_ssa_values(struct nir_to_msl_ctx *ctx, nir_function_impl *impl)
    }
 }
 
+/* Emitted as uint words rather than individual bytes to keep the
+ * generated source small.
+ */
+static void
+msl_emit_constant_data(struct nir_to_msl_ctx *ctx, nir_shader *shader)
+{
+   if (!shader->constant_data_size)
+      return;
+
+   const uint8_t *cdata = (const uint8_t *)shader->constant_data;
+   const uint32_t size = shader->constant_data_size;
+
+   P(ctx, "constant uint constant_data[%u] = {", DIV_ROUND_UP(size, 4u));
+   for (uint32_t i = 0u; i < size; i += 4u) {
+      uint32_t word = 0u;
+      for (uint32_t b = 0u; b < 4u && i + b < size; ++b)
+         word |= (uint32_t)cdata[i + b] << (b * 8u);
+      P(ctx, "%s0x%xu", i ? "," : "", word);
+   }
+   P(ctx, "};\n");
+}
+
 char *
 nir_to_msl(nir_shader *shader, struct nir_to_msl_options *options)
 {
@@ -2479,6 +2509,8 @@ nir_to_msl(nir_shader *shader, struct nir_to_msl_options *options)
       P(&ctx, "#include <metal_compute>\n");
    P(&ctx, "#include <metal_stdlib>\n");
    P(&ctx, "using namespace metal;\n");
+
+   msl_emit_constant_data(&ctx, shader);
 
    msl_emit_io_blocks(&ctx, shader);
    if (shader->info.stage == MESA_SHADER_FRAGMENT &&

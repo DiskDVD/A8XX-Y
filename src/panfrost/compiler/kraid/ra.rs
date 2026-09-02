@@ -944,11 +944,7 @@ impl LocalRegAlloc<'_> {
             }
         }
 
-        loop {
-            let Some(e) = evicted.pop_front() else {
-                break;
-            };
-
+        while let Some(e) = evicted.pop_front() {
             let dst_bytes = if e.is_src {
                 // If it's a source, it's already been placed.  Just look it up.
                 let idx_bytes = self.idx_bytes(e.idx);
@@ -1273,7 +1269,7 @@ impl GlobalRegAlloc<'_> {
         // Start by accumulating the source bytes
         let mut all_src_bytes = BitSet::new();
         for idx in live_out_set.iter() {
-            let bytes = self.local.idx_bytes(idx.try_into().unwrap());
+            let bytes = self.local.idx_bytes(idx);
             let bytes = bytes.start.into()..bytes.end.into();
             all_src_bytes.set_range(bytes);
         }
@@ -1295,7 +1291,6 @@ impl GlobalRegAlloc<'_> {
         for chunk_bytes in [8, 4, 2, 1] {
             // First place any chunk_bytes sized live-out values
             live_out_set.retain(|idx| {
-                let idx = idx.try_into().unwrap();
                 let idx_bytes = self.local.idx_bytes(idx);
                 if idx_bytes.len() != usize::from(chunk_bytes) {
                     return true;
@@ -1722,9 +1717,7 @@ fn ra_trivial(s: &mut Shader) {
             }
 
             debug_assert_eq!(instr.dsts().len(), dst_regs.len());
-            for (dst, reg) in
-                instr.dsts_mut().iter_mut().zip(dst_regs.into_iter())
-            {
+            for (dst, reg) in instr.dsts_mut().iter_mut().zip(dst_regs) {
                 let new_dst = Dst::from(reg);
                 dst.dst_ref = new_dst.dst_ref;
                 dst.lanes = fold_lanes(new_dst.lanes, dst.lanes);

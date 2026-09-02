@@ -141,7 +141,7 @@ radv_fixup_resolve_dst_metadata(struct radv_cmd_buffer *cmd_buffer, struct radv_
 {
    const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
 
-   const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf, cmd_buffer->qf);
+   const uint32_t queue_mask = radv_image_queue_family_mask(image, cmd_buffer->qf);
 
    const bool is_partial_resolve = offset->x || offset->y || offset->z || extent->width != image->vk.extent.width ||
                                    extent->height != image->vk.extent.height || extent->depth != image->vk.extent.depth;
@@ -274,7 +274,7 @@ radv_compute_resolve_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image
                            .pNext = &dst_iview_usage_info,
                            .flags = VK_IMAGE_VIEW_CREATE_DRIVER_INTERNAL_BIT_MESA,
                            .image = radv_image_to_handle(dst_image),
-                           .viewType = radv_meta_get_view_type(dst_image),
+                           .viewType = radv_meta_get_view_type(dst_image, false),
                            .format = vk_format_no_srgb(dst_format),
                            .subresourceRange =
                               {

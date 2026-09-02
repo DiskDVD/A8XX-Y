@@ -877,6 +877,16 @@ brw_lsc_supports_base_offset(const struct intel_device_info *devinfo)
 }
 
 static inline bool
+brw_lsc_can_use_instruction_offset(enum lsc_addr_surface_type binding_type,
+                                   int32_t offset)
+{
+   const unsigned max_bits = brw_max_immediate_offset_bits(binding_type);
+   return offset % 4 == 0 &&
+      offset >= u_intN_min(max_bits) &&
+      offset <= u_intN_max(max_bits);
+}
+
+static inline bool
 brw_can_coherent_fb_fetch(const struct intel_device_info *devinfo)
 {
    /* Not functional after Gfx20 */

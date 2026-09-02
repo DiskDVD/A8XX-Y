@@ -8,8 +8,13 @@
 
 #include "ir3/ir3_descriptor.h"
 
+struct lower_io_state {
+   bool lower_to_bindless;
+};
+
 static bool
-lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr)
+lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr,
+                const struct lower_io_state *state)
 {
    unsigned desc_offset;
 
@@ -26,6 +31,8 @@ lower_intrinsic(nir_builder *b, nir_intrinsic_instr *intr)
       break;
    }
 
+   if (!state->lower_to_bindless)
+      return progress;
 
    switch (intr->intrinsic) {
    case nir_intrinsic_load_ssbo:
@@ -83,17 +90,17 @@ lower_instr(nir_builder *b, nir_instr *instr, void *cb_data)
    b->cursor = nir_before_instr(instr);
    switch (instr->type) {
    case nir_instr_type_intrinsic:
-      return lower_intrinsic(b, nir_instr_as_intrinsic(instr));
+      return lower_intrinsic(b, nir_instr_as_intrinsic(instr), cb_data);
    default:
       return false;
    }
 }
 
 /**
- * Lower bindful image/SSBO to bindless
+ * Lower bindful image/SSBO to bindless and add CAN_SPECULATE.
  */
 bool
-ir3_nir_lower_io_to_bindless(nir_shader *shader)
+ir3_nir_lower_io_gallium(nir_shader *shader, bool lower_to_bindless)
 {
    /* Note: We don't currently support API level bindless, as we assume we
     * can remap bindful images/SSBOs to bindless while controlling the entire
@@ -107,5 +114,9 @@ ir3_nir_lower_io_to_bindless(nir_shader *shader)
     */
    assert(!shader->info.uses_bindless);
 
-   return nir_shader_instructions_pass(shader, lower_instr, nir_metadata_none, NULL);
+   struct lower_io_state state = {
+      .lower_to_bindless = lower_to_bindless,
+   };
+
+   return nir_shader_instructions_pass(shader, lower_instr, nir_metadata_none, &state);
 }

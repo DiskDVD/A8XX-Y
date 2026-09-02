@@ -78,7 +78,7 @@ FreedrenoDriver::collect_countables()
 {
    assert(io);  /* This is legacy path only */
 
-   last_dump_ts = gpu_timestamp();
+   last_dump_ts = gpu_timestamp_ticks();
 
    for (const auto &countable : countables)
       countable.collect();
@@ -155,15 +155,6 @@ perfcntr_stream_ready(int perfcntr_stream_fd)
    return true;
 }
 
-static uint64_t
-ticks_to_ns(uint64_t ticks)
-{
-   constexpr uint64_t ALWAYS_ON_FREQUENCY_HZ = 19200000;
-   constexpr double GPU_TICKS_PER_NS = ALWAYS_ON_FREQUENCY_HZ / 1000000000.0;
-
-   return ticks / GPU_TICKS_PER_NS;
-}
-
 bool
 FreedrenoDriver::collect_countables_stream()
 {
@@ -203,7 +194,7 @@ FreedrenoDriver::collect_countables_stream()
       last_capture_ts = last_dump_ts;
       last_dump_ts = ts;
 
-      auto elapsed_time_ns = ticks_to_ns(last_dump_ts - last_capture_ts);
+      auto elapsed_time_ns = fd_ticks_to_ns(last_dump_ts - last_capture_ts);
 
       time = (float)elapsed_time_ns / 1000000000.0;
 
@@ -361,7 +352,7 @@ FreedrenoDriver::dump_perfcnt()
 
    collect_countables();
 
-   auto elapsed_time_ns = ticks_to_ns(last_dump_ts - last_ts);
+   auto elapsed_time_ns = fd_ticks_to_ns(last_dump_ts - last_ts);
 
    time = (float)elapsed_time_ns / 1000000000.0;
 
@@ -379,7 +370,7 @@ FreedrenoDriver::dump_perfcnt()
 
 uint64_t FreedrenoDriver::next()
 {
-   auto ret = last_capture_ts;
+   auto ret = fd_ticks_to_ns(last_capture_ts);
    last_capture_ts = 0;
    return ret;
 }
@@ -611,11 +602,17 @@ FreedrenoDriver::gpu_clock_id() const
 }
 
 uint64_t
-FreedrenoDriver::gpu_timestamp() const
+FreedrenoDriver::gpu_timestamp_ticks() const
 {
    uint64_t ts;
    fd_pipe_get_param(pipe, FD_TIMESTAMP, &ts);
    return ts;
+}
+
+uint64_t
+FreedrenoDriver::gpu_timestamp() const
+{
+   return fd_ticks_to_ns(gpu_timestamp_ticks());
 }
 
 bool

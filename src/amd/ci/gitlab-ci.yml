@@ -137,6 +137,17 @@ radeonsi-raven-va:
     # spend all our time in drm_lastclose()'s modesetting.
     HWCI_START_WESTON: 1
 
+radeonsi-raven-va-no_gfx_compute:
+  extends:
+    - .lava-x86_64-test-video-no_gfx_compute
+    - .radeonsi-raven-test:x86_64
+    - .radeonsi-vaapi-rules
+    - .lava-hp-x360-14a-cb0001xx-zork:x86_64
+  variables:
+    DEQP_SUITE: vaapi-no_gfx_compute
+    GPU_VERSION: radeonsi-raven-va-no_gfx_compute
+    VAAPI: 1
+
 radeonsi-mendocino-glcts-piglit:
   extends:
     - .lava-x86_64-test-gl

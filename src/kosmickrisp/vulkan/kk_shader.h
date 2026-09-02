@@ -161,6 +161,9 @@ kk_nir_lower_descriptors(nir_shader *nir,
                          uint32_t set_layout_count,
                          struct vk_descriptor_set_layout *const *set_layouts);
 
+/* KK_WORKAROUND_18 */
+bool kk_nir_add_device_barrier_workaround(nir_shader *nir);
+
 bool kk_nir_lower_poly(struct nir_shader *nir);
 bool kk_nir_lower_null_images(nir_shader *nir);
 

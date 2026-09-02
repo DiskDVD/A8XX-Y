@@ -343,7 +343,7 @@ anv_get_build_config(VkDevice _device, struct vk_acceleration_structure_build_st
    if (state->build_info->type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR &&
        (state->build_info->mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR ||
         state->build_info->flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR ||
-        device->physical->instance->drirc.debug.write_lookup_maps_unconditionally)) {
+        device->physical->drirc.debug.write_lookup_maps_unconditionally)) {
       state->config.build_flags |= ANV_BUILD_FLAG_WRITE_LOOKUP_MAPS_FOR_UPDATE;
    }
 
@@ -740,7 +740,11 @@ anv_init_update_scratch(VkCommandBuffer commandBuffer,
       struct update_scratch_layout layout;
       anv_get_update_scratch_layout(device, state, &layout);
 
-      anv_cmd_fill_buffer_addr(commandBuffer, scratch, layout.size, 0x0);
+      /* The update shader writes every AABB before reading it.  Only the
+       * arrival counters need to be initialized.
+       */
+      anv_cmd_fill_buffer_addr(commandBuffer, scratch, layout.aabb_offset,
+                               0x0);
    }
 }
 
@@ -885,7 +889,7 @@ anv_encode(VkCommandBuffer commandBuffer, struct vk_device *device, struct vk_me
 
    if (!flushed_compute)
       vk_bvh_build_barrier_compute_to_compute(commandBuffer, false);
-   
+
    vk_build_stage(anv_encode_as, commandBuffer, device, meta, args, states, build_count, ANV_ENCODE_BUILD_FLAGS, false);
 
    /* Add a barrier to ensure the writes from encode.comp is ready to be

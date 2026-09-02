@@ -67,7 +67,6 @@ angle-dEQP-GLES2.functional.shaders.algorithm.rgb_to_hsl_vertex,Fail
 # https://github.com/HansKristian-Work/vkd3d-proton/blob/master/docs/sampler_feedback.md
 vkd3d-test_sampler_feedback_implicit_lod_aniso,Fail
 
-vkd3d-test_buffer_descriptor_byte_offset,Fail
 vkd3d-test_query_heap_cpu_resolve_timestamp,Fail
 
 #

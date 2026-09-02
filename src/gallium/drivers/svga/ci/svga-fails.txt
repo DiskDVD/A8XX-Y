@@ -626,7 +626,6 @@ spec@arb_texture_view@rendering-layers-image@layers rendering of image2DArray,Fa
 spec@arb_texture_view@rendering-layers-image@layers rendering of imageCubeArray,Fail
 spec@arb_uniform_buffer_object@maxblocks,Fail
 spec@arb_viewport_array@render-depthrange,Fail
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_ext_device_base@conformance,Fail
 spec@egl_ext_device_base@conformance@configless_tests,Fail
 spec@egl_ext_device_base@conformance@pbuffer_tests,Fail
@@ -1041,6 +1040,7 @@ spec@arb_sample_shading@samplemask 8 all@0.500000 mask_in_one,Fail
 spec@arb_sample_shading@samplemask 8 all@1.000000 mask_in_one,Fail
 spec@arb_sample_shading@samplemask 8 all@noms mask_in_one,Fail
 spec@arb_sample_shading@samplemask 8 all@sample mask_in_one,Fail
+spec@arb_texture_buffer_range@ranges-2 compat,Fail
 spec@arb_texture_cube_map@copyteximage cube samples=2,Fail
 spec@arb_texture_cube_map@copyteximage cube samples=4,Fail
 spec@arb_texture_cube_map@copyteximage cube samples=6,Fail
@@ -1050,6 +1050,7 @@ spec@arb_texture_rectangle@copyteximage rect samples=4,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=6,Fail
 spec@arb_texture_rectangle@copyteximage rect samples=8,Fail
 spec@arb_texture_view@tex-view,Fail
+spec@arb_tessellation_shader@execution@1in-1out,Fail
 spec@egl_chromium_sync_control@conformance,Fail
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_msc_and_sbc_test,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-tex-modifier,Fail
@@ -1063,5 +1064,6 @@ spec@ext_texture_array@copyteximage 2d_array samples=4,Fail
 spec@ext_texture_array@copyteximage 2d_array samples=6,Fail
 spec@ext_texture_array@copyteximage 2d_array samples=8,Fail
 spec@ext_texture_integer@fbo-integer-attachments,Fail
+spec@ext_transform_feedback2@draw-auto offset,Fail
 spec@glsl-1.30@execution@glsl-packed-colors-clamping,Fail
-vulkan@shaders@cmat-uniform-ctor,Fail
+

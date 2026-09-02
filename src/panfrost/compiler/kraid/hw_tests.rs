@@ -325,11 +325,15 @@ impl<'a> TestShaderBuilder<'a> {
 
         let invoc_id: SSAValue = b.alloc_ssa(32);
         let global_id_reg = model.preload_reg(PreloadReg::GlobalId0).unwrap();
-        info.register_preload |= 1 << global_id_reg.idx;
+        info.add_preload(&global_id_reg);
         b.push_op(OpRegIn {
             dst: invoc_id.into(),
             dst_type: DataType::I32,
             reg: global_id_reg,
+            preload: Some(PreloadInfo {
+                set: PreloadRegSet::from_array([PreloadReg::GlobalId0]),
+                comp: 0,
+            }),
         });
 
         let data_offset = b.alloc_ssa(32);
@@ -525,6 +529,26 @@ fn test_copy_single() {
     let run = RunSingleton::get();
     let mut b = TestShaderBuilder::new(&*run.model);
     let data = b.ld_test_data(0, 32);
+    b.st_test_data(4, data.into());
+
+    let bin = b.compile();
+    // First, do a small copy (32-bits)
+    let mut data = [42, 67, 31, 41, 0, 0, 0, 0];
+    let case = bin.with_args_raw(FAU_ONLY_ARGS, &mut data, 0, WARP_SIZE);
+
+    run.execute(case);
+    assert_eq!(&data[0..4], &data[4..8]);
+}
+
+#[test]
+fn test_copy_8bit() {
+    let run = RunSingleton::get();
+    let mut b = TestShaderBuilder::new(&*run.model);
+    let w = b.ld_test_data(3, 8);
+    let z = b.ld_test_data(2, 8);
+    let y = b.ld_test_data(1, 8);
+    let x = b.ld_test_data(0, 8);
+    let data = b.mkvec_v4i8(x.into(), y.into(), z.into(), w.into());
     b.st_test_data(4, data.into());
 
     let bin = b.compile();

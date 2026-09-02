@@ -19,4 +19,4 @@ spec@arb_query_buffer_object@qbo@query-GL_GEOMETRY_SHADER_INVOCATIONS-SYNC-GL_UN
 
 # uprev Piglit in Mesa
 spec@arb_texture_view@tex-view,Fail
-vulkan@shaders@cmat-uniform-ctor,Fail
+

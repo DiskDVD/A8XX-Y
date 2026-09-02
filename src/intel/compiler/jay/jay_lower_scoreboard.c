@@ -297,25 +297,6 @@ jay_inst_has_sbid(const struct intel_device_info *devinfo, const jay_inst *I)
           !(I->op == JAY_OPCODE_SEND && jay_send_eot(I));
 }
 
-static inline unsigned
-jay_inst_sbid(const jay_inst *I)
-{
-   return I->op == JAY_OPCODE_SEND ? jay_send_sbid(I) :
-          I->op == JAY_OPCODE_MATH ? jay_math_sbid(I) :
-                                     jay_dpas_sbid(I);
-}
-
-static inline void
-jay_inst_set_sbid(jay_inst *I, unsigned sbid)
-{
-   if (I->op == JAY_OPCODE_SEND)
-      jay_set_send_sbid(I, sbid);
-   else if (I->op == JAY_OPCODE_MATH)
-      jay_set_math_sbid(I, sbid);
-   else
-      jay_set_dpas_sbid(I, sbid);
-}
-
 /**
  * Returns the index of the Nth zero-indexed bit set in the bitfield. Such a bit
  * must exist. For example, using this function to find with bit=1 bit set in
@@ -397,7 +378,7 @@ lower_sbid_local(jay_function *func,
          unsigned sbid;
 
          if (commit) {
-            sbid = jay_inst_sbid(I);
+            sbid = I->dep.sbid;
          } else {
             if (sync_dst) {
                /* If we depend on $N.dst, there's no extra cost to $N.set */
@@ -414,7 +395,7 @@ lower_sbid_local(jay_function *func,
                }
             }
 
-            jay_inst_set_sbid(I, sbid);
+            I->dep.sbid = sbid;
          }
 
          if (edge->tokens_bitset[sbid] == NULL) {
@@ -654,7 +635,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
 
    bool has_sbid = jay_inst_has_sbid(func->shader->devinfo, I);
    I->dep = (gen_swsb){
-      .sbid = has_sbid ? jay_inst_sbid(I) : 0,
+      .sbid = I->dep.sbid,
       .mode = has_sbid ? GEN_SBID_SET : GEN_SBID_NULL,
       .regdist = wait_pipes ? min_delta : 0,
       .pipe = single_wait && (!has_sbid ||

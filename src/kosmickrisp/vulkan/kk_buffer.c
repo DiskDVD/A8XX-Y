@@ -167,6 +167,9 @@ kk_bind_buffer_memory(struct kk_device *dev, const VkBindBufferMemoryInfo *info)
       mtl_retain(buffer->metal.handle);
    }
 
+   if (buffer->vk.base.object_name)
+      mtl_resource_set_label(buffer->metal.handle, buffer->vk.base.object_name);
+
    buffer->vk.device_address =
       mtl_buffer_get_gpu_address(buffer->metal.handle) + buffer->metal.offset;
    /* We need Metal to give us a CPU mapping so it correctly captures the
@@ -222,4 +225,11 @@ kk_GetBufferOpaqueCaptureDescriptorDataEXT(
    void *pData)
 {
    return VK_SUCCESS;
+}
+
+void
+kk_buffer_set_label(struct kk_buffer *buf, const char *label)
+{
+   if (buf->metal.handle)
+      mtl_resource_set_label(buf->metal.handle, label);
 }

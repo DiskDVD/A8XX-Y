@@ -8,7 +8,7 @@
 
 struct resize_ctx {
    const struct pan_varying_layout *layout;
-   const struct pan_varying_layout *format;
+   struct pan_varying_layout *format;
 };
 
 static bool
@@ -68,6 +68,28 @@ resize_io_intr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
 
    const unsigned slot_bit_size =
       nir_alu_type_get_type_size(slot_layout->alu_type);
+   const unsigned fmt_bit_size =
+      nir_alu_type_get_type_size(slot_fmt->alu_type);
+   const nir_alu_type fmt_base =
+      nir_alu_type_get_base_type(slot_fmt->alu_type);
+
+   /* Optimization: LD_VAR_FLAT can only load 16-bit floats, ints must be
+    * loaded as 32-bits and truncated back to 16-bits, if we instead are sure
+    * that the varying layout is 16-bits, we can force the descriptor to float16
+    * and use LD_VAR_FLAT.f16 to load the bit-exact value.  We can only do this
+    * optimization for linked shader, otherwise a shader writing u32 and
+    * reading it as f16 would cause a float down-conversion.
+    */
+   if (is_load && ctx->format != ctx->layout &&
+       slot_bit_size == 16 && fmt_bit_size == 16 &&
+       (fmt_base == nir_type_int || fmt_base == nir_type_uint) &&
+       sem.location >= VARYING_SLOT_VAR0) {
+      struct pan_varying_slot *slot_fmt_mut =
+         (struct pan_varying_slot *)slot_fmt;
+
+      slot_fmt_mut->alu_type = nir_type_float16;
+   }
+
    const nir_alu_type slot_base_type =
       nir_alu_type_get_base_type(slot_fmt->alu_type);
 
@@ -111,15 +133,16 @@ resize_io_intr(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    return true;
 }
 
-/* The varying layout (if any) may have different bit sizes for some
- * varyings than we have in the shader.  Resize the shader instructions to match
- * what the varying layout specifies.  This also handles the case where we do a
+/* The varying layout (if any) may have different bit sizes for some varyings
+ * than we have in the shader.  Resize the shader instructions to match what
+ * the varying layout specifies.  This also handles the case where we do a
  * load from the fragment shader of something that isn't written by the vertex
- * shader.  In that case, we just return zero.
+ * shader.  In that case, we just return zero.  We may patch the format layout
+ * for optimization purposes, the varying layout instead will remain the same.
  */
 bool
 pan_nir_resize_varying_io(nir_shader *nir,
-                          const struct pan_varying_layout *varying_fmt,
+                          struct pan_varying_layout *varying_fmt,
                           const struct pan_varying_layout *varying_layout)
 {
    struct resize_ctx ctx = {

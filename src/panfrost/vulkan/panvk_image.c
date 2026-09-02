@@ -411,7 +411,7 @@ strict_import(struct panvk_image *image)
 
 static struct pan_image_props
 get_pan_image_props(const struct vk_image *image, enum pipe_format pfmt,
-                    uint32_t plane)
+                    uint32_t plane, bool has_crc)
 {
    return (struct pan_image_props){
       .modifier = image->drm_format_mod,
@@ -428,7 +428,53 @@ get_pan_image_props(const struct vk_image *image, enum pipe_format pfmt,
       .array_size = image->array_layers,
       .nr_samples = image->samples,
       .nr_slices = image->mip_levels,
+      .crc = plane == 0 && has_crc,
    };
+}
+
+static bool
+panvk_should_checksum(struct panvk_image *image,
+                      const VkImageCreateInfo *pCreateInfo)
+{
+   if (PANVK_DEBUG(NO_CRC))
+      return false;
+
+   const VkImageDrmFormatModifierExplicitCreateInfoEXT *explicit_info =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+   if (explicit_info)
+      return false;
+
+   /* Linear images are only allowed if they are WSI images created
+    * internally. Otherwise, they can be modified on host without the CRC
+    * tracking knowing about it. */
+   const struct wsi_image_create_info *wsi_info =
+      vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
+   if ((image->vk.tiling == VK_IMAGE_TILING_LINEAR ||
+        image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) &&
+       !wsi_info)
+      return false;
+
+   if (pCreateInfo->imageType != VK_IMAGE_TYPE_2D ||
+       pCreateInfo->arrayLayers != 1 ||
+       !(pCreateInfo->usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ||
+       pCreateInfo->flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
+                             VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) ||
+       pCreateInfo->usage &
+          (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+           VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_HOST_TRANSFER_BIT))
+      return false;
+
+   /* WSI images created internally are safe even when aliasing since they use
+    * identical layouts and bind the same memory. */
+   if ((pCreateInfo->flags & VK_IMAGE_CREATE_ALIAS_BIT) && !wsi_info)
+      return false;
+
+   enum pipe_format pfmt =
+      select_plane_pfmt(image, image->vk.drm_format_mod, 0);
+   unsigned bytes_per_pixel =
+      MAX2(image->vk.samples, 1) * util_format_get_blocksize(pfmt);
+   return bytes_per_pixel <= 4;
 }
 
 static VkResult
@@ -452,15 +498,20 @@ panvk_image_init_layouts(struct panvk_image *image,
       vk_find_struct_const(
          pCreateInfo->pNext,
          IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+   const struct wsi_image_create_info *wsi_info =
+      vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
 
    const struct pan_mod_handler *mod_handler =
       pan_mod_get_handler(arch, image->vk.drm_format_mod);
+   const bool should_checksum =
+      arch >= 10 && panvk_should_checksum(image, pCreateInfo);
+   image->crc_safe_external = should_checksum && wsi_info != NULL;
 
    /* initialize pan_image props and mod_handler */
    if (panvk_image_use_yuv_tex(arch, image->vk.format)) {
       const enum pipe_format pfmt = vk_format_to_pipe_format(image->vk.format);
       image->planes[0].image = (struct pan_image){
-         .props = get_pan_image_props(&image->vk, pfmt, 0),
+         .props = get_pan_image_props(&image->vk, pfmt, 0, should_checksum),
          .mod_handler = mod_handler,
       };
    } else {
@@ -468,7 +519,8 @@ panvk_image_init_layouts(struct panvk_image *image,
          const enum pipe_format pfmt =
             select_plane_pfmt(image, image->vk.drm_format_mod, plane);
          image->planes[plane].image = (struct pan_image){
-            .props = get_pan_image_props(&image->vk, pfmt, plane),
+            .props =
+               get_pan_image_props(&image->vk, pfmt, plane, should_checksum),
             .mod_handler = mod_handler,
          };
       }
@@ -659,6 +711,33 @@ panvk_image_plane_bind_mem(struct panvk_device *dev,
    plane->plane.base = mem->addr.dev + offset;
    plane->mem = mem;
    plane->mem_offset = offset;
+   /* Zero-initialize CRC state. If CRC state is not mapped on the host, do a
+    * temporary mapping just for this operation. */
+   if (plane->image.props.crc) {
+      const struct pan_image_slice_layout *slice =
+         &plane->plane.layout.slices[0];
+      uint64_t state_offset = offset + slice->crc.header_offset_B;
+
+      bool temporary_map = mem->addr.host == NULL;
+      uint8_t *cpu_map = temporary_map
+                            ? pan_kmod_bo_mmap(mem->bo, PROT_READ | PROT_WRITE,
+                                               MAP_SHARED, NULL)
+                            : mem->addr.host;
+      if (cpu_map == 0 || cpu_map == MAP_FAILED) {
+         plane->image.props.crc = false;
+         return;
+      }
+
+      size_t crc_size = PAN_CRC_HEADER_SIZE_B + slice->crc.size_B;
+      memset(cpu_map + state_offset, 0, crc_size);
+      pan_kmod_queue_bo_map_sync(mem->bo, state_offset, cpu_map + state_offset,
+                                 crc_size, PAN_KMOD_BO_SYNC_CPU_CACHE_FLUSH);
+
+      if (temporary_map) {
+         int ret = os_munmap(cpu_map, pan_kmod_bo_size(mem->bo));
+         assert(!ret);
+      }
+   }
 }
 
 static void
@@ -891,7 +970,9 @@ get_image_subresource_layout(const struct panvk_image *image,
    layout->offset =
       slice_layout->offset_B +
       (subres->arrayLayer * image->planes[plane].plane.layout.array_stride_B);
-   layout->size = slice_layout->size_B;
+   layout->size = slice_layout->crc.size_B ? slice_layout->crc.header_offset_B -
+                                                slice_layout->offset_B
+                                           : slice_layout->size_B;
    layout->arrayPitch = image->planes[plane].plane.layout.array_stride_B;
 
    if (drm_is_afbc(image->vk.drm_format_mod)) {

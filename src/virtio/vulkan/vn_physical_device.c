@@ -23,6 +23,7 @@
 #include "vn_instance.h"
 
 #define IMAGE_FORMAT_CACHE_MAX_ENTRIES 100
+#define VN_BASE_OFFSET                 sizeof(VkBaseOutStructure)
 
 /** Add `elem` to the pNext chain of `head`. */
 #define VN_ADD_PNEXT(head, s_type, elem)                                     \
@@ -63,20 +64,11 @@
 /**
  * Copy vk struct without sType or pNext.
  */
-static inline void
-_vn_copy_struct_guts(VkBaseOutStructure *dst,
-                     const VkBaseInStructure *src,
-                     size_t struct_size)
-{
-   STATIC_ASSERT(sizeof(*dst) == sizeof(*src));
-   memcpy(dst + 1, src + 1, struct_size - sizeof(VkBaseOutStructure));
-}
-
 #define VN_COPY_STRUCT_GUTS(_dst, _src, _struct_size)                        \
    do {                                                                      \
-      _vn_copy_struct_guts((VkBaseOutStructure *)(_dst),                     \
-                           (const VkBaseInStructure *)(_src),                \
-                           (_struct_size));                                  \
+      memcpy((char *)(_dst) + VN_BASE_OFFSET,                                \
+             (const char *)(_src) + VN_BASE_OFFSET,                          \
+             (_struct_size) - VN_BASE_OFFSET);                               \
    } while (0)
 
 static void
@@ -2306,7 +2298,7 @@ vn_physical_device_fix_image_format_info(
    struct vn_physical_device_image_format_info *local_info)
 {
    local_info->format = *info;
-   VkBaseOutStructure *dst = (void *)&local_info->format;
+   void *dst = &local_info->format;
 
    vk_foreach_struct_const(sType, src, info->pNext) {
       void *pnext = NULL;
@@ -2339,12 +2331,12 @@ vn_physical_device_fix_image_format_info(
       }
 
       if (pnext) {
-         dst->pNext = pnext;
+         vk_pnext_set_next(dst, pnext);
          dst = pnext;
       }
    }
 
-   dst->pNext = NULL;
+   vk_pnext_set_next(dst, NULL);
 
    return &local_info->format;
 }

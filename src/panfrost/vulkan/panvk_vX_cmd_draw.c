@@ -116,6 +116,19 @@ avoid_direct_resolve_to(const struct pan_image *img)
 }
 
 static void
+panvk_fb_store_set_crc_header_addr(struct pan_fb_store_target *store,
+                                   const struct panvk_image_view *iview)
+{
+   if (!store->store || !pan_image_view_has_crc(&iview->pview))
+      return;
+
+   const struct panvk_image *image =
+      container_of(iview->vk.image, struct panvk_image, vk);
+
+   store->crc_header_addr = panvk_image_plane_crc_header_addr(image);
+}
+
+static void
 render_state_set_color_attachment(struct panvk_cmd_buffer *cmdbuf,
                                   const VkRenderingAttachmentInfo *att,
                                   uint32_t index)
@@ -178,8 +191,12 @@ render_state_set_color_attachment(struct panvk_cmd_buffer *cmdbuf,
    };
    render->fb.spill.load.rts[index] = pan_fb_load_iview(&iview->pview);
    render->fb.spill.store.rts[index] = pan_fb_store_iview(&iview->pview);
-   if (att->storeOp == VK_ATTACHMENT_STORE_OP_STORE && !ms2ss)
+   panvk_fb_store_set_crc_header_addr(&render->fb.spill.store.rts[index],
+                                      iview);
+   if (att->storeOp == VK_ATTACHMENT_STORE_OP_STORE && !ms2ss) {
       render->fb.store.rts[index] = pan_fb_store_iview(&iview->pview);
+      panvk_fb_store_set_crc_header_addr(&render->fb.store.rts[index], iview);
+   }
 
    if (att->resolveMode != VK_RESOLVE_MODE_NONE) {
       VK_FROM_HANDLE(panvk_image_view, resolve_iview, att->resolveImageView);
@@ -215,9 +232,13 @@ render_state_set_color_attachment(struct panvk_cmd_buffer *cmdbuf,
          };
          render->fb.store.rts[index] =
             pan_fb_always_store_iview_s0(&resolve.dst_iview->pview);
+         panvk_fb_store_set_crc_header_addr(&render->fb.store.rts[index],
+                                            resolve.dst_iview);
       } else {
          /* We need to store so we can do the MSAA resolve later */
          render->fb.store.rts[index] = pan_fb_store_iview(&iview->pview);
+         panvk_fb_store_set_crc_header_addr(&render->fb.store.rts[index],
+                                            iview);
          render->color_attachments.resolve[index] = resolve;
       }
    }

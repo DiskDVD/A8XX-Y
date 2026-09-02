@@ -1215,7 +1215,7 @@ emit_begin_stat_query(struct tu_cmd_buffer *cmdbuf,
    tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
    tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(COUNTER_REG(IAVERTICES)) |
                   CP_REG_TO_MEM_0_CNT(STAT_COUNT * 2) |
-                  CP_REG_TO_MEM_0_64B);
+                  CP_REG_TO_MEM_0_IS_64B);
    tu_cs_emit_qw(cs, begin_iova);
 }
 
@@ -1323,7 +1323,7 @@ emit_begin_perf_query_raw(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, begin_iova);
    }
    tu_cond_exec_end(cs);
@@ -1377,7 +1377,7 @@ emit_begin_perf_query_derived(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, begin_iova);
    }
 
@@ -1387,7 +1387,7 @@ emit_begin_perf_query_derived(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, begin_iova);
    }
 }
@@ -1442,7 +1442,7 @@ emit_begin_prim_generated_query(struct tu_cmd_buffer *cmdbuf,
    tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
    tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(COUNTER_REG(CINVOCATIONS)) |
                   CP_REG_TO_MEM_0_CNT(2) |
-                  CP_REG_TO_MEM_0_64B);
+                  CP_REG_TO_MEM_0_IS_64B);
    tu_cs_emit_qw(cs, begin_iova);
 
    if (cmdbuf->state.pass) {
@@ -1711,7 +1711,7 @@ emit_end_stat_query(struct tu_cmd_buffer *cmdbuf,
    tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
    tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(COUNTER_REG(IAVERTICES)) |
                   CP_REG_TO_MEM_0_CNT(STAT_COUNT * 2) |
-                  CP_REG_TO_MEM_0_64B);
+                  CP_REG_TO_MEM_0_IS_64B);
    tu_cs_emit_qw(cs, end_iova);
 
    for (int i = 0; i < STAT_COUNT; i++) {
@@ -1779,7 +1779,7 @@ emit_end_perf_query_raw(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, end_iova);
    }
    tu_cond_exec_end(cs);
@@ -1859,7 +1859,7 @@ emit_end_perf_query_derived(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, end_iova);
    }
 
@@ -1872,7 +1872,7 @@ emit_end_perf_query_derived(struct tu_cmd_buffer *cmdbuf,
 
       tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
       tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(counter->counter_reg_lo) |
-                     CP_REG_TO_MEM_0_64B);
+                     CP_REG_TO_MEM_0_IS_64B);
       tu_cs_emit_qw(cs, end_iova);
    }
 
@@ -1995,7 +1995,7 @@ emit_end_prim_generated_query(struct tu_cmd_buffer *cmdbuf,
    tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
    tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(COUNTER_REG(CINVOCATIONS)) |
                   CP_REG_TO_MEM_0_CNT(2) |
-                  CP_REG_TO_MEM_0_64B);
+                  CP_REG_TO_MEM_0_IS_64B);
    tu_cs_emit_qw(cs, end_iova);
 
    tu_cs_emit_pkt7(cs, CP_MEM_TO_MEM, 9);
@@ -2145,7 +2145,7 @@ tu_CmdWriteTimestamp2(VkCommandBuffer commandBuffer,
    tu_cs_emit_pkt7(cs, CP_REG_TO_MEM, 3);
    tu_cs_emit(cs, CP_REG_TO_MEM_0_REG(__CP_ALWAYS_ON_COUNTER<CHIP>({}).reg) |
                   CP_REG_TO_MEM_0_CNT(2) |
-                  CP_REG_TO_MEM_0_64B);
+                  CP_REG_TO_MEM_0_IS_64B);
    tu_cs_emit_qw(cs, query_result_iova(pool, query, uint64_t, 0));
 
    /* Only flag availability once the entire renderpass is done, similar to

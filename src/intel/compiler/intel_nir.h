@@ -19,13 +19,16 @@ struct intel_device_info;
                              INTEL_TESS_CONFIG_##field##_SIZE)
 
 void intel_nir_apply_tcs_quads_workaround(nir_shader *nir);
-bool brw_nir_rebase_const_offset_ubo_loads(nir_shader *shader);
+bool intel_nir_rebase_const_offset_ubo_loads(nir_shader *shader);
 bool intel_nir_blockify_uniform_loads(nir_shader *shader,
                                       const struct intel_device_info *devinfo);
 bool intel_nir_clamp_image_1d_2d_array_sizes(nir_shader *shader);
 bool intel_nir_clamp_per_vertex_loads(nir_shader *shader);
 bool intel_nir_cleanup_resource_intel(nir_shader *shader);
 
+bool intel_nir_lower_fragment_outputs(nir_shader *shader,
+                                      unsigned nr_colour_regions,
+                                      bool replicate_alpha);
 bool intel_nir_lower_non_uniform_barycentric_at_sample(nir_shader *nir);
 bool intel_nir_lower_non_uniform_resource_intel(nir_shader *shader);
 bool intel_nir_lower_patch_vertices_in(nir_shader *shader,

@@ -345,7 +345,7 @@ vn_queue_submission_init_pnext(struct vn_queue_submission *submit)
       return;
 
    struct vn_queue_submission_pnext *pnext = submit->temp.pnext;
-   VkBaseOutStructure *cur = (void *)submit->temp.submit_batch;
+   void *cur = submit->temp.submit_batch;
 
    vk_foreach_struct_const(sType, src, submit->submit_batch->pNext) {
       void *next = NULL;
@@ -499,10 +499,12 @@ vn_queue_submission_init_pnext(struct vn_queue_submission *submit)
       }
 
       if (next) {
-         cur->pNext = next;
+         vk_pnext_set_next(cur, next);
          cur = next;
       }
    }
+
+   vk_pnext_set_next(cur, NULL);
 }
 
 static void

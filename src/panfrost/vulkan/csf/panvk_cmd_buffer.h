@@ -39,6 +39,13 @@ struct panvk_sync_scope {
 #else
 #define MAX_LAYERS_PER_TILER_DESC 8
 #endif
+#if PAN_ARCH == 10
+#define PAN_CRC_VALID_OFFSET  0
+#endif
+#if PAN_ARCH >= 11
+#define PAN_CRC_INIT_OFFSET  0
+#define PAN_CRC_INIT_MASK    0xffff
+#endif
 
 struct panvk_cs_sync32 {
    uint32_t seqno;
@@ -157,6 +164,14 @@ struct panvk_cs_subqueue_context {
       /* Timestamp queries that need to happen after the current rp. */
       struct cs_single_link_list ts_chain;
       struct cs_single_link_list ts_done_chain;
+      /* Fields used to pass layer count information from primary cmdbufs to
+       * secondary cmdbufs. */
+#if PAN_ARCH >= 14
+      uint32_t layer_count;
+#else
+      uint32_t td_count;
+      uint32_t last_td_fullscreen_tiler_flags;
+#endif
    } render;
    struct {
       uint32_t counter;
@@ -170,6 +185,13 @@ struct panvk_cs_subqueue_context {
       uint64_t ir_descs[PANVK_IR_PASS_COUNT];
       uint32_t td_count;
       uint32_t layer_count;
+
+      /* Spill target and final regular target can differ for
+       * the same RT index and point to two different images. For CRC tracking,
+       * we need to store two CRC header addresses, one for the regular and one
+       * for the spill. */
+      uint32_t crc_header_addr_count;
+      uint64_t crc_header_addrs[PAN_MAX_RTS * 2];
    } tiler_oom_ctx;
    struct {
       struct {
@@ -189,6 +211,22 @@ struct panvk_cache_flush_info {
    enum mali_cs_other_flush_mode others;
 };
 
+/* Execute CRC state updates on a destination subqueue when possible.
+ * Fall back to compute when the destination scope maps to no subqueue.
+ */
+static inline enum panvk_subqueue_id
+panvk_crc_exec_subqueue(uint32_t dst_mask)
+{
+   return dst_mask ? u_bit_scan(&dst_mask) : PANVK_SUBQUEUE_COMPUTE;
+}
+
+struct panvk_cs_crc_deps {
+   const uint64_t *addrs;
+   uint32_t count;
+   uint32_t src_subqueue_mask;
+   uint32_t dst_subqueue_mask;
+};
+
 struct panvk_cs_deps {
    bool needs_fb_barrier;
 
@@ -203,6 +241,8 @@ struct panvk_cs_deps {
       enum mali_cs_condition cond;
       struct cs_index cond_value;
    } dst[PANVK_SUBQUEUE_COUNT];
+
+   struct panvk_cs_crc_deps crc;
 };
 
 enum panvk_sb_ids {
@@ -985,5 +1025,11 @@ cs_emit_layer_fragment_state(struct cs_builder *b, struct cs_index fbd_ptr)
                 offsetof(struct panvk_fb_layer_state, dcd_pointer));
 }
 #endif /* PAN_ARCH >= 14 */
+
+void panvk_per_arch(collect_crc_invalidation_deps)(const VkDependencyInfo *info,
+                                                   struct panvk_cs_deps *deps,
+                                                   uint64_t *crc_addrs);
+void panvk_per_arch(cmd_invalidate_crc)(struct cs_builder *b,
+                                        uint64_t crc_header_addr);
 
 #endif /* PANVK_CMD_BUFFER_H */

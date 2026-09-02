@@ -2526,7 +2526,7 @@ vk_video_encode_h264_slice_header(const StdVideoEncodeH264PictureInfo *pic_info,
       emit_nalu_header(&enc, is_ref ? 1 : 0, H264_NAL_SLICE);
    }
 
-   vl_bitstream_put_bits(&enc, 1, slice_header->first_mb_in_slice);
+   vl_bitstream_exp_golomb_ue(&enc, slice_header->first_mb_in_slice);
    vl_bitstream_exp_golomb_ue(&enc, slice_header->slice_type);
    vl_bitstream_exp_golomb_ue(&enc, pic_info->pic_parameter_set_id);
 
@@ -2534,7 +2534,9 @@ vk_video_encode_h264_slice_header(const StdVideoEncodeH264PictureInfo *pic_info,
       /* colour plane id */
       vl_bitstream_put_bits(&enc, 2, 0);
 
-   vl_bitstream_put_bits(&enc, sps->log2_max_frame_num_minus4 + 4, pic_info->frame_num);
+   vl_bitstream_put_bits(&enc, sps->log2_max_frame_num_minus4 + 4,
+                         pic_info->frame_num &
+                         ((1u << (sps->log2_max_frame_num_minus4 + 4)) - 1));
 
    /* frame_mbs_only_flag == 1 */
    if (!sps->flags.frame_mbs_only_flag) {
@@ -2546,7 +2548,9 @@ vk_video_encode_h264_slice_header(const StdVideoEncodeH264PictureInfo *pic_info,
       vl_bitstream_exp_golomb_ue(&enc, pic_info->idr_pic_id);
 
    if (sps->pic_order_cnt_type == STD_VIDEO_H264_POC_TYPE_0) {
-      vl_bitstream_put_bits(&enc, sps->log2_max_pic_order_cnt_lsb_minus4 + 4, pic_info->PicOrderCnt);
+      vl_bitstream_put_bits(&enc, sps->log2_max_pic_order_cnt_lsb_minus4 + 4,
+                            pic_info->PicOrderCnt &
+                            ((1u << (sps->log2_max_pic_order_cnt_lsb_minus4 + 4)) - 1));
       /* pic_order_present_flag == 0 */
       if (pps->flags.bottom_field_pic_order_in_frame_present_flag) {
          assert(0);

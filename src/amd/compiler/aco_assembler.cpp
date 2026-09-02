@@ -1481,15 +1481,17 @@ fix_exports(asm_context& ctx, std::vector<uint32_t>& out, Program* program)
       }
    }
 
-   /* GFX10+ FS may not export anything if no discard is used. */
-   bool may_skip_export = program->stage.hw == AC_HW_PIXEL_SHADER && program->gfx_level >= GFX10;
+   /* GFX10+ FS may not export anything if no discard is used.
+    * NGG should export nothing if gs_alloc_req declares 0 primitives.
+    */
+   bool may_skip_export = (program->stage.hw == AC_HW_PIXEL_SHADER ||
+                           program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER) &&
+                          program->gfx_level >= GFX10;
 
    if (!exported && !may_skip_export) {
       /* Abort in order to avoid a GPU hang. */
-      bool is_vertex_or_ngg = (program->stage.hw == AC_HW_VERTEX_SHADER ||
-                               program->stage.hw == AC_HW_NEXT_GEN_GEOMETRY_SHADER);
-      aco_err(program,
-              "Missing export in %s shader:", is_vertex_or_ngg ? "vertex or NGG" : "fragment");
+      aco_err(program, "Missing export in %s shader:",
+              program->stage.hw == AC_HW_VERTEX_SHADER ? "vertex" : "fragment");
       aco_print_program(program, stderr);
       abort();
    }

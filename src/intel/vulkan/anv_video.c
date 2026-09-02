@@ -421,7 +421,7 @@ anv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
          ext->maxSliceCount = 1;
          ext->maxPPictureL0ReferenceCount = 8;
          ext->maxBPictureL0ReferenceCount = 8;
-         ext->maxL1ReferenceCount = 0;
+         ext->maxL1ReferenceCount = 1;
          ext->maxTemporalLayerCount = 0;
          ext->expectDyadicTemporalLayerPattern = false;
          ext->prefersGopRemainingFrames = 0;
@@ -1625,4 +1625,16 @@ anv_video_get_image_mv_size(struct anv_device *device,
       }
    }
    return size;
+}
+
+uint32_t
+anv_h265_slice_size(const VkVideoDecodeInfoKHR *frame_info,
+                    const VkVideoDecodeH265PictureInfoKHR *h265_pic_info,
+                    unsigned s)
+{
+   if (s == h265_pic_info->sliceSegmentCount - 1)
+      return frame_info->srcBufferRange - h265_pic_info->pSliceSegmentOffsets[s];
+
+   return h265_pic_info->pSliceSegmentOffsets[s + 1] -
+          h265_pic_info->pSliceSegmentOffsets[s];
 }

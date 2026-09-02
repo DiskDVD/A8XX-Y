@@ -116,6 +116,10 @@ struct blitter_context
    unsigned saved_sample_mask;
    unsigned saved_min_samples;
 
+   bool is_sample_coverage_saved;
+   float saved_sample_coverage;
+   bool saved_sample_coverage_invert;
+
    unsigned saved_num_sampler_states;
    void *saved_sampler_states[PIPE_MAX_SAMPLERS];
 
@@ -588,6 +592,24 @@ util_blitter_save_sample_mask(struct blitter_context *blitter,
    blitter->is_sample_mask_saved = true;
    blitter->saved_sample_mask = sample_mask;
    blitter->saved_min_samples = min_samples;
+}
+
+/* Drivers implementing pipe_context::set_sample_coverage have to save the
+ * coverage here, the blitter draws with it disabled otherwise. Calling this
+ * without the hook is harmless, so a driver that only offers it on some
+ * hardware does not have to repeat the condition.
+ */
+static inline void
+util_blitter_save_sample_coverage(struct blitter_context *blitter,
+                                  float sample_coverage,
+                                  bool sample_coverage_invert)
+{
+   if (!blitter->pipe->set_sample_coverage)
+      return;
+
+   blitter->is_sample_coverage_saved = true;
+   blitter->saved_sample_coverage = sample_coverage;
+   blitter->saved_sample_coverage_invert = sample_coverage_invert;
 }
 
 static inline void

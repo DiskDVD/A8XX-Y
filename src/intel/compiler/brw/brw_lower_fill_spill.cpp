@@ -39,6 +39,22 @@ build_ex_desc(const brw_builder &bld, unsigned reg_size, bool unspill)
 }
 
 static void
+encode_const_offset(brw_send_inst *inst,
+                    const intel_device_info *devinfo,
+                    enum lsc_opcode op,
+                    unsigned const_offset)
+{
+   if (const_offset == 0)
+      return;
+
+   gen_lsc_ex_desc ex_desc = {};
+   ex_desc.addr_type = LSC_ADDR_SURFTYPE_SS;
+   ex_desc.surface_state.base_offset = const_offset;
+   gen_lsc_ex_desc_encode(devinfo, op, &ex_desc, &inst->offset);
+   inst->ex_desc_imm = true;
+}
+
+static void
 brw_lower_lsc_fill(const intel_device_info *devinfo, brw_shader &s,
                    brw_inst *inst)
 {
@@ -93,6 +109,9 @@ brw_lower_lsc_fill(const intel_device_info *devinfo, brw_shader &s,
                        unspill_inst->size_written / REG_SIZE,
                        unspill_inst->header_size));
 
+   if (inst->as_scratch()->use_base_offset)
+      encode_const_offset(unspill_inst, devinfo, LSC_OP_LOAD, inst->as_scratch()->offset);
+
    assert(unspill_inst->size_written == inst->size_written);
    assert(unspill_inst->size_read(devinfo, SEND_SRC_PAYLOAD1) == inst->size_read(devinfo, FILL_SRC_PAYLOAD1));
 
@@ -145,6 +164,9 @@ brw_lower_lsc_spill(const intel_device_info *devinfo, brw_inst *inst)
                        spill_inst->mlen,
                        spill_inst->size_written / REG_SIZE,
                        spill_inst->header_size));
+
+   if (inst->as_scratch()->use_base_offset)
+      encode_const_offset(spill_inst, devinfo, LSC_OP_STORE, inst->as_scratch()->offset);
 
    assert(spill_inst->size_written == inst->size_written);
    assert(spill_inst->size_read(devinfo, SEND_SRC_PAYLOAD1) == inst->size_read(devinfo, SPILL_SRC_PAYLOAD1));

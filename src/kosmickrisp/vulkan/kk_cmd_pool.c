@@ -133,3 +133,10 @@ kk_TrimCommandPool(VkDevice device, VkCommandPool commandPool,
    vk_command_pool_trim(&pool->vk, flags);
    kk_cmd_pool_destroy_bos(pool);
 }
+
+void
+kk_cmd_pool_set_label(struct kk_cmd_pool *pool, const char *label)
+{
+   list_for_each_entry(struct kk_cmd_bo, bo, &pool->free_bos, link)
+      kk_bo_set_label(bo->bo, label);
+}

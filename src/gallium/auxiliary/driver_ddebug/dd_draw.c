@@ -420,6 +420,9 @@ dd_dump_draw_vbo(struct dd_draw_state *dstate, struct pipe_draw_info *info,
 
    PRINT_NAMED(uint, "min_samples", dstate->min_samples);
    PRINT_NAMED(hex, "sample_mask", dstate->sample_mask);
+   fprintf(f, COLOR_STATE "sample_coverage" COLOR_RESET " = %f%s\n",
+           dstate->sample_coverage,
+           dstate->sample_coverage_invert ? " (inverted)" : "");
    fprintf(f, "\n");
 
    DUMP(framebuffer_state, &dstate->framebuffer_state);
@@ -983,6 +986,8 @@ dd_copy_draw_state(struct dd_draw_state *dst, struct dd_draw_state *src)
    dst->stencil_ref = src->stencil_ref;
    dst->sample_mask = src->sample_mask;
    dst->min_samples = src->min_samples;
+   dst->sample_coverage = src->sample_coverage;
+   dst->sample_coverage_invert = src->sample_coverage_invert;
    dst->clip_state = src->clip_state;
    util_copy_framebuffer_state(&dst->framebuffer_state, &src->framebuffer_state);
    memcpy(dst->scissors, src->scissors, sizeof(src->scissors));

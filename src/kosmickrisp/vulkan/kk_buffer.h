@@ -57,4 +57,6 @@ kk_buffer_to_mtl_resource(const struct kk_buffer *buffer)
    return NULL;
 }
 
+void kk_buffer_set_label(struct kk_buffer *buf, const char *label);
+
 #endif // KK_BUFFER_H

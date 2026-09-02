@@ -23,6 +23,7 @@
 #include "vk_util.h"
 #include "vk_log.h"
 
+#include "hwdef/pvr_hw_utils.h"
 #include "hwdef/rogue_hw_utils.h"
 
 #include "pco/pco.h"
@@ -645,7 +646,7 @@ static bool pvr_physical_device_get_properties(
 
       .maxImageDimension1D = 4096U,
       .maxImageDimension2D = 4096U,
-      .maxImageDimension3D = 256U,
+      .maxImageDimension3D = pvr_get_texture_extent_max_z(dev_info),
       .maxImageDimensionCube = 4096U,
       .maxImageArrayLayers = rogue_get_render_size_max_z(dev_info),
       .maxTexelBufferElements = 64U * 1024U,

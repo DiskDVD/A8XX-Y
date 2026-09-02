@@ -260,8 +260,7 @@ ir3_shader_compute_state_create(struct pipe_context *pctx,
       nir = tgsi_to_nir(cso->prog, pctx->screen, false);
    }
 
-   if (ctx->screen->gen >= 6)
-      ir3_nir_lower_io_to_bindless(nir);
+   ir3_nir_lower_io_gallium(nir, ctx->screen->gen >= 6 /* lower_to_bindless */);
 
    struct ir3_shader *shader =
       ir3_shader_from_nir(compiler, nir, &ir3_options);
@@ -314,8 +313,7 @@ ir3_shader_state_create(struct pipe_context *pctx,
       nir = tgsi_to_nir(cso->tokens, pctx->screen, false);
    }
 
-   if (ctx->screen->gen >= 6)
-      ir3_nir_lower_io_to_bindless(nir);
+   ir3_nir_lower_io_gallium(nir, ctx->screen->gen >= 6 /* lower_to_bindless */);
 
    enum ir3_wavesize_option api_wavesize = IR3_SINGLE_OR_DOUBLE;
    enum ir3_wavesize_option real_wavesize = IR3_SINGLE_OR_DOUBLE;

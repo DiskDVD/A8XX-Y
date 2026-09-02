@@ -178,6 +178,7 @@ brw_shader::brw_shader(const brw_shader_params *params)
 
    memset(&this->shader_stats, 0, sizeof(this->shader_stats));
 
+   this->seen_rt_write = false;
    this->grf_used = 0;
    this->spilled_any_registers = false;
    this->start_offset = 0;
@@ -319,7 +320,7 @@ brw_shader::assign_curb_setup()
    uint64_t used = 0;
    foreach_block_and_inst(block, brw_inst, inst, cfg) {
       for (unsigned int i = 0; i < inst->sources; i++) {
-	 if (inst->src[i].file != UNIFORM)
+         if (inst->src[i].file != UNIFORM)
             continue;
 
          struct brw_reg brw_reg;

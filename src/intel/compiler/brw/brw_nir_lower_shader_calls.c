@@ -236,7 +236,7 @@ lower_shader_trace_ray(nir_builder *b, nir_intrinsic_instr *call, void *data)
                      nir_load_btd_global_arg_addr_intel(b),
                      nir_imm_int(b, BRW_RT_BVH_LEVEL_WORLD),
                      nir_imm_int(b, GEN_RT_TRACE_RAY_INITIAL),
-                     false);
+                     false, state->devinfo);
    return true;
 }
 
@@ -361,6 +361,6 @@ brw_nir_create_null_ahs_shader(const struct brw_compiler *compiler,
    nir_def *ray_op = nir_imm_int(b, GEN_RT_TRACE_RAY_COMMIT);
    brw_nir_trace_ray(b,
                      nir_load_btd_global_arg_addr_intel(b),
-                     ray_level, ray_op, false);
+                     ray_level, ray_op, false, compiler->devinfo);
    return nir;
 }

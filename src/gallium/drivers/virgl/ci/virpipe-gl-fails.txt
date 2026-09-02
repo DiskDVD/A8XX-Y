@@ -564,7 +564,6 @@ spec@ext_framebuffer_multisample@interpolation 8 centroid-edges,Fail
 spec@glsl-1.30@execution@glsl-packed-back-color,Fail
 spec@!opengl 1.1@large-tex,Crash
 spec@arb_texture_rectangle@copyteximage rect samples=8,Fail
-vulkan@shaders@cmat-uniform-ctor,Fail
 
 # New failures with GL CTS 4.6.6.0 & ES CTS 3.2.12.0
 dEQP-GLES2.functional.clipping.line.wide_line_clip_viewport_corner,Fail

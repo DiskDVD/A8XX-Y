@@ -296,6 +296,13 @@ kgsl_bo_init(struct tu_device *dev,
    if (flags & TU_BO_ALLOC_REPLAYABLE)
       req.flags |= KGSL_MEMFLAGS_USE_CPU_MAP;
 
+   /* Forcing everything in the first 4GB is overkill, but we don't have many
+    * other options here since we don't control iova addresses and kgsl
+    * doesn't have a flag to avoid 32B rollover.
+    */
+   if (flags & TU_BO_ALLOC_NO_32B_ROLLOVER)
+      req.flags |= KGSL_MEMFLAGS_FORCE_32BIT;
+
    int ret;
 
    ret = safe_ioctl(dev->physical_device->local_fd,

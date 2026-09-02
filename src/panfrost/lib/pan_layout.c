@@ -42,8 +42,9 @@ init_slice_crc_info(unsigned arch, struct pan_image_slice_layout *slice,
    unsigned tile_count_y = checksum_y_tile_per_region *
                            DIV_ROUND_UP(height_px, checksum_region_size_px);
 
-   slice->crc.offset_B = offset_B;
-   slice->crc.stride_B = tile_count_x * CHECKSUM_BYTES_PER_TILE;
+   slice->crc.header_offset_B = offset_B;
+   slice->crc.offset_B = offset_B + PAN_CRC_HEADER_SIZE_B;
+   slice->crc.stride_B = ALIGN_POT(tile_count_x * CHECKSUM_BYTES_PER_TILE, 64);
    slice->crc.size_B = slice->crc.stride_B * tile_count_y;
 }
 
@@ -129,10 +130,17 @@ pan_image_layout_init(
 
       /* Add a CRC buffer at level 0 if necessary */
       if (l == 0 && props->crc) {
+         uint64_t crc_start_B = ALIGN_POT(layout_constraints.offset_B, 64);
+         uint64_t crc_padding_B = crc_start_B - layout_constraints.offset_B;
+         layout_constraints.offset_B = crc_start_B;
+
          init_slice_crc_info(arch, slayout, mip_extent_px.width,
                              mip_extent_px.height, layout_constraints.offset_B);
-         layout_constraints.offset_B += slayout->crc.size_B;
-         slayout->size_B += slayout->crc.size_B;
+
+         uint64_t crc_alloc_size_B =
+            PAN_CRC_HEADER_SIZE_B + slayout->crc.size_B;
+         layout_constraints.offset_B += crc_alloc_size_B;
+         slayout->size_B += crc_padding_B + crc_alloc_size_B;
       }
 
       mip_extent_px.width = u_minify(mip_extent_px.width, 1);

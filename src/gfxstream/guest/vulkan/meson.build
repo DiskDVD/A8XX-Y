@@ -45,7 +45,6 @@ lib_vulkan_gfxstream = shared_library(
     files_vulkan_gfxstream,
     cpp_args: gfxstream_guest_args + gfxstream_vk_wsi_args,
     include_directories: [
-        inc_vulkan_headers,
         inc_guest_iostream,
         inc_vulkan_enc,
         inc_goldfish_address_space,

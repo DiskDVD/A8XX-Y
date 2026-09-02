@@ -3205,6 +3205,7 @@ nir_get_nir_type_for_glsl_base_type(enum glsl_base_type base_type)
    case GLSL_TYPE_TEXTURE:
    case GLSL_TYPE_IMAGE:
    case GLSL_TYPE_ATOMIC_UINT:
+   case GLSL_TYPE_YUV_CSC_STANDARD_EXT:
    case GLSL_TYPE_STRUCT:
    case GLSL_TYPE_INTERFACE:
    case GLSL_TYPE_ARRAY:
@@ -3487,6 +3488,7 @@ nir_tex_instr_result_size(const nir_tex_instr *instr)
       case GLSL_SAMPLER_DIM_MS:
       case GLSL_SAMPLER_DIM_RECT:
       case GLSL_SAMPLER_DIM_EXTERNAL:
+      case GLSL_SAMPLER_DIM_EXTERNAL_2D_Y2Y:
       case GLSL_SAMPLER_DIM_SUBPASS:
       case GLSL_SAMPLER_DIM_SUBPASS_MS:
          ret = 2;

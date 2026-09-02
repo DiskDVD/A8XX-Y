@@ -285,15 +285,14 @@ impl Model for ValhallModel {
             PrimitiveFlags => 58,
             PositionXY => 59,
             CumulativeCoverage => 60,
-            RasterizerSampleCentroid => 61,
-            FrameArgLow => 62,
-            FrameArgHigh => 63,
+            RasterizerCoverage => 61,
+            SampleCentroidId => 61,
+            FrameArg => 62,
         };
 
         Some(RegRef {
-            idx,
-            range: RegRange::Regs(1),
-            preload: Some(preload),
+            idx: idx,
+            range: RegRange::Regs(preload.reg_size()),
         })
     }
 

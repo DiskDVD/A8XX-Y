@@ -150,3 +150,12 @@ kk_bo_unmap(struct kk_device *dev, struct kk_bo *bo, void *addr, bool reserved)
 
    return VK_SUCCESS;
 }
+
+void
+kk_bo_set_label(struct kk_bo *bo, const char *label)
+{
+   if (bo->mtl_handle)
+      mtl_heap_set_label(bo->mtl_handle, label);
+   if (bo->map)
+      mtl_resource_set_label(bo->map, label);
+}

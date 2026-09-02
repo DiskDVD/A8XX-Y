@@ -43,4 +43,6 @@ VkResult kk_bo_map_placed(struct kk_device *dev, struct kk_bo *bo, void **addr);
 VkResult kk_bo_unmap(struct kk_device *dev, struct kk_bo *bo, void *addr,
                      bool reserved);
 
+void kk_bo_set_label(struct kk_bo *bo, const char *label);
+
 #endif /* KK_BO_H */

@@ -107,7 +107,7 @@ genX(batch_emit_push_constants_alloc)(struct anv_batch *batch,
 static void
 cmd_buffer_alloc_gfx_push_constants(struct anv_cmd_buffer *cmd_buffer)
 {
-   if (cmd_buffer->device->physical->instance->drirc.perf.disable_push_const_alloc)
+   if (cmd_buffer->device->physical->drirc.perf.disable_push_const_alloc)
       return;
 
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
@@ -1089,7 +1089,7 @@ genX(cmd_buffer_flush_gfx)(struct anv_cmd_buffer *cmd_buffer)
 ALWAYS_INLINE static bool
 anv_use_generated_draws(const struct anv_cmd_buffer *cmd_buffer, uint32_t count)
 {
-   const struct anv_instance *instance = cmd_buffer->device->physical->instance;
+   const struct anv_physical_device *pdevice = cmd_buffer->device->physical;
 
    /* We cannot generate readable commands in protected mode. */
    if (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT)
@@ -1102,7 +1102,7 @@ anv_use_generated_draws(const struct anv_cmd_buffer *cmd_buffer, uint32_t count)
        anv_gfx_has_stage(&cmd_buffer->state.gfx, MESA_SHADER_TESS_CTRL))
       return false;
 
-   return count >= instance->drirc.perf.generated_indirect_threshold;
+   return count >= pdevice->drirc.perf.generated_indirect_threshold;
 }
 
 #define gfx_source_hashes(gfx) \

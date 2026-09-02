@@ -619,8 +619,6 @@ spec@arb_texture_rg@texwrap formats-float bordercolor@GL_RG32F- border color onl
 # invalid parameter array size (size=1021 max=256).
 spec@arb_vertex_program@big-param,Fail
 
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
-
 spec@ext_framebuffer_multisample@alpha-to-coverage-no-draw-buffer-zero 2,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-no-draw-buffer-zero 4,Fail
 spec@ext_framebuffer_multisample@alpha-to-coverage-no-draw-buffer-zero 6,Fail
@@ -708,8 +706,6 @@ spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8,Fail
 spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8- NPOT,Fail
 spec@ext_texture_srgb@texwrap formats@GL_SRGB8_ALPHA8- swizzled,Fail
 
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-ivec3,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-atan-float-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-atan-vec2-vec2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-atan-vec3-vec3,Fail
@@ -759,11 +755,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec4-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-float-float,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat3-mat3,Fail
@@ -799,13 +790,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-mat4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec3,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat3-mat3,Fail
@@ -902,22 +886,6 @@ spec@glsl-1.10@execution@vs-loop-partial-unroll-multiple-breaks-loop-phi,Fail
 spec@glsl-1.10@execution@vs-loop-variable-iteration-limit-unroll4,Fail
 spec@glsl-1.10@execution@vs-nested-return-sibling-loop,Fail
 spec@glsl-1.10@execution@vs-nested-return-sibling-loop2,Fail
-
-# Precision issues after lowering integer division to RCP.
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-ivec4,Fail
 
 spec@glsl-1.10@execution@built-in-functions@vs-pow-float-float,Fail
 spec@glsl-1.10@execution@built-in-functions@vs-pow-vec2-vec2,Fail
@@ -1128,7 +1096,6 @@ spec@arb_texture_float@arb_texture_float-get-tex3d,Fail
 spec@arb_texture_float@fbo-alphatest-formats@GL_RGB16F,Fail
 spec@arb_texture_float@fbo-alphatest-formats@GL_RGBA16F,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl 1.4@largest possible eglcreatepbuffersurface and then glclear,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
 spec@egl_mesa_configless_context@basic,Fail

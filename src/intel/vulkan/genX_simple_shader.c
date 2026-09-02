@@ -44,7 +44,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
 
    struct anv_batch *batch = state->batch;
    struct anv_device *device = state->device;
-   const struct anv_instance *instance = device->physical->instance;
+   const struct anv_physical_device *pdevice = device->physical;
    const struct brw_fs_prog_data *prog_data =
       brw_fs_prog_data_const(state->kernel->prog_data);
 
@@ -88,8 +88,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
       /* Simple shaders have no requirement that we need to disable geometry
        * distribution.
        */
-      vf.GeometryDistributionEnable =
-         instance->drirc.debug.vf_distribution;
+      vf.GeometryDistributionEnable = pdevice->drirc.debug.vf_distribution;
 #endif
    }
    anv_batch_emit(batch, GENX(3DSTATE_VF_SGVS), sgvs) {
@@ -279,7 +278,7 @@ genX(emit_simpler_shader_init_fragment)(struct anv_simple_shader *state)
    anv_batch_emit(batch, GENX(3DSTATE_PRIMITIVE_REPLICATION), pr);
 #endif
 
-   if (!instance->drirc.perf.disable_push_const_alloc) {
+   if (!pdevice->drirc.perf.disable_push_const_alloc) {
       VkShaderStageFlags push_stages =
          genX(push_constant_alloc_stages)(VK_SHADER_STAGE_FRAGMENT_BIT);
       genX(batch_emit_push_constants_alloc)(batch, device, push_stages);

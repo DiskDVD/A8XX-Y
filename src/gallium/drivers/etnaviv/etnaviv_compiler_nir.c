@@ -557,6 +557,9 @@ emit_tex(struct etna_compile *c, nir_tex_instr * tex)
          assert(!src2);
          src2 = &tex->src[i].src;
          break;
+      case nir_tex_src_ms_index:
+         /* Consumed as an instruction immediate by etna_emit_tex(..). */
+         break;
       default:
          compile_error(c, "Unhandled NIR tex src type: %d\n",
                        tex->src[i].src_type);
@@ -1317,6 +1320,7 @@ etna_compile_shader(struct etna_shader_variant *v)
 
    NIR_PASS(_, s, etna_lower_io, v);
    NIR_PASS(_, s, nir_lower_pack);
+   NIR_PASS(_, s, nir_opt_combine_stores, nir_var_shader_out);
    etna_optimize_loop(s);
 
    if (v->shader->specs->vs_need_z_div)

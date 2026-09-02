@@ -2763,6 +2763,8 @@ iris_compile_fs(struct iris_screen *screen,
    if (key->force_dual_color_blend)
       iris_force_dual_color_blend(nir);
 
+   nir_lower_fragcolor(nir, key->nr_color_regions);
+
 #ifdef INTEL_USE_ELK
    /* Lower output variables to load_output intrinsics before setting up
     * binding tables, so iris_setup_binding_table can map any load_output

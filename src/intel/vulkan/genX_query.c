@@ -873,14 +873,13 @@ void genX(CmdResetQueryPool)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_query_pool, pool, queryPool);
    const struct anv_physical_device *pdevice = cmd_buffer->device->physical;
-   const struct anv_instance *instance = pdevice->instance;
 
    /* Shader clearing is only possible on render/compute when not in protected
     * mode.
     */
    if (anv_cmd_buffer_is_render_or_compute_queue(cmd_buffer) &&
        (cmd_buffer->vk.pool->flags & VK_COMMAND_POOL_CREATE_PROTECTED_BIT) == 0 &&
-       queryCount >= instance->drirc.perf.query_clear_with_blorp_threshold) {
+       queryCount >= pdevice->drirc.perf.query_clear_with_blorp_threshold) {
       trace_intel_begin_query_clear_blorp(&cmd_buffer->trace);
 
       anv_cmd_buffer_fill_area(cmd_buffer,
@@ -2100,12 +2099,11 @@ void genX(CmdCopyQueryPoolResultsToMemoryKHR)(
    ANV_FROM_HANDLE(anv_query_pool, pool, queryPool);
    struct anv_device *device = cmd_buffer->device;
    const struct anv_physical_device *pdevice = device->physical;
-   const struct anv_instance *instance = pdevice->instance;
 
    struct anv_address dst_addr =
       anv_address_from_strided_range_flags(*pDstRange, dstFlags);
 
-   if (queryCount > instance->drirc.perf.query_copy_with_shader_threshold) {
+   if (queryCount > pdevice->drirc.perf.query_copy_with_shader_threshold) {
       copy_query_results_with_shader(cmd_buffer, pool,
                                      dst_addr,
                                      pDstRange->stride,

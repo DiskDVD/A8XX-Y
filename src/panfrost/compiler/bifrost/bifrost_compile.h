@@ -164,7 +164,8 @@ bool valhall_can_merge_workgroups(nir_shader *nir);
           nir_divergence_multiple_workgroup_per_compute_subgroup)              \
          : 0,                                                                  \
       .lower_mediump_io = pan_nir_lower_mediump_io,                            \
-      .io_options = nir_io_has_intrinsics, /* Skip unlowering IO to vars */    \
+      /* Skip unlowering IO to vars */                                         \
+      .io_options = nir_io_has_intrinsics | nir_io_non_interpolated_as_uint,   \
    };
 
 DEFINE_OPTIONS(bifrost_nir_options_v6, 6, false);

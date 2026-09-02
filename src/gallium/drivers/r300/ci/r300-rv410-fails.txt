@@ -630,11 +630,7 @@ spec@arb_texture_rg@texwrap formats-float bordercolor@GL_RG32F- border color onl
 
 spec@arb_vertex_program@big-param,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
-
 spec@egl_khr_surfaceless_context@viewport,Fail
-
-spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
 
 spec@ext_framebuffer_multisample@accuracy all_samples color depthstencil,Fail
 spec@ext_framebuffer_multisample@accuracy all_samples color depthstencil linear,Fail
@@ -792,12 +788,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-add-vec4-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-float-float,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-assign-div-mat3-mat3,Fail
@@ -833,14 +823,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-mat4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec2,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec3,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-float-vec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@fs-op-div-ivec4-ivec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat2-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat3-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-op-div-mat3-mat3,Fail
@@ -899,22 +881,6 @@ spec@glsl-1.10@execution@built-in-functions@fs-smoothstep-vec3-vec3-vec3,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-smoothstep-vec4-vec4-vec4,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-sqrt-float,Fail
 spec@glsl-1.10@execution@built-in-functions@fs-sqrt-vec3,Fail
-
-# Precision issues with the idiv lowered to RCP
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec2-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-assign-div-ivec4-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec2,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-int-ivec4,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec3-ivec3,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-int,Fail
-spec@glsl-1.10@execution@built-in-functions@vs-op-div-ivec4-ivec4,Fail
 
 # More precision issues or mission loops support
 spec@glsl-1.10@execution@built-in-functions@vs-pow-float-float,Fail

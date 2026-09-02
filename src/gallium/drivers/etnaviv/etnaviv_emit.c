@@ -358,7 +358,9 @@ etna_emit_state(struct etna_context *ctx)
     * possibly PS.TEMP_REGISTER_CONTROL).
     */
    if (unlikely(dirty & (ETNA_DIRTY_FRAMEBUFFER | ETNA_DIRTY_SAMPLE_MASK))) {
-      uint32_t val = VIVS_GL_MULTI_SAMPLE_CONFIG_MSAA_ENABLES(ctx->sample_mask);
+      uint32_t val = VIVS_GL_MULTI_SAMPLE_CONFIG_MSAA_ENABLES(
+         VIV_FEATURE(screen, ETNA_FEATURE_MSAA_FRAGMENT_OPERATION)
+            ? 0xf : ctx->sample_mask);
       val |= ctx->framebuffer.GL_MULTI_SAMPLE_CONFIG;
 
       /*03818*/ EMIT_STATE(GL_MULTI_SAMPLE_CONFIG, val);
@@ -482,8 +484,25 @@ etna_emit_state(struct etna_context *ctx)
       /*01030*/ EMIT_STATE(PS_CONTROL_EXT, ctx->framebuffer.PS_CONTROL_EXT);
    }
    if (unlikely(VIV_FEATURE(screen, ETNA_FEATURE_MSAA_FRAGMENT_OPERATION) &&
-                (dirty & ETNA_DIRTY_BLEND))) {
-      /*01054*/ EMIT_STATE(PS_MSAA_CONFIG, etna_blend_state(ctx->blend)->PS_MSAA_CONFIG);
+                (dirty & (ETNA_DIRTY_BLEND | ETNA_DIRTY_SAMPLE_MASK)))) {
+      uint32_t ps_msaa_config = etna_blend_state(ctx->blend)->PS_MSAA_CONFIG;
+
+      ps_msaa_config &= ~(VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_VALUE_MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_VALUE__MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_INVERT |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_INVERT_MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_MASK_MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_MASK_ENABLE_MASK |
+                          VIVS_PS_MSAA_CONFIG_SAMPLE_MASK__MASK);
+
+      ps_msaa_config |= VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE |
+                        VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_VALUE((unsigned)(ctx->sample_coverage * 16.0f)) |
+                        COND(ctx->sample_coverage_invert, VIVS_PS_MSAA_CONFIG_SAMPLE_COVERAGE_INVERT) |
+                        VIVS_PS_MSAA_CONFIG_SAMPLE_MASK_ENABLE |
+                        VIVS_PS_MSAA_CONFIG_SAMPLE_MASK(ctx->sample_mask);
+
+      /*01054*/ EMIT_STATE(PS_MSAA_CONFIG, ps_msaa_config);
 
       if (ctx->blend->alpha_to_coverage &&
           !ctx->alpha_coverage_dither_emitted) {

@@ -1488,6 +1488,9 @@ struct anv_physical_device {
     /** True if we can create protected contexts. */
     bool                                        has_protected_contexts;
 
+    /** True if HuC firmware is loaded and authenticated. */
+    bool                                        has_huc;
+
     /** Whether KMD has the ability to create VM objects */
     bool                                        has_vm_control;
 
@@ -1728,6 +1731,10 @@ struct anv_physical_device {
        uint32_t mesh_control[3];
        uint32_t task_control[3];
     } gfx_default;
+
+    struct anv_drirc                            drirc;
+    struct hash_table_u64                      *shader_workarounds;
+    VkResult                                    drirc_status;
 };
 
 static inline const struct anv_va_range *
@@ -1846,12 +1853,6 @@ static inline bool anv_needs_printf_buffer(void)
 
 struct anv_instance {
     struct vk_instance                          vk;
-
-    struct anv_drirc                            drirc;
-
-    struct hash_table_u64                      *shader_workarounds;
-
-    VkResult                                    drirc_status;
 };
 
 VkResult anv_init_wsi(struct anv_physical_device *physical_device);
@@ -7070,6 +7071,11 @@ void anv_vp9_reset_segment_id(struct anv_cmd_buffer *cmd,
 uint32_t anv_video_get_image_mv_size(struct anv_device *device,
                                      struct anv_image *image,
                                      const struct VkVideoProfileListInfoKHR *profile_list);
+
+uint32_t
+anv_h265_slice_size(const VkVideoDecodeInfoKHR *frame_info,
+                    const VkVideoDecodeH265PictureInfoKHR *h265_pic_info,
+                    unsigned s);
 
 static inline struct anv_address MUST_CHECK
 anv_image_dpb_address(const struct anv_image_view *iv,

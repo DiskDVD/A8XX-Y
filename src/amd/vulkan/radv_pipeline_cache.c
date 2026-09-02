@@ -345,7 +345,7 @@ radv_report_pso_cache_stats(struct radv_device *device, const struct radv_pipeli
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   if (!(instance->debug_flags & RADV_DEBUG_PSO_CACHE_STATS))
+   if (!(RADV_DEBUG(instance, PSO_CACHE_STATS)))
       return;
 
    /* Only gather PSO cache stats for application pipelines. */

@@ -1,5 +1,6 @@
 /*
  * Copyright © 2024 Collabora Ltd.
+ * Copyright © 2026 Arm Ltd.
  * SPDX-License-Identifier: MIT
  */
 
@@ -58,6 +59,33 @@ panvk_per_arch(CmdResetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
    }
 }
 
+static struct panvk_cache_flush_info
+collect_event_cache_flush(const struct panvk_cs_deps *deps)
+{
+   struct panvk_cache_flush_info flush = {0};
+
+   for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++) {
+      flush.l2 |= deps->src[i].cache_flush.l2;
+      flush.lsc |= deps->src[i].cache_flush.lsc;
+      flush.others |= deps->src[i].cache_flush.others;
+   }
+
+   return flush;
+}
+
+static bool
+panvk_event_transitions_execute_at_wait(const VkDependencyInfo *info)
+{
+   if (info->dependencyFlags & VK_DEPENDENCY_ASYMMETRIC_EVENT_BIT_KHR) {
+      return true;
+   }
+
+   VkPipelineStageFlags2 src_stages =
+      vk_collect_dependency_info_src_stages(info);
+
+   return !(src_stages & ~VK_PIPELINE_STAGE_2_HOST_BIT);
+}
+
 VKAPI_ATTR void VKAPI_CALL
 panvk_per_arch(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
                              const VkDependencyInfo *pDependencyInfo)
@@ -70,6 +98,37 @@ panvk_per_arch(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
 
    /* vkCmdSetEvents() is not allowed to be called mid-render-pass */
    assert(!deps.needs_fb_barrier);
+
+   STACK_ARRAY(uint64_t, crc_addrs, pDependencyInfo->imageMemoryBarrierCount);
+
+   if (!crc_addrs) {
+      vk_command_buffer_set_error(&cmdbuf->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return;
+   }
+
+   if (!panvk_event_transitions_execute_at_wait(pDependencyInfo)) {
+      panvk_per_arch(collect_crc_invalidation_deps)(pDependencyInfo, &deps,
+                                                    crc_addrs);
+
+      if (deps.crc.count) {
+         uint32_t src_mask = vk_stages_to_subqueue_mask(
+            vk_collect_dependency_info_src_stages(pDependencyInfo),
+            SYNC_SCOPE_FIRST);
+
+         /* Wait for the complete event source scope, invalidate CRC, then
+          * release the source streams so their event signals happen after it.
+          */
+         struct panvk_cs_deps transition = {
+            .crc = deps.crc,
+         };
+
+         transition.crc.src_subqueue_mask = src_mask;
+         transition.crc.dst_subqueue_mask =
+            src_mask ?: BITFIELD_BIT(PANVK_SUBQUEUE_COMPUTE);
+
+         panvk_per_arch(emit_barrier)(cmdbuf, transition);
+      }
+   }
 
    for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++) {
       struct cs_builder *b = panvk_get_cs_builder(cmdbuf, i);
@@ -103,6 +162,7 @@ panvk_per_arch(CmdSetEvent2)(VkCommandBuffer commandBuffer, VkEvent _event,
          }
       }
    }
+   STACK_ARRAY_FINISH(crc_addrs);
 }
 
 static void
@@ -112,6 +172,37 @@ cmd_wait_event(struct panvk_cmd_buffer *cmdbuf, struct panvk_event *event,
    struct panvk_cs_deps deps = {0};
 
    panvk_per_arch(add_cs_deps)(cmdbuf, info, &deps, false);
+
+   STACK_ARRAY(uint64_t, crc_addrs, info->imageMemoryBarrierCount);
+
+   if (!crc_addrs) {
+      vk_command_buffer_set_error(&cmdbuf->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return;
+   }
+
+   if (panvk_event_transitions_execute_at_wait(info)) {
+      panvk_per_arch(collect_crc_invalidation_deps)(info, &deps, crc_addrs);
+   }
+
+   struct panvk_cs_crc_deps crc = deps.crc;
+   struct panvk_cache_flush_info cache_flush = collect_event_cache_flush(&deps);
+
+   uint32_t dst_mask = vk_stages_to_subqueue_mask(
+      vk_collect_dependency_info_dst_stages(info), SYNC_SCOPE_SECOND);
+
+   bool has_wait_ops = crc.count || !panvk_cache_flush_is_nop(&cache_flush);
+
+   uint32_t exec_mask = dst_mask;
+   enum panvk_subqueue_id exec = panvk_crc_exec_subqueue(exec_mask);
+
+   if (has_wait_ops) {
+      uint32_t event_src_mask = 0;
+
+      for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++)
+         event_src_mask |= deps.dst[i].wait_subqueue_mask;
+
+      deps.dst[exec].wait_subqueue_mask |= event_src_mask;
+   }
 
    for (uint32_t i = 0; i < PANVK_SUBQUEUE_COUNT; i++) {
       struct cs_builder *b = panvk_get_cs_builder(cmdbuf, i);
@@ -129,6 +220,37 @@ cmd_wait_event(struct panvk_cmd_buffer *cmdbuf, struct panvk_event *event,
                                  seqno, sync_addr);
       }
    }
+
+   if (has_wait_ops) {
+      struct cs_builder *b = panvk_get_cs_builder(cmdbuf, exec);
+
+      if (!panvk_cache_flush_is_nop(&cache_flush)) {
+         struct cs_index flush_id = cs_scratch_reg32(b, 0);
+
+         cs_move32_to(b, flush_id, 0);
+         cs_flush_caches(b, cache_flush.l2, cache_flush.lsc, cache_flush.others,
+                         flush_id, cs_defer(SB_IMM_MASK, SB_ID(IMM_FLUSH)));
+         cs_wait_slot(b, SB_ID(IMM_FLUSH));
+      }
+
+      for (uint32_t i = 0; i < crc.count; i++)
+         panvk_per_arch(cmd_invalidate_crc)(b, crc.addrs[i]);
+
+      uint32_t other_dst = dst_mask & ~BITFIELD_BIT(exec);
+
+      if (other_dst) {
+         struct panvk_cs_deps post = {0};
+
+         post.src[exec].wait_sb_mask = SB_MASK(LS);
+
+         u_foreach_bit(dst, other_dst)
+            post.dst[dst].wait_subqueue_mask = BITFIELD_BIT(exec);
+
+         panvk_per_arch(emit_barrier)(cmdbuf, post);
+      }
+   }
+
+   STACK_ARRAY_FINISH(crc_addrs);
 }
 
 VKAPI_ATTR void VKAPI_CALL

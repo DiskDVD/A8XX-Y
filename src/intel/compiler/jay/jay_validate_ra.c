@@ -172,7 +172,7 @@ validate_block(jay_function *func, jay_block *block, struct regfile *blocks)
       }
 
       if (!ok) {
-         jay_print_inst(stderr, block, I, NULL);
+         jay_print_inst(stderr, func, I);
          print_regfile(rf, stderr);
       }
 

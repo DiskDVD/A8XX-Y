@@ -30,7 +30,7 @@ radv_device_fault_detection_enabled(const struct radv_device *device)
    const struct radv_physical_device *pdev = radv_device_physical(device);
    const struct radv_instance *instance = radv_physical_device_instance(pdev);
 
-   return instance->debug_flags & RADV_DEBUG_HANG;
+   return RADV_DEBUG(instance, HANG);
 }
 
 struct radv_trace_data {

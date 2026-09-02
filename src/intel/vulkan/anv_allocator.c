@@ -1698,7 +1698,7 @@ anv_device_alloc_bo(struct anv_device *device,
    /* Try to allocate memory in multiples of 2MB, as this allows us to use
     * 2MB pages rather than the less-efficient 4K pages.
     */
-   if (device->physical->instance->drirc.perf.alloc_oversubscription) {
+   if (device->physical->drirc.perf.alloc_oversubscription) {
       if (size >= 1 * 1024 * 1024 &&
           anv_device_has_perf_improvement_with_2mb_pages_oversubscription(device))
          size = align64(size, 2 * 1024 * 1024);

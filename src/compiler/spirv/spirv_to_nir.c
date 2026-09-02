@@ -863,7 +863,10 @@ vtn_handle_debug_printf(struct vtn_builder *b, SpvOp ext_opcode,
       for (uint32_t i = 0; i < argc; i++) {
          struct vtn_ssa_value *arg = vtn_ssa_value(b, w[6 + i]);
 
-         fields[i].type = glsl_intN_t_type(arg->def->bit_size);
+         if (arg->def->bit_size == 1)
+            fields[i].type = glsl_bool_type();
+         else
+            fields[i].type = glsl_intN_t_type(arg->def->bit_size);
          if (arg->def->num_components > 1)
             fields[i].type = glsl_vector_type(fields[i].type->base_type, arg->def->num_components);
 
@@ -873,7 +876,8 @@ vtn_handle_debug_printf(struct vtn_builder *b, SpvOp ext_opcode,
          unsigned num_components =
             arg->def->num_components == 3 ? 4 : arg->def->num_components;
 
-         int size = (int) arg->def->bit_size * num_components / 8;
+         unsigned bit_size = arg->def->bit_size == 1 ? 32 : arg->def->bit_size;
+         int size = (int) bit_size * num_components / 8;
          info->arg_sizes[i] = size;
 
          /* Match u_printf_impl, which 4-aligns each argument as it reads. */
@@ -2925,7 +2929,8 @@ vtn_handle_constant(struct vtn_builder *b, SpvOp opcode,
          vtn_assert(bit_size == bit_size0 && bit_size == bit_size1);
          (void)bit_size0; (void)bit_size1;
 
-         nir_const_value undef = { .u64 = 0xdeadbeefdeadbeef };
+         nir_const_value undef =
+            nir_const_value_for_raw_uint(0xdeadbeefdeadbeef, bit_size);
          nir_const_value combined[NIR_MAX_VEC_COMPONENTS * 2];
 
          if (v0->value_type == vtn_value_type_constant) {
@@ -2979,7 +2984,7 @@ vtn_handle_constant(struct vtn_builder *b, SpvOp opcode,
                 */
                type = type->component_type;
             } else {
-               vtn_fail_if(w[i] > type->length,
+               vtn_fail_if(w[i] >= type->length,
                            "%uth index of %s is %u but the type has only "
                            "%u elements", i - deref_start,
                            spirv_op_to_string(opcode), w[i], type->length);
@@ -3026,6 +3031,32 @@ vtn_handle_constant(struct vtn_builder *b, SpvOp opcode,
                unsigned num_components = type->length;
                for (unsigned i = 0; i < num_components; i++)
                   (*c)->values[elem + i] = insert->constant->values[i];
+            }
+         }
+         break;
+      }
+
+      case SpvOpSelect: {
+         struct vtn_value *cond = vtn_value(b, w[4], vtn_value_type_constant);
+         vtn_fail_if(!glsl_type_is_boolean(cond->type->type),
+                     "Condition of OpSelect must be a Boolean");
+
+         if (glsl_type_is_scalar(cond->type->type)) {
+            const uint32_t obj = cond->constant->values[0].b ? w[5] : w[6];
+            val->constant = vtn_value(b, obj, vtn_value_type_constant)->constant;
+         } else {
+            vtn_fail_if(glsl_get_vector_elements(cond->type->type) !=
+                        glsl_get_vector_elements(val->type->type),
+                        "Vector Condition of OpSelect must have the same "
+                        "number of components as the Result Type");
+
+            nir_constant *c1 = vtn_value(b, w[5], vtn_value_type_constant)->constant;
+            nir_constant *c2 = vtn_value(b, w[6], vtn_value_type_constant)->constant;
+
+            unsigned num_components = glsl_get_vector_elements(val->type->type);
+            for (unsigned i = 0; i < num_components; i++) {
+               val->constant->values[i] = cond->constant->values[i].b ?
+                  c1->values[i] : c2->values[i];
             }
          }
          break;

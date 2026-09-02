@@ -71,7 +71,7 @@ radv_probe_video_encode(struct radv_physical_device *pdev)
 
    pdev->video_encode_enabled = false;
 
-   if (instance->debug_flags & RADV_DEBUG_NO_VIDEO)
+   if (RADV_DEBUG(instance, NO_VIDEO))
       return;
 
    /* WRITE_MEMORY is needed for SetEvent and is required to pass CTS */

@@ -15,6 +15,7 @@
 
 #include "freedreno_query_hw.h"
 #include "freedreno_resource.h"
+#include "freedreno_state.h"
 
 #include "fd5_blend.h"
 #include "fd5_blitter.h"
@@ -574,7 +575,9 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
                    fp->writes_pos;
 
       OUT_PKT4(ring, REG_A5XX_RB_DEPTH_CNTL, 1);
-      OUT_RING(ring, zsa->rb_depth_cntl);
+      OUT_RING(ring, zsa->rb_depth_cntl |
+                        COND(fd_depth_clamp_enabled(ctx),
+                             A5XX_RB_DEPTH_CNTL_Z_CLAMP_ENABLE));
 
       OUT_PKT4(ring, REG_A5XX_RB_DEPTH_PLANE_CNTL, 1);
       OUT_RING(ring, COND(fragz, A5XX_RB_DEPTH_PLANE_CNTL_FRAG_WRITES_Z) |
@@ -626,6 +629,24 @@ fd5_emit_state(struct fd_context *ctx, struct fd_ringbuffer *ring,
       OUT_RING(ring, A5XX_GRAS_CL_VPORT_YSCALE_0(vp->scale[1]));
       OUT_RING(ring, A5XX_GRAS_CL_VPORT_ZOFFSET_0(vp->translate[2]));
       OUT_RING(ring, A5XX_GRAS_CL_VPORT_ZSCALE_0(vp->scale[2]));
+   }
+
+   if ((dirty & (FD_DIRTY_VIEWPORT | FD_DIRTY_RASTERIZER)) &&
+       fd_depth_clamp_enabled(ctx)) {
+      struct pipe_viewport_state *vp = &ctx->viewport[0];
+      /* Not min/max: a reversed range stays reversed or the clamp inverts. */
+      float znear = ctx->rasterizer->clip_halfz
+                       ? vp->translate[2]
+                       : vp->translate[2] - vp->scale[2];
+      float zfar = vp->translate[2] + vp->scale[2];
+
+      OUT_PKT4(ring, REG_A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0, 2);
+      OUT_RING(ring, A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0(znear));
+      OUT_RING(ring, A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0(zfar));
+
+      OUT_PKT4(ring, REG_A5XX_RB_VIEWPORT_ZCLAMP_NEAR, 2);
+      OUT_RING(ring, A5XX_RB_VIEWPORT_ZCLAMP_NEAR(znear));
+      OUT_RING(ring, A5XX_RB_VIEWPORT_ZCLAMP_FAR(zfar));
    }
 
    if (dirty & FD_DIRTY_PROG)

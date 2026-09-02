@@ -197,6 +197,8 @@ struct etna_context {
 
    /* compiled bindable state */
    unsigned sample_mask;
+   float sample_coverage;
+   bool sample_coverage_invert;
    struct pipe_blend_state *blend;
    unsigned num_fragment_samplers;
    uint32_t active_samplers;

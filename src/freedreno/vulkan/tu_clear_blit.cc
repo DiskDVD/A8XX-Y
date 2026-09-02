@@ -3813,6 +3813,10 @@ tu_CmdResolveImage2(VkCommandBuffer commandBuffer,
 
    ops->teardown(cmd, cs);
 
+   if (dst_image->lrz_layout.lrz_total_size) {
+      tu_disable_lrz<CHIP>(cmd, &cmd->cs, dst_image);
+   }
+
    trace_end_resolve_image(&cmd->trace, &cmd->cs);
 }
 TU_GENX(tu_CmdResolveImage2);
@@ -4649,13 +4653,13 @@ tu_emit_clear_gmem_attachment(struct tu_cmd_buffer *cmd,
       if (fdm_rect) {
             struct apply_gmem_clear_coords_state state = {
                .view = layer,
-               .rect = *fdm_rect,
+               .rect = per_layer_render_area ? cmd->state.render_areas[layer] : *fdm_rect,
             };
             tu_create_fdm_bin_patchpoint(cmd, cs, 3, TU_FDM_SKIP_BINNING,
                                          fdm_apply_gmem_clear_coords, state);
-      }
-      if (per_layer_render_area)
+      } else if (per_layer_render_area) {
          tu6_emit_blit_scissor(cmd, cs, layer, false);
+      }
       if (att->format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
          if (mask & VK_IMAGE_ASPECT_DEPTH_BIT) {
             uint32_t buffer_id = tu_resolve_group_include_buffer<CHIP>(resolve_group, VK_FORMAT_D32_SFLOAT);
@@ -5110,7 +5114,8 @@ tu_clear_gmem_attachment(struct tu_cmd_buffer *cmd,
                                  attachment->used_views,
                                  per_layer_render_area,
                                  attachment->clear_mask,
-                                 &cmd->state.clear_values[a], NULL);
+                                 &cmd->state.clear_values[a],
+                                 cmd->state.fdm_enabled ? &cmd->state.render_areas[0] : NULL);
 }
 TU_GENX(tu_clear_gmem_attachment);
 

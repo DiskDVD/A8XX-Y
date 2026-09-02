@@ -49,6 +49,21 @@ info on what was updated.
 Workarounds
 ===========
 
+KK_WORKAROUND_18
+----------------
+| macOS version: 26.x
+| Metal ticket: Not reported
+| Metal ticket status:
+| CTS test failure: ``dEQP-VK.memory_model.message_passing.ext.u32.noncoherent.atomic_fence.atomicwrite.queuefamily.payload_local.buffer.guard_local.physbuffer.comp`` and similars
+| Comments:
+
+Tests fail because they get stale reads after a memory barrier. Potentially caused by
+a bug in the MSL compiler or a hardware bug in M3+. Worked around by adding a device load
+post barrier used as a conditional for a duplicated barrier that will never be read.
+
+| Log:
+| 2026-08-26: Workaround implemented. Fixed in macOS 27
+
 KK_WORKAROUND_17
 ----------------
 | macOS version: 26.x

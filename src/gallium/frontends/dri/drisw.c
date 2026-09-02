@@ -601,6 +601,11 @@ drisw_init_screen(struct dri_screen *screen, bool driver_name_is_inferred)
    struct pipe_screen *pscreen = NULL;
    const struct drisw_loader_funcs *lf = &drisw_lf;
 
+   if (!loader) {
+      fprintf(stderr, "mesa: swrast interface not found\n");
+      return NULL;
+   }
+
    screen->swrast_no_present = debug_get_option_swrast_no_present();
 
    if (loader->base.version >= 4) {

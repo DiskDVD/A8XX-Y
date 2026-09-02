@@ -3160,11 +3160,14 @@ emit_pipe_control(struct anv_batch *batch,
     * At the moment it's unclear whether all other parameters should go in the
     * first or second PIPE_CONTROL. It seems logical that it should go to the
     * first so that the timestamp accounts for all the associated flushes.
+    *
+    * TODO: Check if it's the same case with signal on event completion. (i.e
+    * post sync with writeImmedidateData happening before stall has completed)
     */
    if (intel_needs_workaround(devinfo, 18040903259) &&
        batch->engine_class == INTEL_ENGINE_CLASS_RENDER &&
        current_pipeline == GPGPU &&
-       post_sync_op != NoWrite) {
+       post_sync_op == WriteTimestamp) {
       genX(batch_emit_pipe_control)(batch, devinfo, current_pipeline,
                                     bits | ANV_PIPE_CS_STALL_BIT,
                                     "Wa_18040903259");

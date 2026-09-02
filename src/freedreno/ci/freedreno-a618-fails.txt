@@ -64,7 +64,6 @@ spec@arb_vertex_type_2_10_10_10_rev@attrib-p-type-size-match,Fail
 spec@arb_indirect_parameters@tf-count-arrays,Fail
 spec@arb_indirect_parameters@tf-count-elements,Fail
 
-spec@egl 1.4@eglterminate then unbind context,Fail
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_msc_and_sbc_test,Fail
 spec@egl_chromium_sync_control@conformance,Fail
 spec@egl_khr_surfaceless_context@viewport,Fail
@@ -206,7 +205,6 @@ spec@arb_base_instance@arb_base_instance-baseinstance-doesnt-affect-gl-instance-
 spec@arb_base_instance@arb_base_instance-drawarrays,Fail
 spec@ext_base_instance@arb_base_instance-baseinstance-doesnt-affect-gl-instance-id_gles3,Fail
 spec@ext_base_instance@arb_base_instance-drawarrays_gles3,Fail
-vulkan@shaders@cmat-uniform-ctor,Fail
 spec@!opengl 1.1@getteximage-depth@GL_TEXTURE_1D_ARRAY-GL_DEPTH_COMPONENT32,Fail
 
 # New failures appeared after Piglit uprev to 28d1349844eacda869f0f82f551bcd4ac0c4edfe
@@ -405,32 +403,9 @@ dEQP-VK.fragment_operations.early_fragment.sample_count_early_fragment_tests_dep
 angle-dEQP-GLES3.functional.fbo.msaa.2_samples.rg8,Fail
 angle-dEQP-GLES3.functional.fbo.msaa.4_samples.rg8,Fail
 
-# VKCTS 1.4.4.2 -> 1.4.5.3 uprev.
-# [  118.945672] *** gpu fault: ttbr0=00000001d0f38000 iova=00000000040ff000 dir=READ type=TRANSLATION source=TP|VFD (0,0,0,1)
-# Not entirely reliable -- which ones crash vs pass may flip around, so clear the flakes entry when it's fixed.
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_subsampled_pre_resolve_info_frag_out_only_resolve_info_frag_shader_no_formats,Crash
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_subsampled_resolve_info_frag_shader_no_formats,Crash
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_subsampled,Crash
-dEQP-VK.renderpasses.renderpass1.custom_resolve.fast_lib.fdm_subsampled,Crash
-dEQP-VK.renderpasses.renderpass1.custom_resolve.monolithic.fdm_subsampled,Crash
-
 # uprev Piglit in Mesa
 spec@!opengl 1.1@large-tex,Fail
 spec@!opengl 1.1@large-tex@test_image_load_store,Fail
-
-# VKCTS 1.4.5.3 -> 1.4.6.1 uprev
-# [  254.112811] *** gpu fault: ttbr0=000000010778d000 iova=00000000040fff00 dir=READ type=TRANSLATION source=TP|VFD (0,0,0,1)
-# Not entirely reliable -- which ones crash vs pass may flip around, so clear the flakes entry when it's fixed.
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.monolithic.fdm_nonsubsampled_large_fb_with_offset,Crash
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.monolithic.fdm_nonsubsampled_multilayer_with_offset,Fail
-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.monolithic.fdm_nonsubsampled_with_offset,Fail
-dEQP-VK.renderpasses.renderpass2.custom_resolve.fast_lib.fdm_nonsubsampled_multilayer_large_fb_with_offset,Crash
-dEQP-VK.renderpasses.renderpass2.custom_resolve.fast_lib.fdm_nonsubsampled_multilayer_with_offset,Fail
-dEQP-VK.renderpasses.renderpass2.custom_resolve.fast_lib.fdm_nonsubsampled_multiview_large_fb_with_offset,Crash
-dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_nonsubsampled_multiview_with_offset,Crash
-dEQP-VK.renderpasses.renderpass2.custom_resolve.monolithic.fdm_nonsubsampled_with_offset,Fail
-gmem-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.fast_lib.fdm_nonsubsampled_with_offset,Fail
-gmem-dEQP-VK.renderpasses.dynamic_rendering.primary_cmd_buff.custom_resolve.monolithic.fdm_nonsubsampled_multilayer_with_offset,Fail
 
 #
 # OpenCL-CTS

@@ -922,11 +922,15 @@ void pco_lower_nir(pco_ctx *ctx, nir_shader *nir, pco_data *data)
 
    NIR_PASS(_, nir, pco_nir_prop_access);
 
-   NIR_PASS(_,
+   bool progress = false;
+   NIR_PASS(progress,
             nir,
             nir_lower_explicit_io,
             nir_var_mem_ubo | nir_var_mem_ssbo,
             nir_address_format_vec2_index_32bit_offset);
+
+   if (progress)
+      NIR_PASS(_, nir, nir_opt_idiv_const, 32);
 
    NIR_PASS(_,
             nir,

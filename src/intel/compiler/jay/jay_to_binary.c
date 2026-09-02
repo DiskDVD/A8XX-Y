@@ -361,7 +361,7 @@ emit(struct jay_codegen *jc,
    }
 
    gen->exec_size = jay_simd_width_physical(f->shader, I);
-   gen->no_mask = jay_is_no_mask(I);
+   gen->no_mask = I->uniform || jay_opcode_infos[I->op].no_mask;
    gen->chan_offset = simd_offs * gen->exec_size;
    gen->swsb = dep;
    gen->saturate = I->saturate;
@@ -709,7 +709,7 @@ emit(struct jay_codegen *jc,
 
    static_assert(GEN_OP_ILLEGAL == 0);
    if (!gen->opcode) {
-      jay_print_inst(stderr, NULL, (jay_inst *) I, NULL);
+      jay_print_inst(stderr, f, (jay_inst *) I);
       UNREACHABLE("Unhandled opcode");
    }
 }
@@ -776,7 +776,7 @@ jay_to_binary(jay_shader *s,
          }
 
          jay_foreach_inst_in_block(block, I) {
-            // jay_print_inst(stdout, (jay_inst *) I);
+            // jay_print_inst(stdout, f, (jay_inst *) I);
 
             for (unsigned i = 0; i < (1 << jay_simd_split(s, I)); ++i) {
                for (unsigned j = 0; j < jay_macro_length(I); ++j) {

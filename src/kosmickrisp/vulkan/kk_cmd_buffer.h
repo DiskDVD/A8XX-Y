@@ -398,4 +398,7 @@ void kk_dispatch_precomp(struct kk_cmd_buffer *cmd, struct kk_grid grid,
 
 void kk_cmd_write(struct kk_cmd_buffer *cmd, struct libkk_imm_write write);
 
+void kk_encoder_state_set_label(struct kk_encoder_state *state,
+                                const char *label);
+void kk_cmd_buffer_set_label(struct kk_cmd_buffer *cb, const char *label);
 #endif

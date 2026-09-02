@@ -25,9 +25,7 @@ radv_get_resolve_method(struct radv_image *src_image, struct radv_image *dst_ima
    /* Default to the fragment resolve path which is optimal for compression. */
    enum radv_resolve_method resolve_method = RESOLVE_FRAGMENT;
 
-   /* TODO: Add layers support to the fragment resolve path. */
-   if (src_image->vk.array_layers > 1 || dst_image->vk.array_layers > 1 ||
-       (dst_image->planes[0].surface.flags & RADEON_SURF_NO_RENDER_TARGET))
+   if (dst_image->planes[0].surface.flags & RADEON_SURF_NO_RENDER_TARGET)
       resolve_method = RESOLVE_COMPUTE;
 
    return resolve_method;

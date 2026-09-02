@@ -87,6 +87,7 @@ static const nir_shader_compiler_options midgard_nir_options = {
    .lower_doubles_options = nir_lower_dmod,
    .support_indirect_inputs = 0 /* TODO support indirect varyings */,
    .max_samples = 16,
+   .io_options = nir_io_non_interpolated_as_uint,
 };
 
 #endif

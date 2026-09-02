@@ -284,7 +284,7 @@ radv_meta_end_rendering(struct radv_cmd_buffer *cmd_buffer)
 }
 
 VkImageViewType
-radv_meta_get_view_type(const struct radv_image *image)
+radv_meta_get_view_type(const struct radv_image *image, bool use_2d_array_for_3d)
 {
    switch (image->vk.image_type) {
    case VK_IMAGE_TYPE_1D:
@@ -292,7 +292,7 @@ radv_meta_get_view_type(const struct radv_image *image)
    case VK_IMAGE_TYPE_2D:
       return VK_IMAGE_VIEW_TYPE_2D;
    case VK_IMAGE_TYPE_3D:
-      return VK_IMAGE_VIEW_TYPE_3D;
+      return use_2d_array_for_3d ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_3D;
    default:
       UNREACHABLE("bad VkImageViewType");
    }

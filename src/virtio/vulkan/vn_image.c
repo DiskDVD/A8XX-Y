@@ -54,27 +54,24 @@ static void
 vn_image_fill_reqs(const struct vn_image_memory_requirements *req,
                    VkMemoryRequirements2 *out_reqs)
 {
-   union {
-      VkBaseOutStructure *pnext;
-      VkMemoryRequirements2 *two;
-      VkMemoryDedicatedRequirements *dedicated;
-   } u = { .two = out_reqs };
-
-   while (u.pnext) {
-      switch (u.pnext->sType) {
-      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2:
-         u.two->memoryRequirements = req->memory.memoryRequirements;
+   vk_foreach_struct(stype, src, out_reqs) {
+      switch (stype) {
+      case VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2: {
+         VkMemoryRequirements2 *reqs2 = src;
+         reqs2->memoryRequirements = req->memory.memoryRequirements;
          break;
-      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS:
-         u.dedicated->prefersDedicatedAllocation =
+      }
+      case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS: {
+         VkMemoryDedicatedRequirements *dedicated = src;
+         dedicated->prefersDedicatedAllocation =
             req->dedicated.prefersDedicatedAllocation;
-         u.dedicated->requiresDedicatedAllocation =
+         dedicated->requiresDedicatedAllocation =
             req->dedicated.requiresDedicatedAllocation;
          break;
+      }
       default:
          break;
       }
-      u.pnext = u.pnext->pNext;
    }
 }
 
@@ -482,7 +479,7 @@ vn_image_fix_create_info(
    struct vn_image_create_info *local_info)
 {
    local_info->create = *create_info;
-   VkBaseOutStructure *cur = (void *)&local_info->create;
+   void *cur = (void *)&local_info->create;
 
    vk_foreach_struct_const(sType, src, create_info->pNext) {
       void *next = NULL;
@@ -516,12 +513,12 @@ vn_image_fix_create_info(
       }
 
       if (next) {
-         cur->pNext = next;
+         vk_pnext_set_next(cur, next);
          cur = next;
       }
    }
 
-   cur->pNext = NULL;
+   vk_pnext_set_next(cur, NULL);
 
    return &local_info->create;
 }
