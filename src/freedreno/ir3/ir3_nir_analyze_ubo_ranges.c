@@ -65,6 +65,7 @@ get_ubo_info(nir_intrinsic_instr *instr, struct ir3_ubo_info *ubo)
          return true;
       }
    }
+   ubo->can_speculate = nir_intrinsic_access(instr) & ACCESS_CAN_SPECULATE;
    return false;
 }
 
@@ -97,7 +98,8 @@ get_existing_range(nir_intrinsic_instr *instr,
  * newly updated range.
  */
 static void
-merge_neighbors(struct ir3_ubo_analysis_state *state, int index)
+merge_neighbors(struct ir3_ubo_analysis_state *state, int index,
+                uint32_t max_coalesce_gap)
 {
    struct ir3_ubo_range *a = &state->range[index];
 
@@ -109,7 +111,13 @@ merge_neighbors(struct ir3_ubo_analysis_state *state, int index)
       if (memcmp(&a->ubo, &b->ubo, sizeof(a->ubo)))
          continue;
 
-      if (a->start > b->end || a->end < b->start)
+      uint32_t gap = 0;
+      if (a->end < b->start)
+         gap = b->start - a->end;
+      else if (b->end < a->start)
+         gap = a->start - b->end;
+
+      if (gap > max_coalesce_gap)
          continue;
 
       /* Merge B into A. */
@@ -131,7 +139,7 @@ merge_neighbors(struct ir3_ubo_analysis_state *state, int index)
 static void
 gather_ubo_ranges(nir_shader *nir, nir_intrinsic_instr *instr,
                   struct ir3_ubo_analysis_state *state, uint32_t alignment,
-                  uint32_t *upload_remaining)
+                  uint32_t max_coalesce_gap, uint32_t *upload_remaining)
 {
    struct ir3_ubo_info ubo = {};
    if (!get_ubo_info(instr, &ubo))
@@ -147,10 +155,19 @@ gather_ubo_ranges(nir_shader *nir, nir_intrinsic_instr *instr,
       if (memcmp(&plan_r->ubo, &ubo, sizeof(ubo)))
          continue;
 
-      /* Don't extend existing uploads unless they're
-       * neighboring/overlapping.
+      /* Don't extend existing uploads unless they're neighboring/overlapping.
+       * On bandwidth-limited GPUs, allow a small hole between ranges. The
+       * preamble may copy a few unused dwords, but hot shader code can then
+       * source nearby UBO loads from the constant file instead of issuing more
+       * memory-backed UBO reads.
        */
-      if (r.start > plan_r->end || r.end < plan_r->start)
+      uint32_t gap = 0;
+      if (plan_r->end < r.start)
+         gap = r.start - plan_r->end;
+      else if (r.end < plan_r->start)
+         gap = plan_r->start - r.end;
+
+      if (gap > max_coalesce_gap)
          continue;
 
       r.start = MIN2(r.start, plan_r->start);
@@ -166,7 +183,7 @@ gather_ubo_ranges(nir_shader *nir, nir_intrinsic_instr *instr,
          !!(nir_intrinsic_access(instr) & ACCESS_CAN_SPECULATE);
       *upload_remaining -= added;
 
-      merge_neighbors(state, i);
+      merge_neighbors(state, i, max_coalesce_gap);
       return;
    }
 
@@ -500,7 +517,7 @@ ir3_nir_can_lower_to_ldg_k(nir_intrinsic_instr *intrin)
 }
 
 static bool
-instr_is_load_const(nir_instr *instr)
+instr_is_ldg_k_load(nir_instr *instr)
 {
    if (instr->type != nir_instr_type_intrinsic)
       return false;
@@ -573,21 +590,19 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
 
    struct ir3_ubo_analysis_state state = {};
    uint32_t upload_remaining = max_upload;
-
    nir_foreach_function (function, nir) {
       if (function->impl && !function->is_preamble) {
          nir_foreach_block (block, function->impl) {
             nir_foreach_instr (instr, block) {
-               if (instr_is_load_const(instr) &&
+               if (instr_is_ldg_k_load(instr) &&
                    ir3_def_is_rematerializable_for_preamble(nir_instr_as_intrinsic(instr)->src[0].ssa, NULL))
                   gather_ubo_ranges(nir, nir_instr_as_intrinsic(instr), &state,
-                                    align_vec4,
+                                    align_vec4, 0,
                                     &upload_remaining);
             }
          }
       }
    }
-
    assign_offsets(&state, global_offset, max_upload);
 
    bool progress = copy_global_to_uniform(nir, &state);
@@ -655,6 +670,10 @@ ir3_nir_analyze_ubo_ranges(nir_shader *nir, struct ir3_shader_variant *v)
       return;
 
    uint32_t upload_remaining = max_upload;
+   /* Some A8xx GPUs benefit from coalescing nearby promoted UBO ranges so
+    * repeated per-invocation loads are more likely to hit the const file.
+    */
+   uint32_t max_coalesce_gap = compiler->ubo_push_coalesce_gap;
    bool push_ubos = compiler->options.push_ubo_with_preamble;
 
    nir_foreach_function (function, nir) {
@@ -663,7 +682,7 @@ ir3_nir_analyze_ubo_ranges(nir_shader *nir, struct ir3_shader_variant *v)
             nir_foreach_instr (instr, block) {
                if (instr_is_load_ubo(instr))
                   gather_ubo_ranges(nir, nir_instr_as_intrinsic(instr), state,
-                                    align_vec4,
+                                    align_vec4, max_coalesce_gap,
                                     &upload_remaining);
             }
          }

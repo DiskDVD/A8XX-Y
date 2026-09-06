@@ -218,6 +218,10 @@ ir3_should_double_threadsize(struct ir3_shader_variant *v, unsigned regs_count)
    case MESA_SHADER_KERNEL:
    case MESA_SHADER_COMPUTE:
    case MESA_SHADER_FRAGMENT: {
+      if (compiler->gen >= 8 &&
+          ir3_get_gpu_profile(compiler->dev_id->chip_id).force_double_threadsize &&
+          regs_count * 2 <= compiler->reg_size_vec4)
+         return true;
       /* One of the limits on maximum waves of the shader running in parallel is
        * the register count used in the shader compared to the hardware's
        * register file size.  The absolute limit is if doubling the threadsize

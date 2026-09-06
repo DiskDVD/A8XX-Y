@@ -775,10 +775,12 @@ ir3_nir_opt_prefetch_descriptors(nir_shader *nir, struct ir3_shader_variant *v)
 
          /* Each descriptor must be rematerializable */
          if (descs[0] &&
-             !ir3_def_is_rematerializable_for_preamble(descs[0], preamble_defs))
+             (!is_descriptor_prefetchable(descs[0]) ||
+              !ir3_def_is_rematerializable_for_preamble(descs[0], preamble_defs)))
             continue;
          if (descs[1] &&
-             !ir3_def_is_rematerializable_for_preamble(descs[1], preamble_defs))
+             (!is_descriptor_prefetchable(descs[1]) ||
+              !ir3_def_is_rematerializable_for_preamble(descs[1], preamble_defs)))
             continue;
 
          bool is_speculatable =
