@@ -618,7 +618,7 @@ ir3_nir_lower_const_global_loads(nir_shader *nir, struct ir3_shader_variant *v)
             nir_builder builder = nir_builder_create(function->impl);
             nir_foreach_block (block, function->impl) {
                nir_foreach_instr_safe (instr, block) {
-                  if (!instr_is_load_const(instr))
+                  if (!instr_is_ldg_k_load(instr))
                      continue;
                   progress |= lower_ubo_load_to_uniform(
                      nir_instr_as_intrinsic(instr), &builder, &state, NULL,
