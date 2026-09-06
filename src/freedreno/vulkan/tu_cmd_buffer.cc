@@ -1380,9 +1380,9 @@ use_sysmem_rendering(struct tu_cmd_buffer *cmd,
 
    bool no_gmem = cmd->device->physical_device->dev_info.props.disable_gmem;
    if (no_gmem) {
-       cmd->state.rp.gmem_disable_reason = "Unsupported GPU";
-       return true;
-    }
+      cmd->state.rp.force_render_mode_reason = "GMEM disabled by device configuration";
+      return true;
+   }
 
    /* can't fit attachments into gmem */
    if (!cmd->state.tiling->possible) {
