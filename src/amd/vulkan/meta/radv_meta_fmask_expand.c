@@ -177,7 +177,7 @@ radv_fmask_color_expand(struct radv_cmd_buffer *cmd_buffer, struct radv_image *i
    radv_process_color_image(cmd_buffer, image, subresourceRange);
 
    cmd_buffer->state.flush_bits |=
-      RADV_CMD_FLAG_CS_PARTIAL_FLUSH | radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+      AC_BARRIER_SYNC_CS | radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                              VK_ACCESS_2_SHADER_WRITE_BIT, 0, image, subresourceRange);
 
    /* Re-initialize FMASK in fully expanded mode. */

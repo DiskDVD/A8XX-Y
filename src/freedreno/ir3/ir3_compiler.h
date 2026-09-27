@@ -272,6 +272,8 @@ struct ir3_compiler {
    } delay_slots;
 };
 
+#define IR3_QUIRK(compiler, name) FD_QUIRK((compiler)->info, name)
+
 void ir3_compiler_destroy(struct ir3_compiler *compiler);
 struct ir3_compiler *ir3_compiler_create(struct fd_device *dev,
                                          const struct fd_dev_id *dev_id,

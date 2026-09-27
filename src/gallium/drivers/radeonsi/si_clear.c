@@ -1020,7 +1020,7 @@ static void gfx6_clear(struct pipe_context *ctx, unsigned buffers,
             if ((zstex->depth_clear_value[level] != 0) != (depth != 0)) {
                /* ZRANGE_PRECISION register of a bound surface will change so we
                 * must flush the DB caches. */
-               si_set_barrier_flags(sctx, SI_BARRIER_SYNC_AND_INV_DB);
+               si_set_barrier_flags(sctx, AC_BARRIER_SYNC_AND_INV_DB);
             }
             /* Update DB_DEPTH_CLEAR. */
             zstex->depth_clear_value[level] = depth;
@@ -1055,7 +1055,7 @@ static void gfx6_clear(struct pipe_context *ctx, unsigned buffers,
        * The root cause is unknown.
        */
       if (sctx->gfx_level >= GFX11 && sctx->gfx_level < GFX12)
-         si_set_barrier_flags(sctx, SI_BARRIER_SYNC_VS);
+         si_set_barrier_flags(sctx, AC_BARRIER_SYNC_VS);
    }
 
    if (unlikely(sctx->sqtt_enabled)) {

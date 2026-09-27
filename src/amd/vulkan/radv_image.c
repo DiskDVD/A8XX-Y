@@ -655,11 +655,6 @@ radv_get_surface_flags(struct radv_device *device, struct radv_image *image, uns
       flags |= RADEON_SURF_PRT | RADEON_SURF_NO_FMASK | RADEON_SURF_NO_HTILE | RADEON_SURF_DISABLE_DCC;
    }
 
-   if (image->queue_family_mask & BITFIELD_BIT(RADV_QUEUE_TRANSFER)) {
-      if (!pdev->info.sdma_supports_compression)
-         flags |= RADEON_SURF_DISABLE_DCC | RADEON_SURF_NO_HTILE;
-   }
-
    /* Disable DCC for VRS rate images because the hw can't handle compression. */
    if (image->vk.usage & VK_IMAGE_USAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR)
       flags |= RADEON_SURF_VRS_RATE | RADEON_SURF_DISABLE_DCC;
@@ -856,7 +851,8 @@ radv_image_alloc_values(const struct radv_device *device, struct radv_image *ima
 
    if (pdev->info.gfx_level == GFX12) {
       /* Allocate HiZ metadata when the image has depth/stencil aspects to implement a workaround. */
-      if (pdev->gfx12_hiz_wa == RADV_GFX12_HIZ_WA_FULL && radv_image_has_hiz(image) &&
+      if ((pdev->gfx12_hiz_wa == RADV_GFX12_HIZ_WA_FULL || pdev->gfx12_hiz_wa == RADV_GFX12_HIZ_WA_FULL_REZ) &&
+          radv_image_has_hiz(image) &&
           (image->vk.aspects == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
          image->hiz_metadata_offset = image->size;
          image->size += image->vk.mip_levels * 4;
@@ -1546,9 +1542,7 @@ radv_layout_is_htile_compressed(const struct radv_device *device, const struct r
 {
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
-   /* Don't compress exclusive images used on transfer queues when SDMA doesn't support HTILE.
-    * Note that HTILE is already disabled on concurrent images when not supported.
-    */
+   /* Don't compress exclusive images used on transfer queues when SDMA doesn't support HTILE. */
    if (queue_mask == BITFIELD_BIT(RADV_QUEUE_TRANSFER) && !pdev->info.sdma_supports_compression)
       return false;
 
@@ -1648,12 +1642,11 @@ radv_layout_dcc_compressed(const struct radv_device *device, const struct radv_i
 
    /* Don't compress compute transfer dst when image stores are not supported. */
    if ((layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL || layout == VK_IMAGE_LAYOUT_GENERAL) &&
-       (queue_mask & (1u << RADV_QUEUE_COMPUTE)) && !radv_image_compress_dcc_on_image_stores(device, image))
+       (queue_mask & (BITFIELD_BIT(RADV_QUEUE_COMPUTE) | BITFIELD_BIT(RADV_QUEUE_TRANSFER))) &&
+       !radv_image_compress_dcc_on_image_stores(device, image))
       return false;
 
-   /* Don't compress exclusive images used on transfer queues when SDMA doesn't support DCC.
-    * Note that DCC is already disabled on concurrent images when not supported.
-    */
+   /* Don't compress exclusive images used on transfer queues when SDMA doesn't support DCC. */
    if (queue_mask == BITFIELD_BIT(RADV_QUEUE_TRANSFER) && !pdev->info.sdma_supports_compression)
       return false;
 
@@ -1950,7 +1943,10 @@ radv_GetImageOpaqueCaptureDescriptorDataEXT(VkDevice device, const VkImageCaptur
 {
    VK_FROM_HANDLE(radv_image, image, pInfo->image);
 
-   *(uint64_t *)pData = image->bindings[0].addr;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
+      memcpy(pData, &image->bindings[0].addr, sizeof(image->bindings[0].addr));
+   else
+      memset(pData, 0, sizeof(image->bindings[0].addr));
    return VK_SUCCESS;
 }
 
@@ -1961,7 +1957,10 @@ radv_GetImageOpaqueCaptureDataEXT(VkDevice device, uint32_t imageCount, const Vk
    for (uint32_t i = 0; i < imageCount; i++) {
       VK_FROM_HANDLE(radv_image, image, pImages[i]);
 
-      *(uint64_t *)pDatas[i].address = image->bindings[0].addr;
+      if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
+         memcpy(pDatas[i].address, &image->bindings[0].addr, sizeof(image->bindings[0].addr));
+      else
+         memset(pDatas[i].address, 0, sizeof(image->bindings[0].addr));
    }
 
    return VK_SUCCESS;

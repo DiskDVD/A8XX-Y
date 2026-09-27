@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "jay_ir.h"
+#include "jay_opcodes.h"
 
 static enum jay_stride
 min_stride_for_type(enum jay_type T)
@@ -108,6 +109,11 @@ jay_src_stride_minmax(jay_inst *I, unsigned s, bool do_max)
 {
    enum jay_stride min = min_stride_for_type(jay_src_type(I, s));
    enum jay_stride max = max_stride_for_type(jay_src_type(I, s));
+
+   /* Stride 8 would result in the input spanning four GRFs for SIMD32. */
+   if (I->op == JAY_OPCODE_OFFSET_PACKED_PIXEL_COORDS && do_max) {
+      max = JAY_STRIDE_4;
+   }
 
    /* BSpec 56640: bfloat sources must be packed */
    if (jay_src_type(I, s) == JAY_TYPE_BF16) {

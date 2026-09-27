@@ -28,7 +28,7 @@ static std::mutex sDrmObjectRefMutex;
 static std::unordered_map<uint32_t, int> sDrmObjectRefMap;
 
 DrmVirtGpuResource::DrmVirtGpuResource(int64_t deviceHandle, uint32_t blobHandle,
-                                           uint32_t resourceHandle, uint64_t size)
+                                       uint32_t resourceHandle, uint64_t size)
     : mDeviceHandle(deviceHandle),
       mBlobHandle(blobHandle),
       mResourceHandle(resourceHandle),
@@ -61,8 +61,9 @@ DrmVirtGpuResource::~DrmVirtGpuResource() {
     if (refMapIt->second <= 0) {
         sDrmObjectRefMap.erase(refMapIt);
 
-        struct drm_gem_close gem_close {
-            .handle = mBlobHandle, .pad = 0,
+        struct drm_gem_close gem_close{
+            .handle = mBlobHandle,
+            .pad = 0,
         };
 
         int ret = drmIoctl(mDeviceHandle, DRM_IOCTL_GEM_CLOSE, &gem_close);
@@ -86,8 +87,9 @@ uint64_t DrmVirtGpuResource::getSize() const { return mSize; }
 
 VirtGpuResourceMappingPtr DrmVirtGpuResource::createMapping() {
     int ret;
-    struct drm_virtgpu_map map {
-        .handle = mBlobHandle, .pad = 0,
+    struct drm_virtgpu_map map{
+        .handle = mBlobHandle,
+        .pad = 0,
     };
 
     ret = drmIoctl(mDeviceHandle, DRM_IOCTL_VIRTGPU_MAP, &map);

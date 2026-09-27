@@ -6,7 +6,6 @@
  */
 
 #include "util/u_inlines.h"
-#include "util/u_pstipple.h"
 
 #include "svga_cmd.h"
 #include "svga_context.h"
@@ -39,33 +38,7 @@ static void
 svga_set_polygon_stipple(struct pipe_context *pipe,
                          const struct pipe_poly_stipple *stipple)
 {
-   struct svga_context *svga = svga_context(pipe);
-
-   /* release old texture */
-   pipe_resource_reference(&svga->polygon_stipple.texture, NULL);
-
-   /* release old sampler view */
-   if (svga->polygon_stipple.sampler_view) {
-      pipe->sampler_view_destroy(pipe,
-                                 &svga->polygon_stipple.sampler_view->base);
-   }
-
-   /* create new stipple texture */
-   svga->polygon_stipple.texture =
-      util_pstipple_create_stipple_texture(pipe, stipple->stipple);
-
-   /* create new sampler view */
-   svga->polygon_stipple.sampler_view =
-      (struct svga_pipe_sampler_view *)
-      util_pstipple_create_sampler_view(pipe,
-                                        svga->polygon_stipple.texture);
-
-   /* allocate sampler state, if first time */
-   if (!svga->polygon_stipple.sampler) {
-      svga->polygon_stipple.sampler = util_pstipple_create_sampler(pipe);
-   }
-
-   svga->dirty |= SVGA_NEW_STIPPLE;
+   /* emulated in the frontend. */
 }
 
 

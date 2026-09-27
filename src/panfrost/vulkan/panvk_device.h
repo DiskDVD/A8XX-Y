@@ -48,16 +48,26 @@ enum panvk_queue_family {
    PANVK_QUEUE_FAMILY_COUNT,
 };
 
+enum panvk_va_heap_id {
+   PANVK_INVALID_VA_HEAP = -1,
+   PANVK_EXEC_VA_HEAP = 0,
+   PANVK_NO_EXEC_VA_HEAP,
+   PANVK_FIXED_VA_HEAP,
+   PANVK_VA_HEAP_COUNT,
+};
+
+struct panvk_va_heap {
+   struct util_vma_heap heap;
+   uint64_t start;
+   uint64_t end;
+};
+
 struct panvk_device {
    struct vk_device vk;
 
    struct {
       simple_mtx_t lock;
-      struct util_vma_heap heap;
-      struct util_vma_heap fixed_heap;
-      struct util_vma_heap *priv_heap;
-      bool split_heap;
-      bool extended_range;
+      struct panvk_va_heap heaps[PANVK_VA_HEAP_COUNT];
    } as;
 
    struct {
@@ -186,33 +196,66 @@ panvk_get_gpu_page_size(const struct panvk_device *device)
    return (uint64_t)1 << (ffsll(device->kmod.vm->pgsize_bitmap) - 1);
 }
 
+static inline enum panvk_va_heap_id
+panvk_va_heap_fallback(enum panvk_va_heap_id heap)
+{
+   switch (heap) {
+   /* Non-executable objects can live in the executable heap if there's no space
+    * left in the non-executable one. */
+   case PANVK_NO_EXEC_VA_HEAP:
+      return PANVK_EXEC_VA_HEAP;
+
+   case PANVK_FIXED_VA_HEAP:
+   case PANVK_EXEC_VA_HEAP:
+   default:
+      return PANVK_INVALID_VA_HEAP;
+   }
+}
+
 static inline uint64_t
-panvk_as_alloc(struct panvk_device *device, struct util_vma_heap *heap,
+panvk_as_alloc(struct panvk_device *device, enum panvk_va_heap_id heap,
                uint64_t size, uint64_t alignment)
 {
+   uint64_t address = 0;
+
    simple_mtx_lock(&device->as.lock);
-   uint64_t address = util_vma_heap_alloc(heap, size, alignment);
+   while (address == 0 && heap != PANVK_INVALID_VA_HEAP) {
+      address =
+         util_vma_heap_alloc(&device->as.heaps[heap].heap, size, alignment);
+      heap = panvk_va_heap_fallback(heap);
+   }
    simple_mtx_unlock(&device->as.lock);
+
    return address;
 }
 
 static inline uint64_t
-panvk_as_alloc_fixed_address(struct panvk_device *device,
-                             struct util_vma_heap *heap, uint64_t address,
+panvk_as_alloc_fixed_address(struct panvk_device *device, uint64_t address,
                              uint64_t size)
 {
    simple_mtx_lock(&device->as.lock);
-   bool alloc_result = util_vma_heap_alloc_addr(heap, address, size);
+   bool alloc_result = util_vma_heap_alloc_addr(
+      &device->as.heaps[PANVK_FIXED_VA_HEAP].heap, address, size);
    simple_mtx_unlock(&device->as.lock);
    return alloc_result ? address : 0;
 }
 
 static inline void
-panvk_as_free(struct panvk_device *device, struct util_vma_heap *heap,
-              uint64_t address, uint64_t size)
+panvk_as_free(struct panvk_device *device, uint64_t address, uint64_t size)
 {
+   struct panvk_va_heap *heap = NULL;
+
+   for (uint32_t i = 0; i < ARRAY_SIZE(device->as.heaps); i++) {
+      if (address >= device->as.heaps[i].start && address < device->as.heaps[i].end) {
+         heap = &device->as.heaps[i];
+         break;
+      }
+   }
+
+   assert(heap);
+
    simple_mtx_lock(&device->as.lock);
-   util_vma_heap_free(heap, address, size);
+   util_vma_heap_free(&heap->heap, address, size);
    simple_mtx_unlock(&device->as.lock);
 }
 

@@ -94,6 +94,8 @@ gfx10_format_table_c = custom_target(
 )
 
 amd_common_files = files(
+  'ac_barrier.c',
+  'ac_barrier.h',
   'ac_binary.c',
   'ac_binary.h',
   'ac_cmdbuf.c',

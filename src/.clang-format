@@ -285,6 +285,8 @@ ForEachMacros:
   - foreach_block
   - foreach_block_safe
   - foreach_block_rev
+  - foreach_block_from
+  - foreach_main_block
   - foreach_array
   - foreach_array_safe
   - foreach_interval

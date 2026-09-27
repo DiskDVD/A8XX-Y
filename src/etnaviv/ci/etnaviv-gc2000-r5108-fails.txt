@@ -385,7 +385,13 @@ spec@!opengl 1.0@gl-1.0-logicop@GL_OR_INVERTED,Fail
 spec@!opengl 1.0@gl-1.0-logicop@GL_OR_REVERSE,Fail
 spec@!opengl 1.0@gl-1.0-logicop@GL_SET,Fail
 spec@!opengl 1.0@gl-1.0-logicop@GL_XOR,Fail
+
+# Probe color at (44,24)
+#   Expected: 0.000000 0.000000 0.000000
+#   Observed: 1.000000 1.000000 1.000000
+# Failure with LogicOp set to fail mode.
 spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
+
 spec@!opengl 1.0@gl-1.0-swapbuffers-behavior,Fail
 spec@!opengl 1.0@gl-1.0-user-clip-all-planes,Fail
 spec@!opengl 1.1@gl-1.1-xor-copypixels,Fail
@@ -531,9 +537,6 @@ spec@!opengl 2.0@vertex-program-two-side enabled front back@vs and fs,Fail
 spec@!opengl 2.0@vertex-program-two-side enabled front front2 back2,Fail
 spec@!opengl 2.0@vertex-program-two-side enabled front front2 back2@vs and fs,Fail
 spec@!opengl 2.0@vs-point_size-zero,Fail
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 spec@!opengl es 2.0@glsl-fs-pointcoord,Fail
 
 # tests that require multisample resolve parameters not supported in hardware

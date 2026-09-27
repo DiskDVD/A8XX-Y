@@ -56,7 +56,6 @@
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 #include "util/u_upload_mgr.h"
-#include "util/u_pstipple.h"
 #include "util/u_sample_positions.h"
 #include "util/u_dl.h"
 #include <dxguids/dxguids.h>
@@ -143,10 +142,7 @@ d3d12_context_destroy(struct pipe_context *pctx)
       d3d12_tcs_variant_cache_destroy(ctx);
       d3d12_gfx_pipeline_state_cache_destroy(ctx);
       util_primconvert_destroy(ctx->primconvert);
-      pipe_resource_reference(&ctx->pstipple.texture, nullptr);
-      pipe_sampler_view_reference(&ctx->pstipple.sampler_view, nullptr);
       util_dynarray_fini(&ctx->recently_destroyed_bos);
-      FREE(ctx->pstipple.sampler_cso);
       if (pctx->stream_uploader)
          u_upload_destroy(pctx->stream_uploader);
       if (pctx->const_uploader)
@@ -695,11 +691,6 @@ d3d12_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
       if (!ctx->blitter)
          return NULL;
 
-      if (!d3d12_init_polygon_stipple(&ctx->base)) {
-         debug_printf("D3D12: failed to initialize polygon stipple resources\n");
-         FREE(ctx);
-         return NULL;
-      }
 #ifdef _WIN32
          if (!(d3d12_debug & D3D12_DEBUG_EXPERIMENTAL) ||
             (d3d12_debug & D3D12_DEBUG_DISASS))

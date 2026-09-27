@@ -33,44 +33,6 @@
 #include "vk_object.h"
 #include "vk_util.h"
 
-bool
-panvk_image_can_use_afbc(
-   struct panvk_physical_device *phys_dev, VkFormat fmt,
-   VkImageUsageFlags usage, VkImageType type, VkImageTiling tiling,
-   VkImageCreateFlags flags)
-{
-   unsigned arch = pan_arch(phys_dev->kmod.dev->props.gpu_id);
-   enum pipe_format pfmt = vk_format_to_pipe_format(fmt);
-
-   /* Disallow AFBC if either of these is true
-    * - PANVK_DEBUG does not have the 'afbc' flag set
-    * - storage image views are requested
-    * - host image copies are requested
-    * - the GPU doesn't support AFBC
-    * - the format is not AFBC-able
-    * - tiling is set to linear
-    * - this is a 1D image
-    * - this is a 3D image on a pre-v7 GPU
-    * - this is a mutable format image on v7- (format re-interpretation is
-    *   not possible on Bifrost hardware)
-    * - this is a sparse image
-    *
-    * Some of these checks are redundant with tests provided by the AFBC mod
-    * handler when pan_image_test_props() is called, but we need them because
-    * panvk_image_can_use_afbc() is also called from
-    * GetPhysicalDeviceImageFormatProperties2() and we don't have enough
-    * information to conduct a full image property check in this context.
-    */
-   return !PANVK_DEBUG(NO_AFBC) &&
-          !(usage &
-            (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_HOST_TRANSFER_BIT)) &&
-          pan_query_afbc(&phys_dev->kmod.dev->props) &&
-          pan_afbc_supports_format(arch, pfmt) &&
-          tiling != VK_IMAGE_TILING_LINEAR && type != VK_IMAGE_TYPE_1D &&
-          (type != VK_IMAGE_TYPE_3D || arch >= 7) &&
-          (!(flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) || arch >= 9) &&
-          (!(flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT));
-}
 
 static enum mali_texture_dimension
 panvk_image_type_to_mali_tex_dim(VkImageType type)
@@ -218,6 +180,10 @@ panvk_image_can_use_mod(struct panvk_image *image,
    if (drm_is_afbc(mod)) {
       /* AFBC explicitly disabled. */
       if (PANVK_DEBUG(NO_AFBC))
+         return false;
+
+      /* The application asked for an uncompressed image. */
+      if (image->vk.compr_flags & VK_IMAGE_COMPRESSION_DISABLED_EXT)
          return false;
 
       /* Can't do AFBC if store/host copy is requested. */
@@ -852,7 +818,7 @@ panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
               STANDARD_SPARSE_BLOCK_SIZE_B);
 
       image->sparse.device_address =
-         panvk_as_alloc(dev, &dev->as.heap, va_range, alignment);
+         panvk_as_alloc(dev, PANVK_NO_EXEC_VA_HEAP, va_range, alignment);
       if (!image->sparse.device_address) {
          result = panvk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
          goto err_destroy_image;
@@ -901,7 +867,7 @@ panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
 
 err_free_va:
    if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT)
-      panvk_as_free(dev, &dev->as.heap, image->sparse.device_address,
+      panvk_as_free(dev, image->sparse.device_address,
                     panvk_image_get_sparse_size(image));
 
 err_destroy_image:
@@ -944,8 +910,7 @@ panvk_DestroyImage(VkDevice _device, VkImage _image,
          device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &unmap, 1);
       assert(!ret);
 
-      panvk_as_free(device, &device->as.heap, image->sparse.device_address,
-                    va_range);
+      panvk_as_free(device, image->sparse.device_address, va_range);
    } else {
       panvk_image_report_binding(device, image,
                                  VK_DEVICE_ADDRESS_BINDING_TYPE_UNBIND_EXT);
@@ -989,6 +954,13 @@ get_image_subresource_layout(const struct panvk_image *image,
    } else {
       layout->rowPitch = slice_layout->tiled_or_linear.row_stride_B;
       layout->depthPitch = slice_layout->tiled_or_linear.surface_stride_B;
+   }
+
+   VkImageCompressionPropertiesEXT *compression_props =
+      vk_find_struct(layout2->pNext, IMAGE_COMPRESSION_PROPERTIES_EXT);
+   if (compression_props) {
+      panvk_image_set_compression_props(compression_props,
+                                        drm_is_afbc(image->vk.drm_format_mod));
    }
 
    VkSubresourceHostMemcpySize *memcpy_size =
@@ -1155,7 +1127,7 @@ panvk_GetDeviceImageMemoryRequirements(VkDevice device,
       ~VK_IMAGE_CREATE_MULTISAMPLED_RENDER_TO_SINGLE_SAMPLED_BIT_EXT;
    info.pCreateInfo = &create_info;
 
-   struct panvk_image image;
+   struct panvk_image image = {0};
    vk_image_init(&dev->vk, &image.vk, &create_info);
    panvk_image_init(&image, &create_info);
 
@@ -1302,7 +1274,7 @@ panvk_GetDeviceImageSparseMemoryRequirements(VkDevice device,
 {
    VK_FROM_HANDLE(panvk_device, dev, device);
 
-   struct panvk_image image;
+   struct panvk_image image = {0};
    vk_image_init(&dev->vk, &image.vk, pInfo->pCreateInfo);
    panvk_image_init(&image, pInfo->pCreateInfo);
 

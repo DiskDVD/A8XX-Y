@@ -286,6 +286,16 @@ validate_alu_instr(nir_alu_instr *instr, validate_state *state)
          validate_assert(state, src_bit_size == 32 || src_bit_size == 64);
          break;
 
+      /* In nir_opcodes.py, these are defined to take general int sources.
+       * However, for downcasts they are redundant with u2uN opcodes and
+       * in order make things consistent, we only want to use the latter.
+       */
+      case nir_op_i2i8:
+      case nir_op_i2i16:
+      case nir_op_i2i32:
+         validate_assert(state, src_bit_size <= instr->def.bit_size);
+         break;
+
       default:
          break;
       }

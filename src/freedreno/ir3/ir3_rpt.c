@@ -53,8 +53,7 @@ static enum ir3_register_flags
 rpt_compatible_src_flags(struct ir3_register *src)
 {
    return src->flags &
-          (IR3_REG_SABS | IR3_REG_SNEG | IR3_REG_FABS | IR3_REG_FNEG |
-           IR3_REG_BNOT | IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_SSA |
+          (IR3_REG_SRC_MODS | IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_SSA |
            IR3_REG_HALF | IR3_REG_SHARED);
 }
 

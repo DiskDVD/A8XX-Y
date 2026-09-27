@@ -5,8 +5,8 @@ use crate::ir::*;
 use crate::legalize::{
     src_is_reg, swap_srcs_if_not_reg, LegalizeBuildHelpers, LegalizeBuilder,
 };
-use bitview::*;
 
+use mesa_util::bitview::*;
 use rustc_hash::FxHashMap;
 use std::ops::Range;
 

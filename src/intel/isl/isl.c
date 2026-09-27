@@ -2246,8 +2246,7 @@ isl_choose_miptail_start_level(const struct isl_device *dev,
       return 15;
    }
 
-   assert(isl_tiling_is_64(tile_info->tiling) ||
-          isl_tiling_is_std_y(tile_info->tiling));
+   assert(isl_tiling_is_standard(tile_info->tiling));
    assert(info->samples == 1);
 
    uint32_t max_miptail_levels = tile_info->max_miptail_levels;
@@ -2540,8 +2539,7 @@ isl_calc_phys_slice0_extent_sa_gfx4_2d(
 
       if (l >= miptail_start_level) {
          assert(l == miptail_start_level);
-         assert(isl_tiling_is_64(tile_info->tiling) ||
-                isl_tiling_is_std_y(tile_info->tiling));
+         assert(isl_tiling_is_standard(tile_info->tiling));
          assert(w == tile_info->logical_extent_el.w * fmtl->bw);
          assert(h == tile_info->logical_extent_el.h * fmtl->bh);
          /* If we've gone into the miptail, we're done.  All higher miplevels
@@ -2583,8 +2581,7 @@ isl_calc_phys_total_extent_el_gfx4_2d(
                                            array_pitch_span,
                                            &phys_slice0_sa);
 
-   if (isl_tiling_is_64(tile_info->tiling) ||
-       isl_tiling_is_std_y(tile_info->tiling)) {
+   if (isl_tiling_is_standard(tile_info->tiling)) {
       *phys_total_el = (struct isl_extent4d) {
          .w = isl_align_div_npot(phys_slice0_sa.w, fmtl->bw),
          .h = isl_align_div_npot(phys_slice0_sa.h, fmtl->bh),
@@ -3038,8 +3035,8 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
 
    snprintf(msg + ret, sizeof(msg) - ret,
             " extent=%ux%ux%u dim=%s msaa=%ux levels=%u rpitch=%u fmt=%s "
-            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
-            "tiling_flags=%s%s%s%s%s%s%s%s%s%s%s%s",
+            "usages=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s "
+            "tiling_flags=%s%s%s%s%s%s%s%s%s%s%s%s%s",
             surf_info->width, surf_info->height,
             surf_info->dim == ISL_SURF_DIM_3D ?
             surf_info->depth : surf_info->array_len,
@@ -3056,6 +3053,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
             PRINT_USAGE(CUBE,                "cube"),
             PRINT_USAGE(DISABLE_AUX,         "noaux"),
             PRINT_USAGE(DISPLAY,             "disp"),
+            PRINT_USAGE(STORAGE,             "stor"),
             PRINT_USAGE(HIZ,                 "hiz"),
             PRINT_USAGE(MCS,                 "mcs"),
             PRINT_USAGE(CCS,                 "ccs"),
@@ -3063,6 +3061,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
             PRINT_USAGE(INDEX_BUFFER,        "ib"),
             PRINT_USAGE(CONSTANT_BUFFER,     "const"),
             PRINT_USAGE(STAGING,             "stage"),
+            PRINT_USAGE(2D_3D_COMPATIBLE,    "2d-3d-compat"),
             PRINT_USAGE(SPARSE,              "sparse"),
             PRINT_USAGE(NO_AUX_TT_ALIGNMENT, "no-aux-align"),
 
@@ -3076,6 +3075,7 @@ _isl_notify_failure(const struct isl_surf_init_info *surf_info,
             PRINT_TILING(ICL_Ys,         "icl-Ys"),
             PRINT_TILING(4,              "4"),
             PRINT_TILING(64,             "64"),
+            PRINT_TILING(64_XE2,         "64"),
             PRINT_TILING(HIZ,            "hiz"),
             PRINT_TILING(CCS,            "ccs"));
 
@@ -3838,6 +3838,12 @@ isl_surf_init_s(const struct isl_device *dev,
          print_info(&info_one_tiling, "Saved %d 4KB page(s).",
                     (int)(surf->size_B - tmp_surf.size_B) / 4096);
          *surf = tmp_surf;
+      } else if (100 * tmp_surf.size_B <= 110 * surf->size_B &&
+                 (info_one_tiling.tiling_flags & ISL_TILING_STD_64KB_MASK)) {
+         print_info(&info_one_tiling,
+                    "Increased tile size (*=%.3f).",
+                    (float)tmp_surf.size_B / surf->size_B);
+         *surf = tmp_surf;
       }
    }
 
@@ -3957,8 +3963,12 @@ find_next_divisor(int64_t divisor, int64_t num)
    /* Go from 'divisor + 1' up to sqrt(num). If we find a factor, it's the
     * first one, so just return it.
     */
-   for (int64_t i = divisor + 1; i <= num / i; i++) {
-      if (num % i == 0)
+   for (int64_t i = divisor + 1; ; i++) {
+      int64_t quo = num / i;
+      int64_t rem = num % i;
+      if (i > quo)
+         break;
+      if (rem == 0)
          return i;
    }
 
@@ -3969,8 +3979,10 @@ find_next_divisor(int64_t divisor, int64_t num)
     */
    int64_t upper_bound = MIN2(divisor, num / divisor);
    for (int64_t i = upper_bound; i > 1; i--) {
-      if ((num % i == 0) && (num / i > divisor))
-         return num / i;
+      int64_t quo = num / i;
+      int64_t rem = num % i;
+      if (rem == 0 && quo > divisor)
+         return quo;
    }
 
    return num;
@@ -4532,8 +4544,7 @@ get_image_offset_sa_gfx4_2d(const struct isl_surf *surf,
       (surf->msaa_layout == ISL_MSAA_LAYOUT_ARRAY ? surf->samples : 1);
 
    uint32_t x = 0, y;
-   if (isl_tiling_is_std_y(surf->tiling) ||
-       isl_tiling_is_64(surf->tiling)) {
+   if (isl_tiling_is_standard(surf->tiling)) {
       y = 0;
       if (surf->dim == ISL_SURF_DIM_3D) {
          *z_offset_sa = logical_array_layer;
@@ -5107,8 +5118,7 @@ isl_surf_get_uncompressed_surf(const struct isl_device *dev,
    /* If we ever enable 3D block formats, we'll need to re-think this */
    assert(fmtl->bd == 1);
 
-   if (isl_tiling_is_std_y(surf->tiling) ||
-       isl_tiling_is_64(surf->tiling)) {
+   if (isl_tiling_is_standard(surf->tiling)) {
       /* If the requested level is not part of the miptail, we just offset to
        * the requested level. Because we're using standard tilings and aren't
        * in the miptail, arrays and 3D textures should just work so long as we

@@ -284,7 +284,7 @@ radv_fill_memory_internal(struct radv_cmd_buffer *cmd_buffer, const struct radv_
    if (use_compute) {
       radv_compute_fill_memory(cmd_buffer, dst_va, size, value);
 
-      flush_bits = RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_VCACHE |
+      flush_bits = AC_BARRIER_SYNC_CS | AC_BARRIER_INV_VMEM |
                    radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                          VK_ACCESS_2_SHADER_WRITE_BIT, 0, image, NULL);
    } else if (size) {

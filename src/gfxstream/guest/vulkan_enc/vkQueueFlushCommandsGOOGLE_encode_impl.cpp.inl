@@ -33,11 +33,11 @@ memcpy(streamPtr, &opcode_vkQueueFlushCommandsGOOGLE, sizeof(uint32_t)); streamP
 memcpy(streamPtr, &packetSize_vkQueueFlushCommandsGOOGLE, sizeof(uint32_t)); streamPtr += sizeof(uint32_t);
 memcpy(streamPtr, &seqno, sizeof(uint32_t)); streamPtr += sizeof(uint32_t);
 uint64_t cgen_var_1407;
-*&cgen_var_1407 = get_host_u64_VkQueue((*&local_queue));
+*&cgen_var_1407 = gfxstream_vk_queue_to_host_u64((*&local_queue));
 memcpy(*streamPtrPtr, (uint64_t*)&cgen_var_1407, 1 * 8);
 *streamPtrPtr += 1 * 8;
 uint64_t cgen_var_1408;
-*&cgen_var_1408 = get_host_u64_VkCommandBuffer((*&local_commandBuffer));
+*&cgen_var_1408 = gfxstream_vk_command_buffer_to_host_u64((*&local_commandBuffer));
 memcpy(*streamPtrPtr, (uint64_t*)&cgen_var_1408, 1 * 8);
 *streamPtrPtr += 1 * 8;
 memcpy(*streamPtrPtr, (VkDeviceSize*)&local_dataSize, sizeof(VkDeviceSize));

@@ -83,7 +83,7 @@ lower_driver_param_to_ubo(nir_builder *b, nir_intrinsic_instr *intr, void *in)
       break;
    default: {
       struct driver_param_info param_info;
-      if (!ir3_get_driver_param_info(b->shader, intr, &param_info))
+      if (!ir3_get_driver_param_info(b->shader, &v->key, intr, &param_info))
          return false;
 
       /* VS is a bit special because SQE patches in draw_id/base_vertex/

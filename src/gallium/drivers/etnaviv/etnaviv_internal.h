@@ -125,6 +125,8 @@ struct etna_specs {
    uint32_t max_instructions;
    /* maximum number of VS outputs */
    unsigned max_vs_outputs;
+   /* KB of the shader cache available for vertex shader results, HALTI5 only */
+   unsigned vs_usc_budget;
    /* maximum number of varyings */
    unsigned max_varyings;
    /* maximum vertex uniforms */
@@ -243,10 +245,12 @@ struct compiled_shader_state {
    uint32_t VS_END_PC;
    uint32_t VS_OUTPUT_COUNT; /* number of outputs if point size per vertex disabled */
    uint32_t VS_OUTPUT_COUNT_PSIZE; /* number of outputs of point size per vertex enabled */
+   uint32_t VS_HALTI5_OUTPUT_COUNT;
+   uint32_t VS_VERTEX_CACHE_CONFIG;
    uint32_t VS_INPUT_COUNT;
    uint32_t VS_TEMP_REGISTER_CONTROL;
    uint32_t VS_OUTPUT[8];
-   uint32_t VS_INPUT[4];
+   uint32_t VS_INPUT[8];
    uint32_t VS_LOAD_BALANCING;
    uint32_t VS_START_PC;
    uint32_t PS_END_PC;
@@ -269,6 +273,7 @@ struct compiled_shader_state {
    uint32_t *PS_INST_MEM;
    struct etna_reloc PS_INST_ADDR;
    struct etna_reloc VS_INST_ADDR;
+   int8_t vs_output_slot[VARYING_SLOT_MAX];
    unsigned writes_z:1;
    unsigned uses_discard:1;
 };

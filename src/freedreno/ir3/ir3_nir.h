@@ -96,6 +96,7 @@ void ir3_const_alloc_all_reserved_space(struct ir3_const_allocations *const_allo
 
 uint32_t ir3_nir_scan_driver_consts(struct ir3_compiler *compiler,
                                     nir_shader *shader,
+                                    const struct ir3_shader_key *key,
                                     struct ir3_const_image_dims *image_dims);
 void ir3_alloc_driver_params(struct ir3_const_allocations *const_alloc,
                              uint32_t *num_driver_params,
@@ -149,6 +150,7 @@ struct driver_param_info {
 };
 
 bool ir3_get_driver_param_info(const nir_shader *shader,
+                               const struct ir3_shader_key *key,
                                nir_intrinsic_instr *intr,
                                struct driver_param_info *param_info);
 

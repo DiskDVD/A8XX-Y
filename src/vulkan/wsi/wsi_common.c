@@ -3134,14 +3134,14 @@ wsi_create_buffer_blit_context(const struct wsi_swapchain *chain,
    VkMemoryAllocateInfo buf_mem_info = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .pNext = &buf_mem_dedicated_info,
-      .allocationSize = info->linear_size,
+      .allocationSize = reqs.size,
       .memoryTypeIndex =
          info->select_blit_dst_memory_type(wsi, reqs.memoryTypeBits),
    };
 
    void *sw_host_ptr = NULL;
    if (info->alloc_shm)
-      sw_host_ptr = info->alloc_shm(image, info->linear_size);
+      sw_host_ptr = info->alloc_shm(image, reqs.size);
 
    VkExportMemoryAllocateInfo memory_export_info;
    VkImportMemoryHostPointerInfoEXT host_ptr_info;
@@ -3473,6 +3473,7 @@ wsi_configure_buffer_image(UNUSED const struct wsi_swapchain *chain,
    assert(util_is_power_of_two_nonzero(size_align));
 
    info->create.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+   info->usage2.usage |= VK_IMAGE_USAGE_2_TRANSFER_SRC_BIT_KHR;
    info->wsi.blit_src = true;
 
    const uint32_t cpp = vk_format_get_blocksize(pCreateInfo->imageFormat);
@@ -3498,6 +3499,7 @@ wsi_configure_image_blit_image(UNUSED const struct wsi_swapchain *chain,
                                struct wsi_image_info *info)
 {
    info->create.usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+   info->usage2.usage |= VK_IMAGE_USAGE_2_TRANSFER_SRC_BIT_KHR;
    info->wsi.blit_src = true;
    info->finish_create = wsi_finish_create_blit_context;
 }

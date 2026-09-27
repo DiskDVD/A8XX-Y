@@ -164,16 +164,15 @@ panvk_AllocateMemory(VkDevice _device,
                                  MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO);
          if (capture_alloc_info == NULL ||
              capture_alloc_info->opaqueCaptureAddress == 0) {
-            op.va.start = panvk_as_alloc(device, &device->as.fixed_heap,
+            op.va.start = panvk_as_alloc(device, PANVK_FIXED_VA_HEAP,
                                          op.va.size, alignment);
          } else {
             op.va.start = panvk_as_alloc_fixed_address(
-               device, &device->as.fixed_heap,
-               capture_alloc_info->opaqueCaptureAddress, op.va.size);
+               device, capture_alloc_info->opaqueCaptureAddress, op.va.size);
          }
       } else {
-         op.va.start =
-            panvk_as_alloc(device, &device->as.heap, op.va.size, alignment);
+         op.va.start = panvk_as_alloc(device, PANVK_NO_EXEC_VA_HEAP, op.va.size,
+                                      alignment);
       }
 
       if (!op.va.start) {
@@ -235,7 +234,7 @@ panvk_AllocateMemory(VkDevice _device,
 
 err_return_va:
    if (!(device->kmod.vm->flags & PAN_KMOD_VM_FLAG_AUTO_VA)) {
-      panvk_as_free(device, &device->as.heap, op.va.start, op.va.size);
+      panvk_as_free(device, op.va.start, op.va.size);
    }
 
 err_put_bo:
@@ -293,13 +292,8 @@ panvk_FreeMemory(VkDevice _device, VkDeviceMemory _mem,
       pan_kmod_vm_bind(device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
    assert(!ret);
 
-   if (!(device->kmod.vm->flags & PAN_KMOD_VM_FLAG_AUTO_VA)) {
-      const bool fixed = (mem->vk.alloc_flags &
-                          VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT);
-      struct util_vma_heap *heap =
-         fixed ? &device->as.fixed_heap : &device->as.heap;
-      panvk_as_free(device, heap, op.va.start, op.va.size);
-   }
+   if (!(device->kmod.vm->flags & PAN_KMOD_VM_FLAG_AUTO_VA))
+      panvk_as_free(device, op.va.start, op.va.size);
 
    panvk_memory_emit_report(device, mem, /* alloc_info */ NULL, VK_SUCCESS);
 

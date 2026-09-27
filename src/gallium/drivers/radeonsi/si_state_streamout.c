@@ -99,12 +99,12 @@ static void si_set_streamout_targets(struct pipe_context *ctx, unsigned num_targ
        * VS_PARTIAL_FLUSH is required if the buffers are going to be
        * used as an input immediately.
        */
-      sctx->barrier_flags |= SI_BARRIER_INV_SMEM | SI_BARRIER_INV_VMEM |
-                             SI_BARRIER_SYNC_VS | SI_BARRIER_PFP_SYNC_ME;
+      sctx->barrier_flags |= AC_BARRIER_INV_SMEM | AC_BARRIER_INV_VMEM |
+                             AC_BARRIER_SYNC_VS | AC_BARRIER_PFP_SYNC_ME;
 
       /* Make the streamout state buffer available to the CP for resuming and DrawTF. */
       if (sctx->screen->info.cp_sdma_ge_use_system_memory_scope)
-         sctx->barrier_flags |= SI_BARRIER_WB_L2;
+         sctx->barrier_flags |= AC_BARRIER_WB_L2;
 
       si_mark_atom_dirty(sctx, &sctx->atoms.s.barrier);
    }
@@ -247,7 +247,7 @@ static void si_set_streamout_targets(struct pipe_context *ctx, unsigned num_targ
       /* All readers of the streamout targets need to be finished before we can
        * start writing to them.
        */
-      si_set_barrier_flags(sctx, SI_BARRIER_SYNC_PS | SI_BARRIER_SYNC_CS | SI_BARRIER_PFP_SYNC_ME);
+      si_set_barrier_flags(sctx, AC_BARRIER_SYNC_PS | AC_BARRIER_SYNC_CS | AC_BARRIER_PFP_SYNC_ME);
    } else {
       si_set_atom_dirty(sctx, &sctx->atoms.s.streamout_begin, false);
       si_set_streamout_enable(sctx, false);
@@ -361,7 +361,7 @@ void si_emit_streamout_end(struct si_context *sctx)
 
    if (sctx->gfx_level >= GFX11) {
       /* Wait for streamout to finish before reading GDS_STRMOUT registers. */
-      si_emit_barrier_direct(sctx, SI_BARRIER_SYNC_VS);
+      si_emit_barrier_direct(sctx, AC_BARRIER_SYNC_VS);
    } else {
       si_flush_vgt_streamout(sctx);
    }
@@ -376,7 +376,7 @@ void si_emit_streamout_end(struct si_context *sctx)
                          COPY_DATA_REG, NULL,
                          (R_031088_GDS_STRMOUT_DWORDS_WRITTEN_0 >> 2) + i);
          /* For DrawTF reading buf_filled_size: */
-         si_set_barrier_flags(sctx, SI_BARRIER_PFP_SYNC_ME);
+         si_set_barrier_flags(sctx, AC_BARRIER_PFP_SYNC_ME);
       } else {
          uint64_t va = t[i]->buf_filled_size->gpu_address + t[i]->buf_filled_size_offset;
 

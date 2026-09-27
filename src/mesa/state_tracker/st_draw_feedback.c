@@ -114,6 +114,9 @@ st_feedback_draw_vbo(struct gl_context *ctx,
    if (!draw)
       return;
 
+   ST_PIPELINE_RENDER_STATE_MASK(mask);
+   st_prepare_draw(ctx, mask);
+
    /* must get these after state validation! */
    struct st_common_variant_key key = {
       .st = st,

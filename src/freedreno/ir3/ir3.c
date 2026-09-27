@@ -1227,7 +1227,7 @@ ir3_create_collect(struct ir3_builder *build,
    /* There should be at least one non-undef source to determine the type of the
     * destination.
     */
-   assert(non_undef_src != -1);
+   assume(non_undef_src != -1);
    unsigned flags = dest_flags(arr[non_undef_src]);
 
    /* If any of the sources are themselves collects, flatten their sources into
@@ -1662,9 +1662,8 @@ static unsigned
 cp_flags(unsigned flags)
 {
    /* only considering these flags (at least for now): */
-   flags &= (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_FNEG | IR3_REG_FABS |
-             IR3_REG_SNEG | IR3_REG_SABS | IR3_REG_BNOT | IR3_REG_RELATIV |
-             IR3_REG_SHARED);
+   flags &= (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_SRC_MODS |
+             IR3_REG_RELATIV | IR3_REG_SHARED);
    return flags;
 }
 
@@ -2099,8 +2098,7 @@ static bool
 is_unmodified_full_gpr(struct ir3_register *src)
 {
    return !(src->flags & (IR3_REG_HALF | IR3_REG_CONST | IR3_REG_IMMED |
-                          IR3_REG_RELATIV | IR3_REG_FNEG | IR3_REG_FABS |
-                          IR3_REG_SNEG | IR3_REG_SABS | IR3_REG_BNOT));
+                          IR3_REG_RELATIV | IR3_REG_SRC_MODS));
 }
 
 /* Does `instr` move half of its full GPR src to its half dst? If this is the

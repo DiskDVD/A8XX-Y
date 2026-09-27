@@ -37,6 +37,7 @@
 #include "pipe/p_context.h"
 #include "draw/draw_context.h"
 #include "frontend/drisw_api.h"
+#include "lp_screen.h"
 
 #include "util/u_inlines.h"
 #include "util/os_file.h"
@@ -48,6 +49,10 @@
 #include "util/ptralloc.h"
 #include "nir.h"
 #include "nir_builder.h"
+
+#ifdef HAVE_MALLINFO2
+#include <malloc.h>
+#endif
 
 #if DETECT_OS_LINUX
 #include <sys/mman.h>
@@ -75,6 +80,9 @@
 
 #define LVP_SAMPLE_COUNTS (VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_4_BIT | \
                            VK_SAMPLE_COUNT_8_BIT)
+
+static struct list_head instance_list = {&instance_list, &instance_list};
+static simple_mtx_t instance_lock = SIMPLE_MTX_INITIALIZER;
 
 extern unsigned lp_native_vector_width;
 
@@ -1608,6 +1616,10 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateInstance(
    vk_instance_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_instance_entrypoints, false);
 
+   simple_mtx_lock(&instance_lock);
+   list_addtail(&instance->link, &instance_list);
+   simple_mtx_unlock(&instance_lock);
+
    result = vk_instance_init(&instance->vk,
                              &lvp_instance_extensions_supported,
                              &dispatch_table,
@@ -1652,6 +1664,11 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyInstance(
    driDestroyOptionInfo(&instance->drirc.available_options);
 
    vk_instance_finish(&instance->vk);
+
+   simple_mtx_lock(&instance_lock);
+   list_del(&instance->link);
+   simple_mtx_unlock(&instance_lock);
+
    vk_free(&instance->vk.alloc, instance);
 }
 
@@ -1761,7 +1778,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceQueueFamilyProperties2(
          VK_QUEUE_COMPUTE_BIT |
          VK_QUEUE_TRANSFER_BIT |
          (DETECT_OS_LINUX ? VK_QUEUE_SPARSE_BINDING_BIT : 0),
-         .queueCount = 1,
+         .queueCount = LVP_NUM_QUEUES,
          .timestampValidBits = 64,
          .minImageTransferGranularity = (VkExtent3D) { 1, 1, 1 },
       };
@@ -1801,12 +1818,26 @@ VKAPI_ATTR void VKAPI_CALL lvp_GetPhysicalDeviceMemoryProperties2(
                                          &pMemoryProperties->memoryProperties);
    VkPhysicalDeviceMemoryBudgetPropertiesEXT *props = vk_find_struct(pMemoryProperties, PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT);
    if (props) {
-      props->heapBudget[0] = pMemoryProperties->memoryProperties.memoryHeaps[0].size;
-      if (os_get_available_system_memory(&props->heapUsage[0])) {
-         props->heapUsage[0] = props->heapBudget[0] - props->heapUsage[0];
-      } else {
-         props->heapUsage[0] = 0;
+      if (!os_get_available_system_memory(&props->heapBudget[0])) {
+         props->heapBudget[0] = 0;
       }
+#ifdef HAVE_MALLINFO2
+      struct mallinfo2 info = mallinfo2();
+      props->heapUsage[0] = info.uordblks;
+#else
+      props->heapUsage[0] = pMemoryProperties->memoryProperties.memoryHeaps[0].size - props->heapBudget[0];
+#endif
+
+      simple_mtx_lock(&instance_lock);
+      struct lvp_instance *instance;
+      LIST_FOR_EACH_ENTRY(instance, &instance_list, link) {
+         struct lvp_physical_device *device;
+         LIST_FOR_EACH_ENTRY(device, &instance->vk.physical_devices.list, vk.link) {
+            uint64_t mem_file_size = llvmpipe_get_mem_file_size(device->pscreen);
+            props->heapUsage[0] += mem_file_size;
+         }
+      }
+      simple_mtx_unlock(&instance_lock);
       memset(&props->heapBudget[1], 0, sizeof(props->heapBudget[0]) * (VK_MAX_MEMORY_HEAPS - 1));
       memset(&props->heapUsage[1], 0, sizeof(props->heapUsage[0]) * (VK_MAX_MEMORY_HEAPS - 1));
    }
@@ -1850,17 +1881,6 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_icdGetInstanceProcAddr(
    return lvp_GetInstanceProcAddr(instance, pName);
 }
 
-static void
-destroy_pipelines(struct lvp_queue *queue)
-{
-   struct lvp_device *device = lvp_queue_device(queue);
-   simple_mtx_lock(&queue->lock);
-   while (util_dynarray_contains(&queue->pipeline_destroys, struct lvp_pipeline*)) {
-      lvp_pipeline_destroy(device, util_dynarray_pop(&queue->pipeline_destroys, struct lvp_pipeline*), true);
-   }
-   simple_mtx_unlock(&queue->lock);
-}
-
 static VkResult
 lvp_queue_submit(struct vk_queue *vk_queue,
                  struct vk_queue_submit *submit)
@@ -1873,8 +1893,6 @@ lvp_queue_submit(struct vk_queue *vk_queue,
                                        VK_SYNC_WAIT_COMPLETE, UINT64_MAX);
    if (result != VK_SUCCESS)
       return result;
-
-   simple_mtx_lock(&queue->lock);
 
    for (uint32_t i = 0; i < submit->buffer_bind_count; i++) {
       VkSparseBufferMemoryBindInfo *bind = &submit->buffer_binds[i];
@@ -1901,8 +1919,6 @@ lvp_queue_submit(struct vk_queue *vk_queue,
       lvp_execute_cmds(device, queue, cmd_buffer);
    }
 
-   simple_mtx_unlock(&queue->lock);
-
    if (submit->command_buffer_count > 0)
       queue->ctx->flush(queue->ctx, &queue->last_fence, 0);
 
@@ -1911,7 +1927,7 @@ lvp_queue_submit(struct vk_queue *vk_queue,
          vk_sync_as_lvp_pipe_sync(submit->signals[i].sync);
       lvp_pipe_sync_signal_with_fence(device, sync, queue->last_fence);
    }
-   destroy_pipelines(queue);
+   lvp_destroy_shaders(device, queue->ctx);
 
    return VK_SUCCESS;
 }
@@ -1938,9 +1954,6 @@ lvp_queue_init(struct lvp_device *device, struct lvp_queue *queue,
 
    queue->vk.driver_submit = lvp_queue_submit;
 
-   simple_mtx_init(&queue->lock, mtx_plain);
-   queue->pipeline_destroys = UTIL_DYNARRAY_INIT;
-
    return VK_SUCCESS;
 }
 
@@ -1950,9 +1963,10 @@ lvp_queue_finish(struct lvp_queue *queue)
    vk_queue_finish(&queue->vk);
    cso_unbind_context(queue->cso);
 
-   destroy_pipelines(queue);
-   simple_mtx_destroy(&queue->lock);
-   util_dynarray_fini(&queue->pipeline_destroys);
+   lvp_destroy_shaders(lvp_queue_device(queue), queue->ctx);
+
+   if (queue->last_fence)
+      queue->ctx->screen->fence_reference(queue->ctx->screen, &queue->last_fence, NULL);
 
    u_upload_destroy(queue->uploader);
    cso_destroy_context(queue->cso);
@@ -1973,12 +1987,13 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    size_t state_size = lvp_get_rendering_state_size();
    device = vk_zalloc2(&physical_device->vk.instance->alloc, pAllocator,
-                       sizeof(*device) + state_size, 8,
+                       sizeof(*device) + state_size * LVP_NUM_QUEUES, 8,
                        VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
    if (!device)
       return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   device->queue.state = device + 1;
+   for (unsigned i = 0; i < LVP_NUM_QUEUES; i++)
+      device->queue[i].state = (char *)(device + 1) + state_size * i;
    device->poison_mem = debug_get_bool_option("LVP_POISON_MEMORY", false);
    device->print_cmds = debug_get_bool_option("LVP_CMD_DEBUG", false);
 
@@ -1992,25 +2007,31 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
                                     &physical_device->vk,
                                     &dispatch_table, pCreateInfo,
                                     pAllocator);
-   if (result != VK_SUCCESS) {
-      vk_free(&device->vk.alloc, device);
-      return result;
-   }
+   if (result != VK_SUCCESS)
+      goto fail_alloc;
 
    vk_device_enable_threaded_submit(&device->vk);
    device->vk.command_buffer_ops = &lvp_cmd_buffer_ops;
 
    device->pscreen = physical_device->pscreen;
 
+   device->shader_destroys = UTIL_DYNARRAY_INIT;
+   simple_mtx_init(&device->shader_destroys_lock, mtx_plain);
+
    assert(pCreateInfo->queueCreateInfoCount <= LVP_NUM_QUEUES);
    if (pCreateInfo->queueCreateInfoCount) {
       assert(pCreateInfo->pQueueCreateInfos[0].queueFamilyIndex == 0);
-      assert(pCreateInfo->pQueueCreateInfos[0].queueCount == 1);
-      result = lvp_queue_init(device, &device->queue, pCreateInfo->pQueueCreateInfos, 0);
+      assert(pCreateInfo->pQueueCreateInfos[0].queueCount <= LVP_NUM_QUEUES);
+      device->queue_count = pCreateInfo->pQueueCreateInfos[0].queueCount;
+      for (uint32_t i = 0; i < device->queue_count; i++) {
+         result = lvp_queue_init(device, &device->queue[i], pCreateInfo->pQueueCreateInfos, i);
+         if (result != VK_SUCCESS)
+            break;
+      }
    } else {
       /* VK_KHR_maintenance9 allows zero queues devices used to compile shaders only.
-      *  Since we only ever create a single queue, and it has no hardward backing it,
-      *  we can just create a dummy queue on the behalf of the user.
+      *  Since the queue has no hardware backing it, we can just create a dummy
+      *  queue on the behalf of the user.
       */
       const float fake_priority = 1.0f;
       const VkDeviceQueueCreateInfo dummy_create_info = {
@@ -2021,24 +2042,23 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
          .queueCount = 1,
          .pQueuePriorities = &fake_priority
       };
-      result = lvp_queue_init(device, &device->queue, &dummy_create_info, 0);
+      device->queue_count = 1;
+      result = lvp_queue_init(device, &device->queue[0], &dummy_create_info, 0);
    }
 
-   if (result != VK_SUCCESS) {
-      vk_free(&device->vk.alloc, device);
-      return result;
-   }
+   if (result != VK_SUCCESS)
+      goto fail_queue;
 
    nir_builder b = nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT, physical_device->drv_options[MESA_SHADER_FRAGMENT], "dummy_frag");
    struct pipe_shader_state shstate = {0};
    shstate.type = PIPE_SHADER_IR_NIR;
    shstate.ir.nir = b.shader;
-   device->noop_fs = device->queue.ctx->create_fs_state(device->queue.ctx, &shstate);
+   device->noop_fs = device->queue[0].ctx->create_fs_state(device->queue[0].ctx, &shstate);
    _mesa_hash_table_init(&device->bda, NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
    simple_mtx_init(&device->bda_lock, mtx_plain);
 
    uint32_t zero = 0;
-   device->zero_buffer = pipe_buffer_create_with_data(device->queue.ctx, 0, PIPE_USAGE_IMMUTABLE, sizeof(uint32_t), &zero);
+   device->zero_buffer = pipe_buffer_create_with_data(device->queue[0].ctx, 0, PIPE_USAGE_IMMUTABLE, sizeof(uint32_t), &zero);
 
    struct pipe_sampler_state null_sampler = {
       .seamless_cube_map = 1,
@@ -2055,10 +2075,8 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
    device->group_handle_alloc = 1;
 
    result = vk_meta_device_init(&device->vk, &device->meta);
-   if (result != VK_SUCCESS) {
-      lvp_DestroyDevice(lvp_device_to_handle(device), pAllocator);
-      return result;
-   }
+   if (result != VK_SUCCESS)
+      goto fail_meta;
 
    lvp_device_init_accel_struct_state(device);
 
@@ -2066,6 +2084,25 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreateDevice(
 
    return VK_SUCCESS;
 
+fail_meta:
+   llvmpipe_delete_image_handle(device->pscreen, device->null_image_handle);
+   llvmpipe_delete_texture_handle(device->pscreen, device->null_texture_handle);
+   pipe_resource_reference(&device->zero_buffer, NULL);
+   simple_mtx_destroy(&device->bda_lock);
+   _mesa_hash_table_fini(&device->bda, NULL);
+   device->queue[0].ctx->delete_fs_state(device->queue[0].ctx, device->noop_fs);
+fail_queue:
+   vk_foreach_queue_safe(iter, &device->vk) {
+      struct lvp_queue *queue = container_of(iter, struct lvp_queue, vk);
+      lvp_queue_finish(queue);
+   }
+   util_dynarray_fini(&device->shader_destroys);
+   simple_mtx_destroy(&device->shader_destroys_lock);
+   vk_device_finish(&device->vk);
+fail_alloc:
+   vk_free(&device->vk.alloc, device);
+
+   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL lvp_DestroyDevice(
@@ -2089,15 +2126,16 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyDevice(
    llvmpipe_delete_texture_handle(device->pscreen, device->null_texture_handle);
    llvmpipe_delete_image_handle(device->pscreen, device->null_image_handle);
 
-   device->queue.ctx->delete_fs_state(device->queue.ctx, device->noop_fs);
+   device->queue[0].ctx->delete_fs_state(device->queue[0].ctx, device->noop_fs);
 
-   if (device->queue.last_fence)
-      device->pscreen->fence_reference(device->pscreen, &device->queue.last_fence, NULL);
    _mesa_hash_table_fini(&device->bda, NULL);
    simple_mtx_destroy(&device->bda_lock);
    pipe_resource_reference(&device->zero_buffer, NULL);
 
-   lvp_queue_finish(&device->queue);
+   for (uint32_t i = 0; i < device->queue_count; i++)
+      lvp_queue_finish(&device->queue[i]);
+   util_dynarray_fini(&device->shader_destroys);
+   simple_mtx_destroy(&device->shader_destroys_lock);
    vk_device_finish(&device->vk);
    vk_free(&device->vk.alloc, device);
 }
@@ -2766,11 +2804,9 @@ lvp_sampler_init(struct lvp_device *device, struct lp_sampler_descriptor *desc, 
    state.reduction_mode = (enum pipe_tex_reduction_mode)vk_state->reduction_mode;
    memcpy(&state.border_color, &vk_state->border_color_value, sizeof(vk_state->border_color_value));
 
-   simple_mtx_lock(&device->queue.lock);
    struct lp_texture_handle *texture_handle = llvmpipe_create_texture_handle(device->pscreen, NULL, &state);
    desc->sampler_index = texture_handle->sampler_index;
    llvmpipe_delete_texture_handle(device->pscreen, texture_handle);
-   simple_mtx_unlock(&device->queue.lock);
 
    lp_jit_sampler_from_pipe(&desc->jit, &state);
 }

@@ -658,7 +658,7 @@ zink_draw(struct pipe_context *pctx,
 
          static bool rect_warned = false;
          if (DYNAMIC_STATE >= ZINK_DYNAMIC_STATE3 && rast_prim == MESA_PRIM_LINES && !rect_warned && 
-             (VkLineRasterizationModeEXT)rast_state->hw_state.line_mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT) {
+             (VkLineRasterizationMode)rast_state->hw_state.line_mode == VK_LINE_RASTERIZATION_MODE_RECTANGULAR) {
             if (screen->info.line_rast_feats.rectangularLines)
                rect_warned = true;
             else

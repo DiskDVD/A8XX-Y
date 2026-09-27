@@ -5,8 +5,8 @@
 #ifndef VK_FORMAT_INFO_H
 #define VK_FORMAT_INFO_H
 
-#include <stdbool.h>
 #include <drm_fourcc.h>
+#include <stdbool.h>
 #define DRM_FORMAT_YVU420_ANDROID fourcc_code('9', '9', '9', '7')
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
 #include <system/graphics.h>
@@ -22,6 +22,7 @@ enum {
 #endif
 #include <vndk/hardware_buffer.h>
 #include <vulkan/vulkan.h>
+
 #include "util/log.h"
 
 namespace gfxstream {

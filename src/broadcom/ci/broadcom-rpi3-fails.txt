@@ -121,10 +121,6 @@ spec@arb_clear_texture@arb_clear_texture-sized-formats,Fail
 spec@glsl-1.10@execution@glsl-fs-inline-explosion,Crash
 spec@glsl-1.10@execution@glsl-vs-inline-explosion,Crash
 
-# A sub-case involving polygon stipple fails because driver doesn't implement
-# stipple
-spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
-
 # Crashes in this group are CMA allocation fails
 spec@!opengl 1.1@depthstencil-default_fb-clear samples=2,Fail
 spec@!opengl 1.1@depthstencil-default_fb-clear samples=4,Fail
@@ -165,9 +161,6 @@ spec@!opengl 1.1@linestipple@Factor 3x,Fail
 spec@!opengl 1.1@linestipple@Line loop,Fail
 spec@!opengl 1.1@linestipple@Line strip,Fail
 spec@!opengl 1.1@linestipple@Restarting lines within a single Begin-End block,Fail
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 
 # Hadware do not support wireframe nor point-fill rasterization modes,
 # so glPolygonMode() cannot be implemented; everything is rasterized
@@ -954,7 +947,6 @@ spec@arb_texture_rectangle@1-1-linear-texture,Fail
 spec@arb_texture_rectangle@texrect-many,Crash
 spec@arb_vertex_program@minmax,Fail
 spec@egl 1.4@largest possible eglcreatepbuffersurface and then glclear,Fail
-spec@egl_mesa_configless_context@basic,Fail
 spec@ext_direct_state_access@multi-texture,Crash
 spec@ext_direct_state_access@multi-texture@MultiTexSubImage1DEXT,Fail
 spec@ext_direct_state_access@textures@GL_PROXY_TEXTURE_1D + glTex* + display list GL_COMPILE,Fail
@@ -964,6 +956,11 @@ spec@ext_direct_state_access@textures@TextureSubImage2DEXT + display list GL_COM
 spec@ext_direct_state_access@textures@TextureSubImage2DEXT + display list GL_COMPILE_AND_EXECUTE,Fail
 spec@ext_direct_state_access@textures@TextureSubImage2DEXT,Fail
 spec@ext_framebuffer_blit@fbo-blit-check-limits,Fail
+spec@glsl-1.10@execution@loops@glsl-fs-unroll-explosion,Crash
+spec@glsl-1.10@execution@loops@glsl-vs-unroll-explosion,Crash
+
+# https://gitlab.freedesktop.org/mesa/piglit/-/merge_requests/1206
+spec@egl_mesa_configless_context@basic,Fail
 
 # Driver is not handling VERT_{ATTRIB,BIT}_EDFLAG at all
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail

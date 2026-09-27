@@ -1077,19 +1077,18 @@ radv_update_preamble_cs(struct radv_queue_state *queue, struct radv_device *devi
       if (i < 2 || task_rings_bo) {
          /* The two initial preambles have a cache flush at the beginning. */
          const enum amd_gfx_level gfx_level = pdev->info.gfx_level;
-         enum radv_cmd_flush_bits flush_bits = RADV_CMD_FLAG_INV_ICACHE | RADV_CMD_FLAG_INV_SCACHE |
-                                               RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_L2 |
-                                               RADV_CMD_FLAG_START_PIPELINE_STATS;
+         enum ac_barrier_flags flush_bits = AC_BARRIER_INV_ICACHE | AC_BARRIER_INV_SMEM |
+                                               AC_BARRIER_INV_VMEM | AC_BARRIER_INV_L2 |
+                                               AC_BARRIER_PIPELINESTAT_START;
 
          if (i == 0 || task_rings_bo) {
             /* The full flush preamble should also wait for previous shader work to finish. */
-            flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH;
+            flush_bits |= AC_BARRIER_SYNC_CS;
             if (queue->qf == RADV_QUEUE_GENERAL)
-               flush_bits |= RADV_CMD_FLAG_VS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH;
+               flush_bits |= AC_BARRIER_SYNC_VS | AC_BARRIER_SYNC_PS;
          }
 
-         radv_cs_emit_cache_flush(ws, cs, gfx_level, NULL, 0, flush_bits, &rgp_flush_bits, RADV_PWS_ACQUIRE_POINT_PFP,
-                                  0);
+         radv_cs_emit_cache_flush(ws, cs, gfx_level, NULL, 0, flush_bits, &rgp_flush_bits, AC_PWS_ACQUIRE_POINT_PFP, 0);
       }
 
       /* Emit task rings after the initial cache flush and wait
@@ -1322,18 +1321,18 @@ radv_create_flush_postamble(struct radv_queue *queue)
    if (result != VK_SUCCESS)
       return result;
 
-   enum radv_cmd_flush_bits flush_bits = RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_L2;
+   enum ac_barrier_flags flush_bits = AC_BARRIER_SYNC_CS | AC_BARRIER_INV_L2;
 
    if (ip == AMD_IP_GFX)
-      flush_bits |= RADV_CMD_FLAG_VS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_FLUSH_AND_INV_CB |
-                    RADV_CMD_FLAG_FLUSH_AND_INV_DB | RADV_CMD_FLAG_FLUSH_AND_INV_CB_META |
-                    RADV_CMD_FLAG_FLUSH_AND_INV_DB_META;
+      flush_bits |= AC_BARRIER_SYNC_VS | AC_BARRIER_SYNC_PS | AC_BARRIER_SYNC_AND_INV_CB |
+                    AC_BARRIER_SYNC_AND_INV_DB | AC_BARRIER_SYNC_AND_INV_CB_META |
+                    AC_BARRIER_SYNC_AND_INV_DB_META;
 
    enum ac_rgp_flush_bits rgp_flush_bits = 0;
    uint32_t flush_cnt = 0;
 
    radv_cs_emit_cache_flush(ws, cs, pdev->info.gfx_level, &flush_cnt, 0, flush_bits, &rgp_flush_bits,
-                            RADV_PWS_ACQUIRE_POINT_PFP, 0);
+                            AC_PWS_ACQUIRE_POINT_PFP, 0);
 
    result = radv_finalize_cmd_stream(device, cs);
    if (result != VK_SUCCESS) {

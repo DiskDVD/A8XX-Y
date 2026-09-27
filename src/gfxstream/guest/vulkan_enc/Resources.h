@@ -16,6 +16,7 @@
 #include <functional>
 
 #include "VulkanHandles.h"
+#include "gfxstream_vk_private.h"
 
 namespace gfxstream {
 namespace guest {
@@ -34,117 +35,61 @@ struct DescriptorSetLayoutInfo;
 
 extern "C" {
 
-struct goldfish_vk_object_list {
-    void* obj;
-    struct goldfish_vk_object_list* next;
-};
-
-#if DETECT_OS_ANDROID
-#define DECLARE_HWVULKAN_DISPATCH hwvulkan_dispatch_t dispatch;
-#elif DETECT_OS_LINUX
-#define DECLARE_HWVULKAN_DISPATCH VK_LOADER_DATA loaderData;
-#else
-#define DECLARE_HWVULKAN_DISPATCH
-#endif
-
-#define GOLDFISH_VK_DEFINE_DISPATCHABLE_HANDLE_STRUCT(type) \
-    struct goldfish_##type {                                \
-        DECLARE_HWVULKAN_DISPATCH                           \
-        uint64_t underlying;                                \
-        gfxstream::vk::VkEncoder* lastUsedEncoder;          \
-        uint32_t sequenceNumber;                            \
-        gfxstream::vk::VkEncoder* privateEncoder;           \
-        gfxstream::guest::IOStream* privateStream;          \
-        uint32_t flags;                                     \
-        struct goldfish_vk_object_list* poolObjects;        \
-        struct goldfish_vk_object_list* subObjects;         \
-        struct goldfish_vk_object_list* superObjects;       \
-        void* userPtr;                                      \
-    };
-
-#define GOLDFISH_VK_DEFINE_TRIVIAL_NON_DISPATCHABLE_HANDLE_STRUCT(type) \
-    struct goldfish_##type {                                            \
-        uint64_t underlying;                                            \
-        struct goldfish_vk_object_list* poolObjects;                    \
-        struct goldfish_vk_object_list* subObjects;                     \
-        struct goldfish_vk_object_list* superObjects;                   \
-        void* userPtr;                                                  \
-    };
-
-#define GOLDFISH_VK_NEW_FROM_HOST_DECL(type) type new_from_host_##type(type);
-
-#define GOLDFISH_VK_AS_GOLDFISH_DECL(type) struct goldfish_##type* as_goldfish_##type(type);
-
-#define GOLDFISH_VK_GET_HOST_DECL(type) type get_host_##type(type);
-
-#define GOLDFISH_VK_DELETE_GOLDFISH_DECL(type) void delete_goldfish_##type(type);
-
-#define GOLDFISH_VK_IDENTITY_DECL(type) type vk_handle_identity_##type(type);
-
-#define GOLDFISH_VK_NEW_FROM_HOST_U64_DECL(type) type new_from_host_u64_##type(uint64_t);
-
-#define GOLDFISH_VK_GET_HOST_U64_DECL(type) uint64_t get_host_u64_##type(type);
-
-GOLDFISH_VK_LIST_AUTODEFINED_STRUCT_DISPATCHABLE_HANDLE_TYPES(
-    GOLDFISH_VK_DEFINE_DISPATCHABLE_HANDLE_STRUCT)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_NEW_FROM_HOST_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_AS_GOLDFISH_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_GET_HOST_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_DELETE_GOLDFISH_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_IDENTITY_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_NEW_FROM_HOST_U64_DECL)
-GOLDFISH_VK_LIST_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_GET_HOST_U64_DECL)
-
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_NEW_FROM_HOST_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_AS_GOLDFISH_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_GET_HOST_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_DELETE_GOLDFISH_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_IDENTITY_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_NEW_FROM_HOST_U64_DECL)
-GOLDFISH_VK_LIST_NON_DISPATCHABLE_HANDLE_TYPES(GOLDFISH_VK_GET_HOST_U64_DECL)
-GOLDFISH_VK_LIST_AUTODEFINED_STRUCT_NON_DISPATCHABLE_HANDLE_TYPES(
-    GOLDFISH_VK_DEFINE_TRIVIAL_NON_DISPATCHABLE_HANDLE_STRUCT)
-
-struct goldfish_VkDescriptorPool {
-    uint64_t underlying;
-    gfxstream::vk::DescriptorPoolAllocationInfo* allocInfo;
-};
-
-struct goldfish_VkDescriptorSet {
-    uint64_t underlying;
-    gfxstream::vk::ReifiedDescriptorSet* reified;
-};
-
-struct goldfish_VkDescriptorSetLayout {
-    uint64_t underlying;
-    gfxstream::vk::DescriptorSetLayoutInfo* layoutInfo;
-};
-
-struct goldfish_VkCommandBuffer {
-    DECLARE_HWVULKAN_DISPATCH
-    uint64_t underlying;
-    gfxstream::vk::VkEncoder* lastUsedEncoder;
-    uint32_t sequenceNumber;
-    gfxstream::vk::VkEncoder* privateEncoder;
-    gfxstream::guest::IOStream* privateStream;
-    uint32_t flags;
-    struct goldfish_vk_object_list* poolObjects;
-    struct goldfish_vk_object_list* subObjects;
-    struct goldfish_vk_object_list* superObjects;
-    void* userPtr;
-    bool isSecondary;
-    VkDevice device;
-};
+// TODO: remove these after fully consolidating to gfxstream_vk_* structs.
+#define goldfish_VkBuffer gfxstream_vk_buffer
+#define goldfish_VkFence gfxstream_vk_fence
+#define goldfish_VkSemaphore gfxstream_vk_semaphore
+#define goldfish_VkCommandPool gfxstream_vk_command_pool
+#define goldfish_VkCommandBuffer gfxstream_vk_command_buffer
+#define goldfish_VkQueue gfxstream_vk_queue
+#define goldfish_VkInstance gfxstream_vk_instance
+#define goldfish_VkPhysicalDevice gfxstream_vk_physical_device
+#define goldfish_VkDevice gfxstream_vk_device
+#define goldfish_VkDescriptorPool gfxstream_vk_descriptor_pool
+#define goldfish_VkDescriptorSet gfxstream_vk_descriptor_set
+#define goldfish_VkDescriptorSetLayout gfxstream_vk_descriptor_set_layout
+#define goldfish_VkDeviceMemory gfxstream_vk_device_memory
+#define goldfish_VkImage gfxstream_vk_image
+#define goldfish_VkDescriptorUpdateTemplate gfxstream_vk_descriptor_update_template
+#define goldfish_VkSampler gfxstream_vk_sampler
+#define goldfish_VkPrivateDataSlot gfxstream_vk_private_data_slot
+#define goldfish_VkBufferCollectionFUCHSIA gfxstream_vk_buffer_collection_fuchsia
+#define goldfish_VkBufferView gfxstream_vk_buffer_view
+#define goldfish_VkImageView gfxstream_vk_image_view
+#define goldfish_VkShaderModule gfxstream_vk_shader_module
+#define goldfish_VkPipeline gfxstream_vk_pipeline
+#define goldfish_VkPipelineCache gfxstream_vk_pipeline_cache
+#define goldfish_VkPipelineLayout gfxstream_vk_pipeline_layout
+#define goldfish_VkRenderPass gfxstream_vk_render_pass
+#define goldfish_VkFramebuffer gfxstream_vk_framebuffer
+#define goldfish_VkEvent gfxstream_vk_event
+#define goldfish_VkQueryPool gfxstream_vk_query_pool
+#define goldfish_VkSamplerYcbcrConversion gfxstream_vk_sampler_ycbcr_conversion
+#define goldfish_VkSurfaceKHR gfxstream_vk_surface_khr
+#define goldfish_VkSwapchainKHR gfxstream_vk_swapchain_khr
+#define goldfish_VkDisplayKHR gfxstream_vk_display_khr
+#define goldfish_VkDisplayModeKHR gfxstream_vk_display_mode_khr
+#define goldfish_VkValidationCacheEXT gfxstream_vk_validation_cache_ext
+#define goldfish_VkDebugReportCallbackEXT gfxstream_vk_debug_report_callback_ext
+#define goldfish_VkDebugUtilsMessengerEXT gfxstream_vk_debug_utils_messenger_ext
+#define goldfish_VkMicromapEXT gfxstream_vk_micromap_ext
+#define goldfish_VkCuModuleNVX gfxstream_vk_cu_module_nvx
+#define goldfish_VkCuFunctionNVX gfxstream_vk_cu_function_nvx
+#define goldfish_VkObjectTableNVX gfxstream_vk_object_table_nvx
+#define goldfish_VkIndirectCommandsLayoutNVX gfxstream_vk_indirect_commands_layout_nvx
+#define goldfish_VkIndirectCommandsLayoutNV gfxstream_vk_indirect_commands_layout_nv
+#define goldfish_VkAccelerationStructureNV gfxstream_vk_acceleration_structure_nv
+#define goldfish_VkAccelerationStructureKHR gfxstream_vk_acceleration_structure_khr
 
 }  // extern "C"
 
 namespace gfxstream {
 namespace vk {
 
-void appendObject(struct goldfish_vk_object_list** begin, void* val);
-void eraseObject(struct goldfish_vk_object_list** begin, void* val);
-void eraseObjects(struct goldfish_vk_object_list** begin);
-void forAllObjects(struct goldfish_vk_object_list* begin, std::function<void(void*)> func);
+void appendObject(struct gfxstream_vk_object_list** begin, void* val);
+void eraseObject(struct gfxstream_vk_object_list** begin, void* val);
+void eraseObjects(struct gfxstream_vk_object_list** begin);
+void forAllObjects(struct gfxstream_vk_object_list* begin, std::function<void(void*)> func);
 
 }  // namespace vk
 }  // namespace gfxstream

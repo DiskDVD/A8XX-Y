@@ -95,13 +95,7 @@ fill_srv_descriptors(struct d3d12_context *ctx,
 
    for (unsigned i = shader->begin_srv_binding; i < shader->end_srv_binding; i++)
    {
-      struct d3d12_sampler_view *view;
-
-      if (i == shader->pstipple_binding) {
-         view = (struct d3d12_sampler_view*)ctx->pstipple.sampler_view;
-      } else {
-         view = (struct d3d12_sampler_view*)ctx->sampler_views[stage][i];
-      }
+      struct d3d12_sampler_view *view = (struct d3d12_sampler_view*)ctx->sampler_views[stage][i];
 
       unsigned desc_idx = i - shader->begin_srv_binding;
       if (view != NULL) {
@@ -193,13 +187,7 @@ fill_sampler_descriptors(struct d3d12_context *ctx,
 
    view.count = 0;
    for (unsigned i = shader->begin_srv_binding; i < shader->end_srv_binding; i++, view.count++) {
-      struct d3d12_sampler_state *sampler;
-
-      if (i == shader->pstipple_binding) {
-         sampler = ctx->pstipple.sampler_cso;
-      } else {
-         sampler = ctx->samplers[stage][i];
-      }
+      struct d3d12_sampler_state *sampler = ctx->samplers[stage][i];
 
       unsigned desc_idx = i - shader->begin_srv_binding;
       if (sampler != NULL) {
@@ -953,10 +941,6 @@ d3d12_draw_vbo(struct pipe_context *pctx,
       twoface_emulation(ctx, rast, dinfo, indirect, &draws[0]);
       ctx->initial_api_prim = saved_mode;
    }
-
-   if (ctx->pstipple.enabled && ctx->gfx_pipeline_state.rast->base.poly_stipple_enable)
-      ctx->shader_dirty[MESA_SHADER_FRAGMENT] |= D3D12_SHADER_DIRTY_SAMPLER_VIEWS |
-                                                 D3D12_SHADER_DIRTY_SAMPLERS;
 
    /* this should *really* be fixed at a higher level than here! */
    enum mesa_prim reduced_prim = u_reduced_prim((enum mesa_prim)dinfo->mode);

@@ -102,8 +102,8 @@ _libnak_rs = static_library(
   dependencies : [
     dep_paste,
     dep_rustc_hash,
-    idep_bitview_rs,
     idep_compiler_rs,
+    idep_mesa_util_rs,
     idep_nvidia_headers_rs,
   ],
   link_with : [

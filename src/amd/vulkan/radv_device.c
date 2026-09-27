@@ -1439,6 +1439,7 @@ radv_destroy_device(struct radv_device *device, const VkAllocationCallbacks *pAl
    simple_mtx_destroy(&device->rt_handles_mtx);
    simple_mtx_destroy(&device->pso_cache_stats_mtx);
    simple_mtx_destroy(&device->blit_queue_mtx);
+   simple_mtx_destroy(&device->fault.mtx);
 
    radv_destroy_shader_arenas(device);
    if (device->capture_replay_arena_vas)
@@ -1510,6 +1511,7 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    simple_mtx_init(&device->rt_handles_mtx, mtx_plain);
    simple_mtx_init(&device->pso_cache_stats_mtx, mtx_plain);
    simple_mtx_init(&device->blit_queue_mtx, mtx_plain);
+   simple_mtx_init(&device->fault.mtx, mtx_plain);
 
    device->rt_handles = _mesa_hash_table_create(NULL, _mesa_hash_u32, _mesa_key_u32_equal);
 
@@ -2207,30 +2209,55 @@ radv_GetDeviceFaultDebugInfoKHR(VkDevice _device, VkDeviceFaultDebugInfoKHR *pDe
    return VK_SUCCESS;
 }
 
+static bool
+radv_has_unreported_fault(struct radv_device *device)
+{
+   bool vm_fault_occurred = false;
+   bool unreported;
+
+   radv_get_device_fault_addr_info(device, &vm_fault_occurred);
+   const bool shader_abort_occurred = radv_shader_abort_occurred(device);
+   const bool device_lost_occurred = !shader_abort_occurred && vk_device_is_lost(&device->vk);
+
+   if (!vm_fault_occurred && !shader_abort_occurred && !device_lost_occurred)
+      return false;
+
+   simple_mtx_lock(&device->fault.mtx);
+   unreported = (vm_fault_occurred && !device->fault.fault_addr_reported) ||
+                (shader_abort_occurred && !device->fault.shader_abort_reported) ||
+                (device_lost_occurred && !device->fault.device_lost_reported);
+   simple_mtx_unlock(&device->fault.mtx);
+
+   return unreported;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 radv_GetDeviceFaultReportsKHR(VkDevice _device, uint64_t timeout, uint32_t *pFaultCounts,
                               VkDeviceFaultInfoKHR *pFaultInfo)
 {
    VK_OUTARRAY_MAKE_TYPED(VkDeviceFaultInfoKHR, out, pFaultInfo, pFaultCounts);
    VK_FROM_HANDLE(radv_device, device, _device);
-   VkDeviceFaultAddressInfoKHR addr_fault_info;
-   bool device_fault_occurred = false;
-   bool shader_abort_occurred = false;
-   bool vm_fault_occurred = false;
+   bool new_fault_occurred = false;
    bool timed_out = false;
 
+   /* Poll for device faults that haven't been reported yet. */
    uint64_t abs_timeout = os_time_get_absolute_timeout(timeout);
    do {
-      addr_fault_info = radv_get_device_fault_addr_info(device, &vm_fault_occurred);
-      shader_abort_occurred = radv_shader_abort_occurred(device);
+      new_fault_occurred = radv_has_unreported_fault(device);
+   } while (timeout > 0 && !new_fault_occurred && !(timed_out = (abs_timeout < os_time_get_nano())));
 
-      device_fault_occurred = vm_fault_occurred || shader_abort_occurred;
-   } while (timeout > 0 && !device_fault_occurred && !(timed_out = (abs_timeout < os_time_get_nano())));
-
-   if (!device_fault_occurred)
+   if (!new_fault_occurred)
       return VK_TIMEOUT;
 
-   if (vm_fault_occurred) {
+   simple_mtx_lock(&device->fault.mtx);
+
+   /* Query again because faults are reported once and another thread might have reported them. */
+   bool vm_fault_occurred = false;
+   VkDeviceFaultAddressInfoKHR addr_fault_info = radv_get_device_fault_addr_info(device, &vm_fault_occurred);
+   const bool shader_abort_occurred = radv_shader_abort_occurred(device);
+   const bool device_lost_occurred = !shader_abort_occurred && vk_device_is_lost(&device->vk);
+
+   if (vm_fault_occurred && !device->fault.fault_addr_reported) {
       VkDeviceFaultInfoKHR fault_info = {
          .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR,
          .flags = VK_DEVICE_FAULT_FLAG_MEMORY_ADDRESS_KHR,
@@ -2238,20 +2265,45 @@ radv_GetDeviceFaultReportsKHR(VkDevice _device, uint64_t timeout, uint32_t *pFau
       };
       strncpy(fault_info.description, "A GPUVM fault has been detected", sizeof(fault_info.description));
 
-      vk_outarray_append_typed(VkDeviceFaultInfoKHR, &out, elem) *elem = fault_info;
+      vk_outarray_append_typed(VkDeviceFaultInfoKHR, &out, elem) {
+         *elem = fault_info;
+         device->fault.fault_addr_reported = true;
+      }
    }
 
-   if (shader_abort_occurred) {
-      /* The device lost entry must be last. */
-      VkDeviceFaultInfoKHR shader_abort_info = {
+   /* The device lost entry must be last. */
+   if (shader_abort_occurred && !device->fault.shader_abort_reported) {
+      VkDeviceFaultInfoKHR fault_info = {
          .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR,
          .flags = VK_DEVICE_FAULT_FLAG_DEVICE_LOST_KHR,
       };
-      strncpy(shader_abort_info.description, "A device lost due to OpAbortKHR has been detected",
-              sizeof(shader_abort_info.description));
+      strncpy(fault_info.description, "A device lost due to OpAbortKHR has been detected",
+              sizeof(fault_info.description));
 
-      vk_outarray_append_typed(VkDeviceFaultInfoKHR, &out, elem) *elem = shader_abort_info;
+      vk_outarray_append_typed(VkDeviceFaultInfoKHR, &out, elem) {
+         *elem = fault_info;
+         device->fault.shader_abort_reported = true;
+      }
+   } else if (device_lost_occurred && !device->fault.device_lost_reported) {
+      VkDeviceFaultInfoKHR fault_info = {
+         .sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR,
+         .flags = VK_DEVICE_FAULT_FLAG_DEVICE_LOST_KHR,
+      };
+      strncpy(fault_info.description, "A device lost has been detected", sizeof(fault_info.description));
+
+      vk_outarray_append_typed(VkDeviceFaultInfoKHR, &out, elem) {
+         *elem = fault_info;
+         device->fault.device_lost_reported = true;
+      }
    }
 
-   return vk_outarray_status(&out);
+   simple_mtx_unlock(&device->fault.mtx);
+
+   if (vk_outarray_status(&out) == VK_INCOMPLETE)
+      return VK_INCOMPLETE;
+
+   if (*pFaultCounts != 0)
+      return VK_SUCCESS;
+
+   return VK_TIMEOUT;
 }

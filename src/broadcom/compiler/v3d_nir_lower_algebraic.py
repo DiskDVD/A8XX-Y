@@ -9,8 +9,8 @@ has_unpack_sat = 'c && v3d_device_has_unpack_sat(c->devinfo)'
 has_unpack_max0 = 'c && v3d_device_has_unpack_max0(c->devinfo)'
 
 lower_alu = [
-    (('f2i8', a), ('i2i8', ('f2i32', a))),
-    (('f2i16', a), ('i2i16', ('f2i32', a))),
+    (('f2i8', a), ('u2u8', ('f2i32', a))),
+    (('f2i16', a), ('u2u16', ('f2i32', a))),
 
     (('f2u8', a), ('u2u8', ('f2u32', a))),
     (('f2u16', a), ('u2u16', ('f2u32', a))),

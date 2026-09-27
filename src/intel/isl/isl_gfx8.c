@@ -99,7 +99,7 @@ isl_gfx8_choose_image_alignment_el(const struct isl_device *dev,
    /* Handled by isl_choose_image_alignment_el */
    assert(info->format != ISL_FORMAT_HIZ);
 
-   assert(!isl_tiling_is_std_y(tiling));
+   assert(!isl_tiling_is_standard(tiling));
 
    const struct isl_format_layout *fmtl = isl_format_get_layout(info->format);
    if (fmtl->txc == ISL_TXC_CCS) {

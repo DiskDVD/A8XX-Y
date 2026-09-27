@@ -31,7 +31,19 @@ else
 fi
 
 # shellcheck disable=SC1003 # how this sed doesn't seems to work for me locally
-sed -i -e '/\[binaries\]/a\' -e "rust = ['rustc', '--target=$rust_target', '-C', 'linker=$cc']" "$cross_file"
+sed -i -e '/\[binaries\]/a\' -e "rust = ['rustc', '--target=$rust_target']" "$cross_file"
+
+# shellcheck disable=SC1003 # how this sed doesn't seems to work for me locally
+sed -i -e '/\[binaries\]/a\' -e "rust_ld = '$cc'" "$cross_file"
+
+# We need to set the target separately for bindgen for now
+# https://github.com/mesonbuild/meson/issues/13591
+#
+# And we need to set _FILE_OFFSET_BITS=64 prior to meson 1.9.2
+# https://github.com/mesonbuild/meson/pull/15009
+#
+# shellcheck disable=SC1003 # how this sed doesn't seems to work for me locally
+sed -i -e '/\[properties\]/a\' -e "bindgen_clang_arguments = ['--target=$rust_target', '-D_FILE_OFFSET_BITS=64']" "$cross_file"
 
 # Set up cmake cross compile toolchain file for dEQP builds
 toolchain_file="/toolchain-$arch.cmake"

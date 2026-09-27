@@ -371,7 +371,6 @@ shaders@glsl-max-varyings,Fail
 shaders@glsl-max-varyings >max_varying_components,Fail
 
 spec@!opengl 1.0@gl-1.0-dlist-bitmap,Fail
-spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 spec@!opengl 1.0@gl-1.0-swapbuffers-behavior,Fail
 spec@!opengl 1.0@gl-1.0-user-clip-all-planes,Fail
 
@@ -478,11 +477,6 @@ spec@ext_texture_srgb_r8@teximage-colors gl_sr8_ext@GL_SR8_EXT texture with GL_R
 spec@!opengl 1.1@texwrap formats bordercolor-swizzled,Fail
 spec@!opengl 1.1@texwrap formats bordercolor-swizzled@GL_RGB4- swizzled- border color only,Fail
 spec@!opengl 1.1@texwrap formats bordercolor-swizzled@GL_RGB5- swizzled- border color only,Fail
-
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 
 spec@!opengl 3.0@depth-cube-map,Fail
 

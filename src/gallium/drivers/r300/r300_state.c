@@ -722,7 +722,11 @@ static void r300_set_blend_color(struct pipe_context* pipe,
             break;
 
 #if UTIL_ARCH_BIG_ENDIAN
+        /* R500 packs components into two registers, so BE swizzles differ. */
         case PIPE_FORMAT_A8R8G8B8_UNORM: {
+            if (r300->screen->caps.is_r500)
+                break;
+
             /* A8R8G8B8 constant-color blending consumes the register lanes
              * in a different order from pipe RGBA. Program the inverse
              * order so GL_CONSTANT_COLOR sees pipe RGBA.
@@ -750,6 +754,11 @@ static void r300_set_blend_color(struct pipe_context* pipe,
             float g = c.color[1];
             float b = c.color[2];
             float a = c.color[3];
+            if (r300->screen->caps.is_r500) {
+                c.color[0] = b;
+                c.color[2] = r;
+                break;
+            }
             c.color[0] = g;
             c.color[1] = b;
             c.color[2] = a;
@@ -757,8 +766,13 @@ static void r300_set_blend_color(struct pipe_context* pipe,
             break;
         }
 
+        case PIPE_FORMAT_B4G4R4A4_UNORM:
+        case PIPE_FORMAT_B4G4R4X4_UNORM:
         case PIPE_FORMAT_B5G5R5A1_UNORM:
         case PIPE_FORMAT_B5G5R5X1_UNORM: {
+            if (r300->screen->caps.is_r500)
+                break;
+
             /* 1555 colorbuffer blending consumes the constant color in
              * colorbuffer-lane order. Match the B5G5R5* output swizzle so
              * GL_CONSTANT_COLOR blending sees pipe RGBA.

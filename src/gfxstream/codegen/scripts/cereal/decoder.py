@@ -898,6 +898,8 @@ custom_decodes = {
     # Image requirements need to be adjusted for compressed textures
     "vkGetDeviceImageMemoryRequirements" : emit_global_state_wrapped_decoding,
     "vkGetDeviceImageMemoryRequirementsKHR" : emit_global_state_wrapped_decoding,
+    "vkGetDeviceBufferMemoryRequirements" : emit_global_state_wrapped_decoding,
+    "vkGetDeviceBufferMemoryRequirementsKHR" : emit_global_state_wrapped_decoding,
 
     # VK_EXT_private_data
     "vkCreatePrivateDataSlotEXT" : emit_global_state_wrapped_decoding,

@@ -18,3 +18,9 @@ enum bi_va_lod_mode {
 static inline uint64_t val_ex_fifo_varying_bits() {
    return VALHAL_EX_FIFO_VARYING_BITS;
 }
+
+static inline const char *
+kraid_shader_stage_name(mesa_shader_stage stage, bool is_blend)
+{
+   return is_blend ? "MESA_SHADER_BLEND" : mesa_shader_stage_name(stage);
+}

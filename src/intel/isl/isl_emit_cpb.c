@@ -57,7 +57,7 @@ isl_genX(emit_cpb_control_s)(const struct isl_device *dev, void *batch,
       assert((info->surf->usage & ISL_SURF_USAGE_CPB_BIT));
       assert(info->surf->dim != ISL_SURF_DIM_3D);
       assert(info->surf->tiling == ISL_TILING_4 ||
-             isl_tiling_is_64(info->surf->tiling));
+             isl_tiling_is_standard(info->surf->tiling));
       assert(info->surf->format == ISL_FORMAT_R8_UINT);
    }
 

@@ -61,11 +61,15 @@ enum radv_video_enc_hw_ver {
  *
  * - full: Disable HiZ/HiS at draw time when required to prevent the issue to happen. This solution
  *   should be completely safe but it might decrease performance in some cases.
+ *
+ * - full_rez: Disable HiZ/HiS like full and force the fragment Z-order to early-Z-then-ReZ to recover
+ *   some of the early-Z rejection lost by disabling HiZ.
  */
 enum radv_gfx12_hiz_wa {
    RADV_GFX12_HIZ_WA_DISABLED,
    RADV_GFX12_HIZ_WA_PARTIAL,
    RADV_GFX12_HIZ_WA_FULL,
+   RADV_GFX12_HIZ_WA_FULL_REZ,
 };
 
 enum radv_drm_device_type {

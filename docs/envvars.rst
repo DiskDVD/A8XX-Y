@@ -608,6 +608,8 @@ Intel driver environment variables
    ``no-resource-barrier``
       disable RENDER_BARRIER instruction usage by falling back to
       PIPE_CONTROL
+   ``no-jay``
+      disable the Jay compiler and fall back to the older brw compiler
    ``optimizer``
       dump shader assembly to files at each optimization pass and
       iteration that make progress (Gfx < 9)
@@ -1821,6 +1823,9 @@ RADV driver environment variables
    ``full``
      mitigate the issue completely, no risk but performance might be decreased
      (default value)
+   ``full_rez``
+     mitigate the issue completely and force early-Z-then-ReZ to recover some
+     of the early-Z rejection lost by disabling HiZ
 
 RadeonSI driver environment variables
 -------------------------------------

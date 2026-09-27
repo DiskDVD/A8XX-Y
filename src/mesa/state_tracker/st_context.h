@@ -163,6 +163,13 @@ struct st_context
    bool add_point_size;
 
    /**
+    * Set when the driver can't do polygon stipple (pipe_caps.polygon_stipple is
+    * false) and it may be necessary (supported in the GL API version), so
+    * mesa/st emulates it in the fragment shader.
+    */
+   bool emulate_polygon_stipple;
+
+   /**
     * If a shader can be created when we get its source.
     * This means it has only 1 variant, not counting glBitmap and
     * glDrawPixels.
@@ -215,6 +222,12 @@ struct st_context
 
       GLuint poly_stipple[32];  /**< In OpenGL's bottom-to-top order */
 
+      /**
+       * Primitive type of the current draw for stippling purposes (set by
+       * st_prepare_draw).  MESA_PRIM_COUNT means unknown, or not stippling.
+       */
+      enum mesa_prim stipple_input_prim;
+
       GLuint fb_orientation;
 
       bool enable_sample_locations;
@@ -264,6 +277,24 @@ struct st_context
       enum pipe_format tex_format;
       struct st_bitmap_cache cache;
    } bitmap;
+
+   /** for emulated polygon stipple (pipe_caps.polygon_stipple == false) */
+   struct {
+      struct pipe_resource *texture;
+      struct pipe_sampler_view *sampler_view;
+   } pstipple;
+
+   /** The unit where the current fragment shader expects the emulated polygon
+    * stipple texture/sampler to be bound, or -1 when not emulating stipple.
+    * Set by st_update_fp(), consumed by the fragment texture/sampler atoms.
+    */
+   int fp_stipple_sampler;
+
+   /** Whether the current draw rasterizes polygons, and so should have the
+    * emulated polygon stipple applied.  Updated per-draw from the primitive
+    * type (see st_draw.c); consumed by st_update_fp().
+    */
+   bool fp_stipple_polygon;
 
    /** for glDraw/CopyPixels */
    struct {

@@ -24,6 +24,7 @@
 #include "nir/pipe_nir.h"
 #include "util/format/u_format.h"
 #include "util/perf/cpu_trace.h"
+#include "util/u_gen_mipmap.h"
 #include "util/u_surface.h"
 #include "util/u_blitter.h"
 #include "compiler/nir/nir_builder.h"
@@ -268,11 +269,22 @@ v3d_generate_mipmap(struct pipe_context *pctx,
                                          layer, layer,
                                          true)) {
                         assert(layer == first_layer);
-                        return false;
+                        goto fallback;
                 }
         }
 
         return true;
+
+fallback:
+        perf_debug("Software fallback for generate_mipmap()");
+        unsigned filter = PIPE_TEX_FILTER_NEAREST;
+
+        /* Check if the format supports filtering */
+        if (v3d_format_supports_filtering(devinfo, format))
+                filter = PIPE_TEX_FILTER_LINEAR;
+
+        return util_gen_mipmap(pctx, prsc, format, base_level, last_level,
+                               first_layer, last_layer, filter);
 }
 
 static void

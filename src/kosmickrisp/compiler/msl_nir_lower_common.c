@@ -947,3 +947,48 @@ msl_nir_lower_fs_combined_depth_clamp_clip(nir_shader *s)
 
    return nir_progress(true, b->impl, nir_metadata_none);
 }
+
+static bool lower_demote_samples(nir_builder *b, nir_intrinsic_instr *intr,
+                                 UNUSED void *data)
+{
+   if (intr->intrinsic != nir_intrinsic_demote_samples)
+      return false;
+
+   b->cursor = nir_before_instr(&intr->instr);
+
+   /* Determine if the current sample is masked out after this op */
+   nir_def *to_keep = nir_u2u32(b, nir_inot(b, intr->src[0].ssa));
+   nir_def *mask = nir_ishl(b, nir_imm_int(b, 1), nir_load_sample_id(b));
+   mask = nir_iand(b, mask, nir_load_sample_mask_in(b));
+   mask = nir_iand(b, mask, to_keep);
+
+   /* Demote if the current sample has been discarded */
+   nir_demote_if(b, nir_ieq_imm(b, mask, 0));
+
+   nir_instr_remove(&intr->instr);
+
+   return true;
+}
+
+/* TODO_KOSMICKRISP: Support dynamic state. nir_lower_alpha_to_coverage
+ * already has inputs for this, nir_lower_alpha_to_one does not. */
+bool
+msl_nir_lower_multisample_alpha(nir_shader *s, bool alpha_to_coverage,
+                                bool alpha_to_one)
+{
+   bool progress = false;
+
+   if (alpha_to_coverage) {
+      NIR_PASS(progress, s, nir_lower_alpha_to_coverage, false,
+               NULL);
+
+      /* Lower the resulting demote samples intrinsics */
+      NIR_PASS(progress, s, nir_shader_intrinsics_pass, lower_demote_samples,
+               nir_metadata_control_flow, NULL);
+   }
+
+   if (alpha_to_one)
+      NIR_PASS(progress, s, nir_lower_alpha_to_one);
+
+   return progress;
+}

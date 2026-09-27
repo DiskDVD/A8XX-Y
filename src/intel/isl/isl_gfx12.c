@@ -276,7 +276,7 @@ isl_gfx12_choose_image_alignment_el(const struct isl_device *dev,
    /* Handled by isl_choose_image_alignment_el */
    assert(info->format != ISL_FORMAT_HIZ);
 
-   if (isl_tiling_is_std_y(tiling)) {
+   if (isl_tiling_is_standard(tiling)) {
       /* From RENDER_SURFACE_STATE::SurfaceHorizontalAlignment,
        *
        *   This field is ignored for Tile64 surface formats because horizontal

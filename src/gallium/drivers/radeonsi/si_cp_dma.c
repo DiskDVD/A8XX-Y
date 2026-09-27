@@ -150,7 +150,7 @@ void si_cp_dma_clear_buffer(struct si_context *sctx, struct radeon_cmdbuf *cs,
    assert(size && size % 4 == 0);
 
    if (!sctx->screen->info.cp_dma_use_L2)
-      si_set_barrier_flags(sctx, SI_BARRIER_INV_L2);
+      si_set_barrier_flags(sctx, AC_BARRIER_INV_L2);
 
    /* Mark the buffer range of destination as valid (initialized),
     * so that transfer_map knows it should wait for the GPU when mapping
@@ -223,7 +223,7 @@ void si_cp_dma_copy_buffer(struct si_context *sctx, struct pipe_resource *dst,
    assert(dst && src);
 
    if (!sctx->screen->info.cp_dma_use_L2)
-      si_set_barrier_flags(sctx, SI_BARRIER_INV_L2);
+      si_set_barrier_flags(sctx, AC_BARRIER_INV_L2);
 
    /* Mark the buffer range of destination as valid (initialized),
     * so that transfer_map knows it should wait for the GPU when mapping

@@ -11,6 +11,16 @@
 
 #include "main/api_trace_helpers.h"
 
+const char *
+_mesa_trace_format_ptr(char *buf, size_t buflen, const void *ptr)
+{
+   if (!ptr)
+      return "(null)";
+
+   snprintf(buf, buflen, "%p", ptr);
+   return buf;
+}
+
 void
 _mesa_trace_format_array(char *buf, size_t buflen,
                          const void *arr, size_t n,

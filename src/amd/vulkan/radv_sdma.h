@@ -68,7 +68,8 @@ void radv_sdma_copy_memory(const struct radv_device *device, struct radv_cmd_str
                            uint64_t dst_va, uint64_t size, bool tmz);
 void radv_sdma_fill_memory(const struct radv_device *device, struct radv_cmd_stream *cs, const uint64_t va,
                            const uint64_t size, const uint32_t value);
-bool radv_sdma_supports_image(const struct radv_device *device, const struct radv_image *image, bool to_image);
+bool radv_sdma_supports_image(const struct radv_cmd_buffer *cmd_buffer, const struct radv_image *image,
+                              VkImageLayout image_layout, const VkImageSubresourceLayers *subresource, bool to_image);
 
 void radv_sdma_emit_nop(const struct radv_device *device, struct radv_cmd_stream *cs);
 

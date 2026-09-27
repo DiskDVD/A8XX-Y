@@ -57,6 +57,60 @@
 #include "st_util.h"
 
 
+/**
+ * Does the current draw rasterize polygons (and so get polygon-stippled)?
+ *
+ * Polygon stipple only applies to polygon primitives, so points and lines --
+ * whether drawn directly, emitted by a geometry/tessellation shader, or the
+ * result of glPolygonMode(GL_POINT/GL_LINE) -- must not be stippled.  This
+ * mirrors what the draw module's pstipple stage (a tri-only stage) and native
+ * hardware do.
+ */
+static bool
+st_rasterizes_polygons(const struct st_context *st)
+{
+   const struct gl_context *ctx = st->ctx;
+   enum mesa_prim prim;
+
+   /* The rasterized primitive comes from the last primitive-producing stage. */
+   if (ctx->GeometryProgram._Current) {
+      prim = ctx->GeometryProgram._Current->info.gs.output_primitive;
+   } else if (ctx->TessEvalProgram._Current) {
+      const struct shader_info *info = &ctx->TessEvalProgram._Current->info;
+      if (info->tess.point_mode)
+         prim = MESA_PRIM_POINTS;
+      else if (info->tess._primitive_mode == TESS_PRIMITIVE_ISOLINES)
+         prim = MESA_PRIM_LINES;
+      else
+         prim = MESA_PRIM_TRIANGLES;
+   } else {
+      prim = st->state.stipple_input_prim;
+   }
+
+   if (u_reduced_prim(prim) != MESA_PRIM_TRIANGLES)
+      return false;
+
+   /* A polygon drawn as points or lines via glPolygonMode isn't stippled.
+    * Supporting differing front/back modes would require different shader
+    * lowering, and we don't have an example of a workload needing it.
+    */
+   return ctx->Polygon.FrontMode == GL_FILL;
+}
+
+
+/**
+ * Early atom (runs before the fragment shader atom): turn the input primitive
+ * into the reduced primitive the fragment shader sees, so st_update_fp() can
+ * pick the right emulated-polygon-stipple variant.  A no-op unless emulating.
+ */
+void
+st_update_stipple_emulate(struct st_context *st)
+{
+   if (st->emulate_polygon_stipple)
+      st->fp_stipple_polygon = st->ctx->Polygon.StippleFlag && st_rasterizes_polygons(st);
+}
+
+
 static unsigned
 get_texture_index(struct gl_context *ctx, const unsigned unit)
 {
@@ -122,6 +176,8 @@ st_update_fp( struct st_context *st )
    assert(fp->info.stage == MESA_SHADER_FRAGMENT);
 
    void *shader;
+
+   st->fp_stipple_sampler = -1;
 
    if (st->shader_has_one_variant[MESA_SHADER_FRAGMENT] &&
        !fp->ati_fs && /* ATI_fragment_shader always has multiple variants */
@@ -189,9 +245,25 @@ st_update_fp( struct st_context *st )
       key.external = st_get_external_sampler_key(st, fp);
       update_gl_clamp(st, st->ctx->FragmentProgram._Current, key.gl_clamp);
 
+
+      /* When the driver can't do polygon stipple itself, we lower it in the
+       * fragment shader, which needs a dedicated variant.  Only the primitives
+       * that rasterize as polygons are stippled; st->fp_stipple_polygon tracks
+       * that for the current draw (see st_draw.c).
+       */
+      key.lower_polygon_stipple = st->fp_stipple_polygon;
+
       simple_mtx_lock(&st->ctx->Shared->Mutex);
-      shader = st_get_fp_variant(st, fp, &key, false, NULL)->base.driver_shader;
+      struct st_fp_variant *fpv =
+         st_get_fp_variant(st, fp, &key, false, NULL);
       simple_mtx_unlock(&st->ctx->Shared->Mutex);
+
+      shader = fpv->base.driver_shader;
+
+      /* Remember where the emulated stipple texture/sampler must be bound (or not) so
+       * the texture and sampler atoms can append it for this draw.
+       */
+      st->fp_stipple_sampler = fpv->stipple_sampler;
    }
 
    _mesa_reference_program(st->ctx, &st->fp, fp);

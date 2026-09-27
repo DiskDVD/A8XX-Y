@@ -9,7 +9,7 @@ use crate::sm30_instr_latencies::{
     encode_kepler_shader, instr_exec_latency, instr_latency,
     latency_upper_bound, KeplerInstructionEncoder,
 };
-use bitview::*;
+use mesa_util::bitview::*;
 
 use rustc_hash::FxHashMap;
 use std::fmt;

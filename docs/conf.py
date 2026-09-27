@@ -236,12 +236,16 @@ hawkmoth_clang = [
     '-I{}/src/'.format(mesa_root),
     '-I{}/src/gallium/include/'.format(mesa_root),
     '-I{}/src/intel/'.format(mesa_root),
+    '-I{}/src/imagination/'.format(mesa_root),
     '-I{}/src/mesa/'.format(mesa_root),
     '-I{}/src/vulkan/util'.format(mesa_root),
     '-I{}/src/'.format(mesa_build_root),
     '-DHAVE_STRUCT_TIMESPEC',
     '-DHAVE_PTHREAD',
     '-DHAVE_ENDIAN_H',
+    '-D__pvr_address_type=uint64_t',
+    '-D__pvr_get_address(x)=x',
+    '-D__pvr_make_address(x)=x',
 ]
 hawkmoth_clang.extend(compiler.get_include_args())
 
@@ -266,5 +270,26 @@ def _copy_generated_rst(app):
     for file in generated:
         shutil.copy(pathlib.Path(mesa_build_root) / 'docs' / file, gen_dir)
 
+# Replace @MESA_BUILD_ROOT@ with the actual build root path in the source files
+def source_read_handler(app, docname, source):
+
+    # Restrict this handler to only run for the csbgen documentation,
+    # as it is the only one that needs the mesa build root path replacement.
+    docs_pages_needing_substitution = [
+        'drivers/powervr/csbgen',
+    ]
+
+    if docname not in docs_pages_needing_substitution:
+        return
+
+    if mesa_build_root is None:
+        return
+
+    source[0] = source[0].replace(
+        "@MESA_BUILD_ROOT@",
+        mesa_build_root,
+    )
+
 def setup(app):
     app.connect('builder-inited', _copy_generated_rst)
+    app.connect("source-read", source_read_handler)

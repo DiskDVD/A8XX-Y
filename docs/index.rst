@@ -71,6 +71,7 @@ Linux, FreeBSD, and other operating systems.
    application-issues
    viewperf
    teflon
+   torx
 
 .. toctree::
    :maxdepth: 1

@@ -262,9 +262,11 @@ int32_t GfxStreamVulkanMapper::map(struct VulkanMapperData* mapData) {
 #elif DETECT_OS_LINUX || DETECT_OS_APPLE
     VkExternalMemoryHandleTypeFlagBits flagBits;
     if (mapData->handleType == VIRTGPU_KUMQUAT_HANDLE_TYPE_MEM_DMABUF) {
-        flagBits = (enum VkExternalMemoryHandleTypeFlagBits)(uint32_t(VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT));
+        flagBits = (enum VkExternalMemoryHandleTypeFlagBits)(
+            uint32_t(VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT));
     } else {
-        flagBits = (enum VkExternalMemoryHandleTypeFlagBits)(uint32_t(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT));
+        flagBits = (enum VkExternalMemoryHandleTypeFlagBits)(
+            uint32_t(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT));
     }
 
     VkImportMemoryFdInfoKHR importInfo{

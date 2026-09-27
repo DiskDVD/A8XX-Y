@@ -260,7 +260,7 @@ void si_test_dma_perf(struct si_screen *sscreen)
                      si_barrier_after_simple_buffer_op(sctx, 0, dst, src);
                   }
 
-                  si_set_barrier_flags(sctx, SI_BARRIER_INV_L2);
+                  si_set_barrier_flags(sctx, AC_BARRIER_INV_L2);
                }
 
                ctx->end_query(ctx, q);

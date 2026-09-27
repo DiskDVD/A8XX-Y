@@ -154,10 +154,11 @@ a6xx_base = GPUProps(
         max_sets = 5,
         line_width_min = 1.0,
         line_width_max = 1.0,
-        mov_half_shared_quirk = True,
         max_draw_states = 32,
         max_texel_buffer_range_elements = 1 << 27,
         max_storage_buffer_range_bytes = 1 << 27,
+
+        QCTDD06363318 = True,
     )
 
 
@@ -729,8 +730,8 @@ add_gpus([
 
 add_gpus([
         GPUId(702), # KGSL
-        GPUId(chip_id=0x00b207002000, name="FD702"), # QRB2210 RB1
-        GPUId(chip_id=0xffff07002000, name="FD702"), # Default no-speedbin fallback
+        GPUId(chip_id=0x00b207000200, name="FD702"), # QRB2210 RB1
+        GPUId(chip_id=0xffff07000200, name="FD702"), # Default no-speedbin fallback
         GPUId(chip_id=0xffff07000400, name="Adreno (TM) 704"),
     ], A6xxGPUInfo(
         CHIP.A6XX, # NOT a mistake!
@@ -842,25 +843,25 @@ a7xx_base = GPUProps(
         max_texel_buffer_range_elements = 1 << 27,
         max_storage_buffer_range_bytes = 1 << 27,
 
-        alias_mova_quirk = True,
-        alias_predication_quirk = True,
         prefetch_sam_helpers_quirk = True,
+
+        QCTDD10204462 = True,
+        QCTDD11147232 = True,
+        QCTDD11183148 = True,
     )
 
 a7xx_gen1 = GPUProps(
         supports_uav_ubwc = True,
-        fs_must_have_non_zero_constlen_quirk = True,
         enable_tp_ubwc_flag_hint = True,
         reading_shading_rate_requires_smask_quirk = True,
-        cs_lock_unlock_quirk = True,
+        QCTDD08407086 = True,
+        QCTDD08517960 = True,
     )
 
 a7xx_gen2 = GPUProps(
-        stsc_duplication_quirk = True,
         has_event_write_sample_count = True,
         ubwc_unorm_snorm_int_compatible = True,
         supports_uav_ubwc = True,
-        fs_must_have_non_zero_constlen_quirk = True,
         # Most devices with a740 have blob v6xx which doesn't have
         # this hint set. Match them for better compatibility by default.
         enable_tp_ubwc_flag_hint = False,
@@ -872,6 +873,9 @@ a7xx_gen2 = GPUProps(
         has_image_processing = True,
         has_64b_image_atomics = True,
         has_implicit_fragface_fragcoord_ij_linear = True,
+
+        QCTDD08901551 = True,
+        QCTDD08517960 = True,
     )
 
 a7xx_gen3 = GPUProps(
@@ -884,7 +888,6 @@ a7xx_gen3 = GPUProps(
         ubwc_unorm_snorm_int_compatible = True,
         supports_uav_ubwc = True,
         has_generic_clear = True,
-        r8g8_faulty_fast_clear_quirk = True,
         gs_vpc_adjacency_quirk = True,
         ubwc_all_formats_compatible = True,
         has_compliant_dp4acc = True,
@@ -904,6 +907,10 @@ a7xx_gen3 = GPUProps(
         has_64b_image_atomics = True,
         has_implicit_fragface_fragcoord_ij_linear = True,
         subpass_fence_cleans_resolve = True,
+
+        QCTDD08901551 = False,
+        QCTDD12766770 = True,
+        QCTDD13523866 = True,
     )
 
 a730_magic_regs = dict(
@@ -1014,42 +1021,39 @@ add_gpus([
     ], A6xxGPUInfo(
         CHIP.A7XX,
         [a7xx_base, a7xx_gen1],
-        num_ccu = 4,
+        num_ccu = 1,
         tile_align_w = 64,
         tile_align_h = 32,
         tile_max_w = 1024,
         tile_max_h = 1024,
         num_vsc_pipes = 32,
-        cs_shared_mem_size = 64 * 1024,
+        cs_shared_mem_size = 32 * 1024,
         wave_granularity = 2,
         fibers_per_sp = 128 * 2 * 16,
-        highest_bank_bit = 16,
+        highest_bank_bit = 15,
         magic_regs = a730_magic_regs,
-        raw_magic_regs = a730_raw_magic_regs,
+        raw_magic_regs = a710_raw_magic_regs,
     ))
 
-# Adreno 720
 add_gpus([
         GPUId(chip_id=0x43020000, name="FD720"), # KGSL, no speedbin data
         GPUId(chip_id=0xffff43020000, name="FD720"), # Default no-speedbin fallback
     ], A6xxGPUInfo(
         CHIP.A7XX,
         [a7xx_base, a7xx_gen1],
-        num_ccu = 4,
+        num_ccu = 2,
         tile_align_w = 64,
         tile_align_h = 32,
         tile_max_w = 1024,
         tile_max_h = 1024,
         num_vsc_pipes = 32,
-        cs_shared_mem_size = 64 * 1024,
+        cs_shared_mem_size = 32 * 1024,
         wave_granularity = 2,
         fibers_per_sp = 128 * 2 * 16,
-        highest_bank_bit = 16,
+        highest_bank_bit = 15,
         magic_regs = a730_magic_regs,
-        raw_magic_regs = a730_raw_magic_regs,
+        raw_magic_regs = a720_raw_magic_regs,
     ))
-
-
 
 add_gpus([
         GPUId(chip_id=0x43020100, name="Adreno (TM) 722"),
@@ -1076,7 +1080,7 @@ add_gpus([
         GPUId(chip_id=0xffff07030002, name="FD725"),
     ], A6xxGPUInfo(
         CHIP.A7XX,
-        [a7xx_base, a7xx_gen1, GPUProps(cmdbuf_start_a725_quirk = True)],
+        [a7xx_base, a7xx_gen1, GPUProps(QCTDD09112208 = True)],
         num_ccu = 4,
         tile_align_w = 64,
         tile_align_h = 32,
@@ -1203,7 +1207,7 @@ add_gpus([
         GPUId(chip_id=0xffff43050a00, name="FDA32"),
     ], A6xxGPUInfo(
         CHIP.A7XX,
-        [a7xx_base, a7xx_gen2, GPUProps(cmdbuf_start_a725_quirk = True)],
+        [a7xx_base, a7xx_gen2, GPUProps(QCTDD09112208 = True)],
         num_ccu = 6,
         tile_align_w = 96,
         tile_align_h = 32,
@@ -1286,7 +1290,9 @@ add_gpus([
         GPUId(chip_id=0xffff43051401, name="FD750"), # Default no-speedbin fallback
     ], A6xxGPUInfo(
         CHIP.A7XX,
-        [a7xx_base, a7xx_gen3],
+        [a7xx_base, a7xx_gen3, GPUProps(
+            QCTDD10789828 = True,
+        )],
         num_ccu = 6,
         tile_align_w = 96,
         tile_align_h = 32,
@@ -1357,7 +1363,9 @@ a8xx_base = GPUProps(
         round_robin_errata = False,
         max_texel_buffer_range_elements = (1 << 29) - 1,
         max_storage_buffer_range_bytes = (1 << 31) - 1,
-        alias_mova_quirk = False,
+
+        QCTDD10204462 = False,
+        QCTDD11147232 = False,
     )
 
 # For a8xx, the chicken bit and most other non-ctx reg
@@ -1645,6 +1653,7 @@ add_gpus([
 
 add_gpus([
         GPUId(chip_id=0xffff44070031, name="Adreno (TM) X2-85"),
+        GPUId(chip_id=0xffff44060030, name="Adreno (TM) X2-85"),
     ], A6xxGPUInfo(
         CHIP.A8XX,
         [a7xx_base, a7xx_gen3, a8xx_base, a8xx_gen2],

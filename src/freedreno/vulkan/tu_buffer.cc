@@ -253,9 +253,14 @@ tu_GetBufferOpaqueCaptureDescriptorDataEXT(VkDevice device,
 {
    VK_FROM_HANDLE(tu_buffer, buffer, pInfo->buffer);
 
-   /* Save the buffer iova so that when replaying sparse buffers have a
-    * consistent iova and therefore consistent descriptor contents.
-    */
-   memcpy(pData, &buffer->vk.device_address, sizeof(buffer->vk.device_address));
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT) {
+      /* Save the buffer iova so that when replaying sparse buffers have a
+       * consistent iova and therefore consistent descriptor contents.
+       */
+      memcpy(pData, &buffer->vk.device_address, sizeof(buffer->vk.device_address));
+   } else {
+      memset(pData, 0, sizeof(buffer->vk.device_address));
+   }
+
    return VK_SUCCESS;
 }

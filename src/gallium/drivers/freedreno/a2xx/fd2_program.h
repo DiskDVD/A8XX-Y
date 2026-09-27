@@ -34,6 +34,7 @@ struct fd2_shader_stateobj {
    bool writes_psize;
    bool need_param;
    bool has_kill;
+   uint16_t tex_lod_samplers;
 
    /* note:
     * fragment shader only has one variant

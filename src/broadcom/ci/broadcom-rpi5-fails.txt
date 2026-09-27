@@ -59,8 +59,6 @@ spec@arb_depth_texture@texwrap formats,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT16- NPOT,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT24- NPOT,Fail
 spec@arb_depth_texture@texwrap formats@GL_DEPTH_COMPONENT32- NPOT,Fail
-spec@arb_direct_state_access@gettextureimage-formats init-by-rendering,Fail
-spec@arb_direct_state_access@gettextureimage-formats,Fail
 spec@arb_framebuffer_object@fbo-blit-scaled-linear,Fail
 spec@arb_shader_storage_buffer_object@compiler@atomicmin-swizzle.vert,Fail
 spec@arb_shader_texture_lod@execution@arb_shader_texture_lod-texgrad,Fail
@@ -70,11 +68,8 @@ spec@arb_texture_buffer_object@texture-buffer-size-clamp@r8ui_texture_buffer_siz
 spec@arb_texture_buffer_object@texture-buffer-size-clamp@rg8ui_texture_buffer_size_via_sampler,Fail
 spec@arb_texture_buffer_object@texture-buffer-size-clamp@rgba8ui_texture_buffer_size_via_sampler,Fail
 spec@arb_texture_rectangle@1-1-linear-texture,Fail
-spec@egl_mesa_configless_context@basic,Fail
 spec@ext_framebuffer_multisample@interpolation 2 centroid-edges,Fail
 spec@ext_framebuffer_multisample@interpolation 4 centroid-edges,Fail
-spec@ext_framebuffer_object@getteximage-formats init-by-clear-and-render,Fail
-spec@ext_framebuffer_object@getteximage-formats init-by-rendering,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor-swizzled,Fail
 spec@ext_packed_depth_stencil@texwrap formats bordercolor-swizzled@GL_DEPTH24_STENCIL8- swizzled- border color only,Fail
@@ -124,6 +119,10 @@ spec@khr_texture_compression_astc@miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@miptree-gles srgb-fp@sRGB decode full precision,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp,Fail
 spec@khr_texture_compression_astc@sliced-3d-miptree-gles srgb-fp@sRGB decode full precision,Fail
+spec@oes_shader_io_blocks@compiler@layout-location-aliasing.vert,Fail
+
+# https://gitlab.freedesktop.org/mesa/piglit/-/merge_requests/1206
+spec@egl_mesa_configless_context@basic,Fail
 
 # This fails due TMU precision: implicit LOD is wrong for the huge
 # texcoords this test needs at large LOD bias. We could fix it by
@@ -136,17 +135,13 @@ spec@ext_texture_lod_bias@lodbias,Fail
 # https://gitlab.freedesktop.org/mesa/piglit/-/merge_requests/1192
 spec@glsl-1.20@execution@fs-underflow-mul-compare-zero,Fail
 
-# A sub-case involving polygon stipple fails because driver doesn't implement
-# stipple
-spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
-
 # Driver does not handle VERT_{ATTRIB,BIT}_EDGEFLAG at all.
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-quads,Fail
 spec@!opengl 2.0@gl-2.0-edgeflag,Fail
 spec@!opengl 2.0@gl-2.0-edgeflag-immediate,Fail
 
-# Hardware do not support line/polygon stipple. In fact, this feature
+# Hardware do not support line stipple. In fact, this feature
 # was deprecated/removed in newer OpenGL spec versions. It could be
 # emulated using shaders.
 spec@!opengl 1.1@line-smooth-stipple,Fail
@@ -156,9 +151,6 @@ spec@!opengl 1.1@linestipple@Factor 3x,Fail
 spec@!opengl 1.1@linestipple@Line loop,Fail
 spec@!opengl 1.1@linestipple@Line strip,Fail
 spec@!opengl 1.1@linestipple@Restarting lines within a single Begin-End block,Fail
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 
 # There are two problems here. On one side, hardware do not support
 # different polygon mode for front and back faces. By default we
@@ -186,9 +178,6 @@ spec@!opengl 1.1@polygon-mode-offset@config 6: Expected white pixel on top edge,
 # V3D does not support PIPE_FORMAT_{R8,R8G8,R8G8B8A8}_SNORM for
 # rendering
 spec@arb_texture_view@rendering-formats,Crash
-
-# V3D does not support blending for GL_R{GBA}32F
-spec@!opengl 1.1@getteximage-formats,Fail
 
 # OpenGL 3.x applies non-seamless cubemap texturing, while our
 # driver/GLES uses seamless cubemap texturing.

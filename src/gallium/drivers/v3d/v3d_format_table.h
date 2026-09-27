@@ -64,4 +64,7 @@ struct v3d_format {
          * 16 always returns 2 pairs of 16 bit values.
          */
         uint8_t return_channels;
+
+        /* if the format supports (linear) filtering when texturing */
+        bool supports_filtering;
 };

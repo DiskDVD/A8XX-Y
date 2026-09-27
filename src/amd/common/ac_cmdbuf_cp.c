@@ -8,6 +8,7 @@
 #include "ac_cmdbuf.h"
 #include "ac_cmdbuf_cp.h"
 #include "ac_gpu_info.h"
+#include "ac_rgp.h"
 #include "ac_shader_util.h"
 
 #include "amd_family.h"
@@ -401,13 +402,12 @@ ac_emit_cp_gfx_scratch(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
 void
 ac_emit_cp_acquire_mem(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
                        enum amd_ip_type ip_type, uint32_t engine,
-                       uint32_t gcr_cntl)
+                       uint32_t gcr_cntl, bool *context_roll,
+                       enum ac_rgp_flush_bits *flush_bits)
 {
    assert(ip_type != AMD_IP_GFX ||
           (engine == V_581A_PREFETCH_PARSER || engine == V_581A_MICRO_ENGINE));
    assert(gcr_cntl);
-
-   ac_cmdbuf_begin(cs);
 
    if (gfx_level >= GFX10) {
       /* ACQUIRE_MEM in PFP is implemented as ACQUIRE_MEM in ME + PFP_SYNC_ME. */
@@ -417,6 +417,7 @@ ac_emit_cp_acquire_mem(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
          gfx_level >= GFX11 && ip_type == AMD_IP_GFX ? 0xffffff : 0xff;
 
       /* Flush caches. This doesn't wait for idle. */
+      ac_cmdbuf_begin(cs);
       ac_cmdbuf_emit(PKT3(PKT3_ACQUIRE_MEM, 6, 0));
       ac_cmdbuf_emit(engine_flag);   /* which engine to use */
       ac_cmdbuf_emit(0xffffffff);    /* CP_COHER_SIZE */
@@ -425,8 +426,15 @@ ac_emit_cp_acquire_mem(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
       ac_cmdbuf_emit(0);             /* CP_COHER_BASE_HI */
       ac_cmdbuf_emit(0x0000000A);    /* POLL_INTERVAL */
       ac_cmdbuf_emit(gcr_cntl);      /* GCR_CNTL */
+      ac_cmdbuf_end();
    } else {
       const bool is_mec = gfx_level >= GFX7 && ip_type == AMD_IP_COMPUTE;
+
+      /* This seems problematic with gfx7 (see #4764) */
+      if (gfx_level != GFX7)
+         gcr_cntl |= 1u << 31; /* don't sync pfp, i.e. execute the sync in ME */
+
+      ac_cmdbuf_begin(cs);
 
       if (gfx_level == GFX9 || is_mec) {
          /* Flush caches and wait for the caches to assert idle. */
@@ -445,9 +453,20 @@ ac_emit_cp_acquire_mem(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
          ac_cmdbuf_emit(0);             /* CP_COHER_BASE */
          ac_cmdbuf_emit(0x0000000A);    /* POLL_INTERVAL */
       }
-   }
 
-   ac_cmdbuf_end();
+      ac_cmdbuf_end();
+
+      /* ACQUIRE_MEM & SURFACE_SYNC roll the context if the current context is busy. */
+      if (ip_type == AMD_IP_GFX && context_roll)
+         *context_roll = true;
+
+      if (engine == V_581A_PREFETCH_PARSER && !is_mec) {
+         ac_emit_cp_pfp_sync_me(cs, false);
+
+         if (flush_bits)
+            *flush_bits |= AC_RGP_FLUSH_PFP_SYNC_ME;
+      }
+   }
 }
 
 void

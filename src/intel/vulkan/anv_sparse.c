@@ -182,9 +182,7 @@ vk_extent3d_el_to_px(const VkExtent3D extent_el,
 static bool
 isl_tiling_supports_standard_block_shapes(enum isl_tiling tiling)
 {
-   return isl_tiling_is_64(tiling) ||
-          tiling == ISL_TILING_ICL_Ys ||
-          tiling == ISL_TILING_SKL_Ys;
+   return (1 << tiling) & ISL_TILING_STD_64KB_MASK;
 }
 
 static uint32_t

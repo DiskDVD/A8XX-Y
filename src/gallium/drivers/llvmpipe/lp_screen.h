@@ -145,5 +145,6 @@ lp_storage_render_image_format_supported(enum pipe_format format);
 bool
 lp_storage_image_format_supported(enum pipe_format format);
 
-
+uint64_t
+llvmpipe_get_mem_file_size(struct pipe_screen *_screen);
 #endif /* LP_SCREEN_H */

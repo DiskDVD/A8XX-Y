@@ -2934,6 +2934,9 @@ struct gl_driver_flags
 
    /** For GL_CLAMP emulation */
    st_state_bitset NewSamplersWithClamp;
+
+   /** For polygon stipple emulation: the current draw's primitive type or the emulation state changed. */
+   st_state_bitset NewStippleEmulate;
 };
 
 struct gl_buffer_binding

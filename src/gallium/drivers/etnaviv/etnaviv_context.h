@@ -117,6 +117,11 @@ struct etna_streamout {
    unsigned num_descriptors;
    uint32_t TFB_DESCRIPTOR_COUNT[VIVS_TFB_DESCRIPTOR_COUNT__LEN];
    uint32_t TFB_DESCRIPTOR[VIVS_TFB_DESCRIPTOR__LEN];
+
+   /* software XFB emulation */
+   uint32_t captured_bytes[PIPE_MAX_SO_BUFFERS];
+   uint32_t num_vertices;
+   uint32_t first_vertex;
 };
 
 enum etna_uniform_contents {
@@ -132,6 +137,10 @@ enum etna_uniform_contents {
    ETNA_UNIFORM_SAMPLER_LOD_MAX,
    ETNA_UNIFORM_SAMPLER_LOD_BIAS,
    ETNA_UNIFORM_UBO_ADDR,
+   ETNA_UNIFORM_CONSTANT_DATA_ADDR,
+   ETNA_UNIFORM_XFB_ADDR,
+   ETNA_UNIFORM_XFB_NUM_VERTICES,
+   ETNA_UNIFORM_XFB_FIRST_VERTEX,
 };
 
 struct etna_shader_uniform_info {
@@ -236,6 +245,7 @@ struct etna_context {
    /* stats/counters */
    struct {
       uint64_t prims_generated;
+      uint64_t prims_emitted;
       uint64_t draw_calls;
       uint64_t rs_operations;
       uint64_t flushes;

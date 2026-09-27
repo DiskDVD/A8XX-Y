@@ -974,8 +974,10 @@ enum brw_conditional_mod brw_swap_cmod(enum brw_conditional_mod cmod);
 #define LSC_64BIT_STATEFUL_OFFSET_BITS  16
 
 static inline unsigned
-brw_max_immediate_offset_bits(enum lsc_addr_surface_type binding_type,
-                              bool efficient_64bit)
+brw_max_immediate_offset_bits(const struct intel_device_info *devinfo,
+                              enum lsc_addr_surface_type binding_type,
+                              bool efficient_64bit,
+                              bool is_slm)
 {
    if (efficient_64bit) {
       return binding_type == LSC_ADDR_SURFTYPE_FLAT ?
@@ -1007,13 +1009,15 @@ brw_lsc_supports_base_offset(const struct intel_device_info *devinfo)
 }
 
 static inline bool
-brw_lsc_can_use_instruction_offset(enum lsc_addr_surface_type binding_type,
+brw_lsc_can_use_instruction_offset(const struct intel_device_info *devinfo,
+                                   enum lsc_addr_surface_type binding_type,
                                    bool efficient_64bit,
                                    uint32_t element_size_B,
-                                   int32_t offset)
+                                   int32_t offset,
+                                   bool is_slm)
 {
    const unsigned max_bits =
-      brw_max_immediate_offset_bits(binding_type, efficient_64bit);
+      brw_max_immediate_offset_bits(devinfo, binding_type, efficient_64bit, is_slm);
    return
       offset % brw_immediate_offset_alignment(element_size_B,
                                               efficient_64bit) == 0 &&

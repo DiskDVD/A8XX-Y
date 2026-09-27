@@ -157,9 +157,6 @@ bool
 draw_install_aapoint_stage(struct draw_context *draw, struct pipe_context *pipe,
                            nir_alu_type bool_type);
 
-bool
-draw_install_pstipple_stage(struct draw_context *draw, struct pipe_context *pipe);
-
 
 struct tgsi_shader_info *
 draw_get_shader_info(const struct draw_context *draw);

@@ -645,7 +645,7 @@ generate_setup_variant(const struct lp_setup_variant_key *key,
    if (!variant)
       goto fail;
 
-   variant->no = setup_no++;
+   variant->no = p_atomic_fetch_add(&setup_no, 1);
 
    char func_name[64];
    snprintf(func_name, sizeof(func_name), "setup_variant_%u",

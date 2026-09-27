@@ -138,7 +138,6 @@ if with_gfx_compute
     'draw/draw_pipe_cull.c',
     'draw/draw_pipe_flatshade.c',
     'draw/draw_pipe_offset.c',
-    'draw/draw_pipe_pstipple.c',
     'draw/draw_pipe_stipple.c',
     'draw/draw_pipe_twoside.c',
     'draw/draw_pipe_unfilled.c',

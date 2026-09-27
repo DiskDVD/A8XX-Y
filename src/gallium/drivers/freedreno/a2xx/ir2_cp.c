@@ -205,8 +205,10 @@ cp_export(struct ir2_context *ctx)
             swiz_merge_p(&s->swizzle, reswiz[i]);
       }
 
+      /* i-th component of the value goes to the i-th written channel */
+      unsigned mask = instr->alu.write_mask;
       for (int i = 0; i < ncomp; i++) {
-         c[i]->alu.write_mask |= (1 << i);
+         c[i]->alu.write_mask |= (1 << u_bit_scan(&mask));
          c[i]->ssa.ncomp++;
       }
       instr->type = IR2_NONE;

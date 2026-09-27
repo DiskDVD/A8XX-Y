@@ -116,7 +116,10 @@ op('mul',        2, 'u16 s16 f32 f64 f16 bf16',
    Props.NEGATE | Props.SAT | Props.CMOD | Props.COMMUTATIVE)
 op('mul_high',   2, 'u32 s32', Props.COMMUTATIVE)
 op('mul_32x16',  2, 'u32 s32')
+op('mul_32_part', 2, 'u32 s32')
 op('mul_32',     2, 'u32 s32', Props.COMMUTATIVE, ['bool high'])
+op('macl',       3, 'u32 s32')
+op('mach',       3, 'u32 s32')
 op('sel',        3, 'u32 f32 s32 u1 s16 u16 f16', Props.NEGATE)
 op('csel',       3, 'u16 u32 s32 f16 f32', Props.NEGATE)
 op('dp4a_uu',    3, 'u32', Props.SAT)
@@ -168,8 +171,8 @@ op('deswizzle_even', 1, 'f32', Props.NO_MASK, ['bool src_hi'])
 # Return the UGPR[4] vector base + (0, 1, 2, 3, 4, 5, 6, 7) as packed 16-bit.
 op('lane_id_8', 0, 'u16', 0, ['unsigned base'])
 
-# Build a GPR from two UGPR[16] ranges.
-op('zip_ugpr16', 2, 'u32')
+# Build a GPR by pasting UGPR ranges.
+op('zip', 4, 'u32')
 
 # Sample ID calculation
 op('extract_byte_per_8lanes', 2, 'u32')
@@ -224,11 +227,12 @@ op('not', 1, 'u1 u32', Props.CMOD)
 
 op('mov_imm64', 0, 'u64', 0, ['uint64_t imm'])
 
-# Cross-lane shuffle. src0=data, src1=offset in bytes. Clobbers an address reg.
-op('shuffle', 2, 'u1 u32')
-
 # Indirect move. src0=data, src1=offset in bytes. Clobbers an address reg.
-op('vector_extract', 2, 'u8 u16 u32')
+op('shuffle', 2, 'u1 u8 u16 u32')
+
+# Indirect move directly from the register file. src0=data vector. src1=offset
+# in bytes inside the register file (as an address register).
+op('mov_indirect', 2, 'u8 u16 u32')
 
 # Shuffle with a constant lane index.
 op('broadcast_imm', 1, 'u1 u32', 0, ['unsigned lane'])
@@ -246,6 +250,7 @@ op('dpas', 3, 'u32', Props.NO_MASK, [
 op('slice_repack', 1, 'u32', Props.NO_MASK, [
    'uint8_t factor_log2',
    'bool unpack',
+   'uint8_t index',
    ])
 
 # Active lanes select source 0, inactive lanes select the constant value

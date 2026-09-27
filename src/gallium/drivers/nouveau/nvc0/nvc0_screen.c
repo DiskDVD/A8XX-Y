@@ -332,6 +332,7 @@ nvc0_init_screen_caps(struct nvc0_screen *screen)
    caps->clear_scissored = true;
    caps->image_store_formatted = true;
    caps->query_memory_info = true;
+   caps->polygon_stipple = true;
    caps->texture_transfer_modes =
       screen->base.vram_domain & NOUVEAU_BO_VRAM ? PIPE_TEXTURE_TRANSFER_BLIT : 0;
    caps->fbfetch = class_3d >= NVE4_3D_CLASS ? 1 : 0; /* needs testing on fermi */

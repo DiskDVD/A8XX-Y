@@ -18,6 +18,8 @@ struct fd2_context {
     * vertices and tex coords:
     */
    struct pipe_resource *solid_vertexbuf;
+
+   bool mag_switchover_half;
 };
 
 static inline struct fd2_context *

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 #include "AndroidHardwareBuffer.h"
+
 #include "util/detect_os.h"
 
 #if DETECT_OS_ANDROID || DETECT_OS_LINUX
@@ -21,9 +22,9 @@
 #include <assert.h>
 
 #include "gfxstream/guest/GfxStreamGralloc.h"
+#include "util/log.h"
 #include "vk_format_info.h"
 #include "vk_util.h"
-#include "util/log.h"
 
 namespace gfxstream {
 namespace vk {
@@ -142,7 +143,6 @@ VkResult getAndroidHardwareBufferPropertiesANDROID(
                 ahbFormatProps->externalFormat = DRM_FORMAT_INVALID;
                 mesa_loge("Unhandled AHB format:%u", format);
                 break;
-
         }
 
         // The formatFeatures member must include
@@ -244,8 +244,9 @@ VkResult getAndroidHardwareBufferPropertiesANDROID(
 
             int32_t dataspace = grallocHelper->getDataspace(buffer);
 
-            // Some of the dataspace enums are not composites built from the bitwise-or of the model,
-            // transfer, and range. Replace those enums with their corresponding composite enums:
+            // Some of the dataspace enums are not composites built from the bitwise-or of the
+            // model, transfer, and range. Replace those enums with their corresponding composite
+            // enums:
             switch (dataspace) {
                 case GFXSTREAM_AHB_DATASPACE_UNKNOWN: {
                     dataspace = GFXSTREAM_AHB_DATASPACE_V0_SRGB;
@@ -283,21 +284,25 @@ VkResult getAndroidHardwareBufferPropertiesANDROID(
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT601_525_UNADJUSTED:
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT601_625:
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT601_625_UNADJUSTED: {
-                    ahbFormatProps->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
+                    ahbFormatProps->suggestedYcbcrModel =
+                        VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601;
                     break;
                 }
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT709: {
-                    ahbFormatProps->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+                    ahbFormatProps->suggestedYcbcrModel =
+                        VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
                     break;
                 }
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT2020:
                 case GFXSTREAM_AHB_DATASPACE_STANDARD_BT2020_CONSTANT_LUMINANCE: {
-                    ahbFormatProps->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
+                    ahbFormatProps->suggestedYcbcrModel =
+                        VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_2020;
                     break;
                 }
                 default: {
                     mesa_logw("Unhandled AHB dataspace model: %d. Assuming YCBCR_709", model);
-                    ahbFormatProps->suggestedYcbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
+                    ahbFormatProps->suggestedYcbcrModel =
+                        VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709;
                     break;
                 }
             }
@@ -320,7 +325,6 @@ VkResult getAndroidHardwareBufferPropertiesANDROID(
             }
         }
 #endif
-
     }
 
     uint32_t colorBufferHandle = grallocHelper->getHostHandle(buffer);

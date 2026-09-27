@@ -665,6 +665,8 @@ get_readers_for_single_write(void *userdata, struct rc_instruction *writer,
          } else {
             struct branch_write_mask *masks = &d->BranchMasks[branch_depth];
             alive_write_mask_at_breaks |= d->AliveWriteMask;
+            abort_on_read_at_break |= d->ReaderData->AbortOnRead |
+                                      (d->DstMask & ~d->AliveWriteMask);
             if (masks->HasElse) {
                /* Abort on read for components that were written in the IF
                 * block. */
@@ -745,7 +747,7 @@ get_readers_for_single_write(void *userdata, struct rc_instruction *writer,
        * back to 6 from which we jump after the endloop, restore the AliveWriteMask
        * according to the possible states at breaks and continue after the loop.
        */
-      if (branch_depth == 0 && !d->AliveWriteMask && !endloop)
+      if (branch_depth == 0 && !d->AliveWriteMask && !endloop && !alive_write_mask_at_breaks)
          return;
    }
 }

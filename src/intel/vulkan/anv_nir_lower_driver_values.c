@@ -110,11 +110,9 @@ lower_num_workgroups(nir_builder *b, nir_intrinsic_instr *intrin, void *data)
       anv_load_driver_uniform(b, 3, drv_data.cs.num_workgroups[0]);
 
    nir_def *num_workgroups_indirect;
-   nir_push_if(b, nir_ieq_imm(b, nir_channel(b, num_workgroups, 0), UINT32_MAX));
+   nir_push_if(b, nir_ieq_imm(b, nir_channel(b, num_workgroups, 2), UINT32_MAX));
    {
-      nir_def *addr = nir_pack_64_2x32_split(b,
-                                             nir_channel(b, num_workgroups, 1),
-                                             nir_channel(b, num_workgroups, 2));
+      nir_def *addr = nir_pack_64_2x32(b, nir_trim_vector(b, num_workgroups, 2));
       num_workgroups_indirect = nir_load_global_constant(b, 3, 32, addr);
    }
    nir_pop_if(b, NULL);

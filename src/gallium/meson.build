@@ -260,3 +260,7 @@ if with_teflon
   subdir('frontends/teflon')
   subdir('targets/teflon')
 endif
+if with_torx
+  subdir('frontends/torx')
+  subdir('targets/torx')
+endif

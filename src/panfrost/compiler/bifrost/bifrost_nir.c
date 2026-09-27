@@ -1396,6 +1396,62 @@ bifrost_dump_shader(nir_shader *nir, struct util_dynarray *binary,
       fclose(dump_stream);
 }
 
+static void
+kraid_compile_variant(nir_shader *nir,
+                      const struct pan_compile_inputs *inputs,
+                      struct util_dynarray *binary,
+                      struct pan_shader_info *info,
+                      enum kraid_idvs_mode idvs)
+{
+   unsigned offset = binary->size;
+   if ((offset == 0) && (idvs == KRAID_IDVS_VARYING))
+      return;
+
+   nir_shader *clone = NULL;
+
+   /* Specialize IDVS variant */
+   if (idvs == KRAID_IDVS_POSITION || idvs == KRAID_IDVS_VARYING) {
+      /* Specializing shaders for IDVS is destructive, so we need to clone.
+       * However, the last (second) IDVS shader does not need to be preserved so
+       * we can skip cloning that one.
+       */
+      if (offset == 0)
+         clone = nir = nir_shader_clone(NULL, nir);
+
+      uint64_t position = VA_SHADER_OUTPUT_POSITION_BIT |
+                          VA_SHADER_OUTPUT_ATTRIB_BIT;
+
+      NIR_PASS(_, nir, nir_inline_sysval, nir_intrinsic_load_shader_output_pan,
+               (idvs == KRAID_IDVS_POSITION) ? position : VA_SHADER_OUTPUT_VARY_BIT);
+
+      /* After specializing, clean up the mess */
+      bool progress = true;
+      while (progress) {
+         progress = false;
+
+         NIR_PASS(progress, nir, nir_opt_constant_folding);
+         NIR_PASS(progress, nir, nir_opt_dce);
+         NIR_PASS(progress, nir, nir_opt_dead_cf);
+         NIR_PASS(progress, nir, nir_opt_cse);
+      }
+   }
+
+#ifdef WITH_PANFROST_RUST
+      kraid_compile_nir(nir, inputs, binary, info, idvs);
+#else
+      UNREACHABLE("Must have rust enabled");
+#endif
+
+   if (idvs == KRAID_IDVS_VARYING) {
+      info->vs.secondary_enable = (binary->size > offset);
+      info->vs.secondary_offset = offset;
+   } else {
+      assert(offset == 0);
+   }
+
+   ralloc_free(clone);
+}
+
 void
 bifrost_compile_shader_nir(nir_shader *nir,
                            const struct pan_compile_inputs *inputs,
@@ -1438,9 +1494,18 @@ bifrost_compile_shader_nir(nir_shader *nir,
          NIR_PASS(_, nir, pan_nir_opt_push_ubo, inputs->fau.pushable_ubos,
                   &info->fau, &info->ubo_mask);
       }
-#ifdef WITH_PANFROST_RUST
-      kraid_compile_nir(nir, inputs, binary, info);
-#endif
+
+      if (nir->info.stage == MESA_SHADER_VERTEX && info->vs.idvs) {
+         /* On 5th Gen, IDVS is only in one binary */
+         if (pan_arch(inputs->gpu_id) >= 12)
+            kraid_compile_variant(nir, inputs, binary, info, KRAID_IDVS_ALL);
+         else {
+            kraid_compile_variant(nir, inputs, binary, info, KRAID_IDVS_POSITION);
+            kraid_compile_variant(nir, inputs, binary, info, KRAID_IDVS_VARYING);
+         }
+      } else {
+         kraid_compile_variant(nir, inputs, binary, info, KRAID_IDVS_NONE);
+      }
    } else if (nir->info.stage == MESA_SHADER_VERTEX && info->vs.idvs) {
       /* On 5th Gen, IDVS is only in one binary */
       if (pan_arch(inputs->gpu_id) >= 12)

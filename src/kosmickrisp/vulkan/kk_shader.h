@@ -83,8 +83,6 @@ struct kk_shader_info {
          } stencil_front, stencil_back;
          uint8_t color_attachment_count;
          bool has_ms;
-         bool has_alpha_to_coverage_enabled;
-         bool has_alpha_to_one_enabled;
          bool has_ds;
          bool has_depth_write;
          bool has_stencil_test;

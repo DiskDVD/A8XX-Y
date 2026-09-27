@@ -311,7 +311,10 @@ uint64_t anv_GetBufferOpaqueCaptureAddress(
 {
    ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
 
-   return anv_address_physical(buffer->address);
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
+      return anv_address_physical(buffer->address);
+   else
+      return 0;
 }
 
 VkResult anv_GetBufferOpaqueCaptureDescriptorDataEXT(
@@ -321,7 +324,11 @@ VkResult anv_GetBufferOpaqueCaptureDescriptorDataEXT(
 {
    ANV_FROM_HANDLE(anv_buffer, buffer, pInfo->buffer);
 
-   *((uint64_t *)pData) = anv_address_physical(buffer->address);
+   uint64_t address = anv_address_physical(buffer->address);
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
+      memcpy(pData, &address, sizeof(address));
+   else
+      memset(pData, 0, sizeof(address));
 
    return VK_SUCCESS;
 }

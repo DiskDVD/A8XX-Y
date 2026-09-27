@@ -2153,7 +2153,7 @@ optimizations.extend([
    (('u2u8', ('ushr', a, 8)), ('u2u8', ('extract_u8', a, 1)), '!options->lower_extract_byte'),
 
    # Common pattern after lowering 8-bit integers to 16-bit.
-   (('i2i16', ('u2u8', ('extract_u8', a, b))), ('i2i16', ('extract_i8', a, b))),
+   (('i2i16', ('u2u8', ('extract_u8', a, b))), ('u2u16', ('extract_i8', a, b))),
    (('u2u16', ('u2u8', ('extract_u8', a, b))), ('u2u16', ('extract_u8', a, b))),
 
    (('ubfe', a,  0, 8), ('extract_u8', a, 0), '!options->lower_extract_byte'),
@@ -2874,7 +2874,7 @@ optimizations.extend([
    (('imul24', a, '#b@32(is_neg_power_of_two)'), ('ineg', ('ishl', a, ('find_lsb', ('iabs', b)))), '!options->lower_bitops'),
    (('imul24', a, 0), (0)),
 
-   (('imul_high@16', a, b), ('i2i16', ('ishr', ('imul24_relaxed', ('i2i32', a), ('i2i32', b)), 16)), 'options->lower_mul_high16'),
+   (('imul_high@16', a, b), ('u2u16', ('ishr', ('imul24_relaxed', ('i2i32', a), ('i2i32', b)), 16)), 'options->lower_mul_high16'),
    (('umul_high@16', a, b), ('u2u16', ('ushr', ('umul24_relaxed', ('u2u32', a), ('u2u32', b)), 16)), 'options->lower_mul_high16'),
 
    # Optimize vec2 unsigned comparison predicates to usub_sat with clamp.
@@ -3139,16 +3139,6 @@ for t in ['int', 'uint', 'float']:
                           ('ior', (xge, a, xN_max), (xge, (x2xN, a), b))), cond),
             ]
 
-# Convert masking followed by signed downcast to just unsigned downcast
-optimizations += [
-    (('i2i32', ('iand', 'a@64', 0xffffffff)), ('u2u32', a)),
-    (('i2i16', ('iand', 'a@32', 0xffff)), ('u2u16', a)),
-    (('i2i16', ('iand', 'a@64', 0xffff)), ('u2u16', a)),
-    (('i2i8', ('iand', 'a@16', 0xff)), ('u2u8', a)),
-    (('i2i8', ('iand', 'a@32', 0xff)), ('u2u8', a)),
-    (('i2i8', ('iand', 'a@64', 0xff)), ('u2u8', a)),
-]
-
 # Optimize fmin/fmax with constant followed by conversion to 16bit
 # Assume 16bit fmin/fmax is faster.
 for f2f16 in ['f2f16', 'f2f16_rtz', 'f2f16_rtne']:
@@ -3207,7 +3197,6 @@ for N in [16, 32]:
 
         aN = 'a@' + str(N)
         u2uM = 'u2u{0}'.format(M)
-        i2iM = 'i2i{0}'.format(M)
 
         for x in ['u', 'i']:
             x2xN = '{0}2{0}{1}'.format(x, N)
@@ -3224,7 +3213,6 @@ for N in [16, 32]:
             bcsel_M_bits = 'bcsel(only_lower_{0}_bits_used)'.format(M)
             optimizations += [
                 ((bcsel_M_bits, c, (x2xN, (u2uM, aN)), b), ('bcsel', c, a, b)),
-                ((bcsel_M_bits, c, (x2xN, (i2iM, aN)), b), ('bcsel', c, a, b)),
                 ((bcsel_M_bits, c, (extract_xM, aN, 0), b), ('bcsel', c, a, b)),
             ]
 
@@ -3232,7 +3220,6 @@ for N in [16, 32]:
                 op_M_bits = '{0}(only_lower_{1}_bits_used)'.format(op, M)
                 optimizations += [
                     ((op_M_bits, (x2xN, (u2uM, aN)), b), (op, a, b)),
-                    ((op_M_bits, (x2xN, (i2iM, aN)), b), (op, a, b)),
                     ((op_M_bits, (extract_xM, aN, 0), b), (op, a, b)),
                 ]
 
@@ -3248,7 +3235,7 @@ def fexp2i(exp, bits):
    # If exp is the lowest value in the valid range, a value of 0.0 is
    # constructed.  Otherwise, the value 2.0^exp is constructed.
    if bits == 16:
-      return ('i2i16', ('ishl', ('iadd', exp, 15), 10))
+      return ('u2u16', ('ishl', ('iadd', exp, 15), 10))
    elif bits == 32:
       return ('ishl', ('iadd', exp, 127), 23)
    elif bits == 64:
@@ -4113,7 +4100,6 @@ late_optimizations += [
 for N in [16, 32]:
     aN = 'a@{0}'.format(N)
     u2uM = 'u2u{0}'.format(M)
-    i2iM = 'i2i{0}'.format(M)
 
     for x in ['u', 'i']:
         x2xN = '{0}2{0}{1}'.format(x, N)
@@ -4122,13 +4108,11 @@ for N in [16, 32]:
 
         late_optimizations.extend([
             ((x2xN, ('u2u8', aN)), (extract_x8, a, 0), '!options->lower_extract_byte'),
-            ((x2xN, ('i2i8', aN)), (extract_x8, a, 0), '!options->lower_extract_byte'),
         ])
 
         if N > 16:
             late_optimizations.extend([
                 ((x2xN, ('u2u16', aN)), (extract_x16, a, 0), '!options->lower_extract_word'),
-                ((x2xN, ('i2i16', aN)), (extract_x16, a, 0), '!options->lower_extract_word'),
             ])
 
 # Byte insertion
@@ -4208,7 +4192,6 @@ late_optimizations += [
   (('f2fmp', a), ('f2f16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
   (('f2imp', a), ('f2i16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
   (('f2ump', a), ('f2u16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
-  (('i2imp', a), ('i2i16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
   (('i2fmp', a), ('i2f16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
   (('i2imp', a), ('u2u16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),
   (('u2fmp', a), ('u2f16', a), "!options->preserve_mediump", TestStatus.UNSUPPORTED),

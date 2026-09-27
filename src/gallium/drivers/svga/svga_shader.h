@@ -71,7 +71,6 @@ struct svga_compile_key
       unsigned white_fragments:1;
       unsigned alpha_to_one:1;
       unsigned flatshade:1;
-      unsigned pstipple:1;
       unsigned alpha_func:4;  /**< SVGA3D_CMP_x */
       unsigned write_color0_to_n_cbufs:4;
       unsigned aa_point:1;
@@ -229,10 +228,6 @@ struct svga_fs_variant
     * comparison test in the shader rather than the sampler state.
     */
    unsigned fs_shadow_compare_units;
-
-   /** For FS-based polygon stipple */
-   unsigned pstipple_sampler_unit:8;
-   unsigned pstipple_sampler_state_index:8;
 };
 
 

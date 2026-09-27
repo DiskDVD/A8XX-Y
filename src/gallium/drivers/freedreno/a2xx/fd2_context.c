@@ -52,6 +52,21 @@ create_solid_vertexbuf(struct pipe_context *pctx)
    return prsc;
 }
 
+static void
+fd2_set_context_param(struct pipe_context *pctx, enum pipe_context_param param,
+                      unsigned value)
+{
+   struct fd2_context *fd2_ctx = fd2_context(fd_context(pctx));
+
+   switch (param) {
+   case PIPE_CONTEXT_PARAM_MAG_SWITCHOVER_HALF:
+      fd2_ctx->mag_switchover_half = value;
+      break;
+   default:
+      break;
+   }
+}
+
 struct pipe_context *
 fd2_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 {
@@ -73,6 +88,7 @@ fd2_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
    pctx->create_blend_state = fd2_blend_state_create;
    pctx->create_rasterizer_state = fd2_rasterizer_state_create;
    pctx->create_depth_stencil_alpha_state = fd2_zsa_state_create;
+   pctx->set_context_param = fd2_set_context_param;
 
    fd2_draw_init(pctx);
    fd2_gmem_init(pctx);

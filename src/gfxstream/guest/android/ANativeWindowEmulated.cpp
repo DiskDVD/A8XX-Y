@@ -177,8 +177,8 @@ EGLNativeWindowType EmulatedANativeWindowHelper::createNativeWindowForTesting(Gr
         }
         buffers.emplace_back(reinterpret_cast<EmulatedAHardwareBuffer*>(ahb));
     }
-    return reinterpret_cast<EGLNativeWindowType>(
-        new EmulatedANativeWindow(width, height, GFXSTREAM_AHB_FORMAT_R8G8B8A8_UNORM, std::move(buffers)));
+    return reinterpret_cast<EGLNativeWindowType>(new EmulatedANativeWindow(
+        width, height, GFXSTREAM_AHB_FORMAT_R8G8B8A8_UNORM, std::move(buffers)));
 }
 
 ANativeWindowHelper* createPlatformANativeWindowHelper() {

@@ -515,6 +515,9 @@ struct brw_stage_prog_data {
    unsigned grf_used;
 
    uint64_t source_hash;
+
+   /* Was this shader compiled with Jay? */
+   bool is_jay;
 };
 
 enum brw_pixel_shader_computed_depth_mode {

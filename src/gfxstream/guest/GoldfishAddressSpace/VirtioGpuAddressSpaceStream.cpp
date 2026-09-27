@@ -60,8 +60,7 @@ static bool virtgpu_address_space_ping(address_space_handle_t, struct address_sp
     exec.command_size = sizeof(ping);
 
     ret = instance->execBuffer(exec, nullptr);
-    if (ret)
-        return false;
+    if (ret) return false;
 
     return true;
 }
@@ -77,7 +76,7 @@ AddressSpaceStream* createVirtioGpuAddressSpaceStream(enum VirtGpuCapset capset)
     uint32_t bufferSize = 0;
     uint32_t blobAlignment = 0;
 
-    char* blobAddr, *bufferPtr;
+    char *blobAddr, *bufferPtr;
     int ret;
 
     VirtGpuDevice* instance = VirtGpuDevice::getInstance();
@@ -88,7 +87,10 @@ AddressSpaceStream* createVirtioGpuAddressSpaceStream(enum VirtGpuCapset capset)
         return nullptr;
     }
     if (!caps.params[kParamHostVisible] && !caps.params[kParamCreateGuestHandle]) {
-        mesa_loge("VirtGpuDevice must support at least one of: 1) host-visible memory (kParamHostVisible) or 2) host handles created from guest memory (kParamCreateGuestHandle).");
+        mesa_loge(
+            "VirtGpuDevice must support at least one of: 1) host-visible memory "
+            "(kParamHostVisible) or 2) host handles created from guest memory "
+            "(kParamCreateGuestHandle).");
         return nullptr;
     }
 
@@ -102,8 +104,7 @@ AddressSpaceStream* createVirtioGpuAddressSpaceStream(enum VirtGpuCapset capset)
     blobCreate.flags = kBlobFlagMappable;
     blobCreate.size = ALIGN_POT(ringSize + bufferSize, blobAlignment);
     blob = instance->createBlob(blobCreate);
-    if (!blob)
-        return nullptr;
+    if (!blob) return nullptr;
 
     // Context creation command
     contextCreate.hdr.opCode = GFXSTREAM_CONTEXT_CREATE;
@@ -113,17 +114,14 @@ AddressSpaceStream* createVirtioGpuAddressSpaceStream(enum VirtGpuCapset capset)
     exec.command_size = sizeof(contextCreate);
 
     ret = instance->execBuffer(exec, blob.get());
-    if (ret)
-        return nullptr;
+    if (ret) return nullptr;
 
     // Wait occurs on global timeline -- should we use context specific one?
     ret = blob->wait();
-    if (ret)
-        return nullptr;
+    if (ret) return nullptr;
 
     blobMapping = blob->createMapping();
-    if (!blobMapping)
-        return nullptr;
+    if (!blobMapping) return nullptr;
 
     blobAddr = reinterpret_cast<char*>(blobMapping->asRawPtr());
 

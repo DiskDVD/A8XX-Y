@@ -536,6 +536,10 @@ static void
 i915_set_polygon_stipple(struct pipe_context *pipe,
                          const struct pipe_poly_stipple *stipple)
 {
+   struct i915_context *i915 = i915_context(pipe);
+
+   i915->poly_stipple = *stipple;
+   i915->dirty |= I915_NEW_STIPPLE;
 }
 
 static const struct nir_to_tgsi_options ntt_options = {

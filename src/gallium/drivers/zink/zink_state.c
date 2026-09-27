@@ -616,29 +616,29 @@ zink_create_rasterizer_state(struct pipe_context *pctx,
                        VK_FRONT_FACE_COUNTER_CLOCKWISE :
                        VK_FRONT_FACE_CLOCKWISE;
 
-   state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT;
+   state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT;
    if (rs_state->line_rectangular) {
       if (rs_state->line_smooth &&
           !screen->driver_workarounds.no_linesmooth)
-         state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT;
+         state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH;
       else
-         state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT;
+         state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_RECTANGULAR;
    } else {
-      state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
+      state->hw_state.line_mode = VK_LINE_RASTERIZATION_MODE_BRESENHAM;
    }
    state->dynamic_line_mode = state->hw_state.line_mode;
    switch (state->hw_state.line_mode) {
-   case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_EXT:
+   case VK_LINE_RASTERIZATION_MODE_RECTANGULAR:
       if (!screen->info.line_rast_feats.rectangularLines)
-         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT;
+         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT;
       break;
-   case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH_EXT:
+   case VK_LINE_RASTERIZATION_MODE_RECTANGULAR_SMOOTH:
       if (!screen->info.line_rast_feats.smoothLines)
-         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT;
+         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT;
       break;
-   case VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT:
+   case VK_LINE_RASTERIZATION_MODE_BRESENHAM:
       if (!screen->info.line_rast_feats.bresenhamLines)
-         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT_EXT;
+         state->dynamic_line_mode = VK_LINE_RASTERIZATION_MODE_DEFAULT;
       break;
    default: break;
    }

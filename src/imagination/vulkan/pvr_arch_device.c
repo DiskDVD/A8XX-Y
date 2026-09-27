@@ -31,6 +31,7 @@
 #include "pvr_queue.h"
 #include "pvr_robustness.h"
 #include "pvr_tex_state.h"
+#include "pvr_utrace.h"
 #include "util/os_misc.h"
 
 #define PVR_GLOBAL_FREE_LIST_INITIAL_SIZE (2U * 1024U * 1024U)
@@ -894,6 +895,9 @@ VkResult PVR_PER_ARCH(create_device)(struct pvr_physical_device *pdevice,
    if (result != VK_SUCCESS)
       goto err_pvr_robustness_buffer_finish;
 
+   /* Initialize GPU tracing infrastructure */
+   pvr_device_utrace_init(device);
+
    /* FIXME: Move this to a later stage and possibly somewhere other than
     * pvr_device. The purpose of this is so that we don't have to get the size
     * on each kick.
@@ -982,6 +986,9 @@ void PVR_PER_ARCH(destroy_device)(struct pvr_device *device,
 {
    if (!device)
       return;
+
+   /* Cleanup GPU tracing infrastructure */
+   pvr_device_utrace_finish(device);
 
    simple_mtx_lock(&device->rs_mtx);
    list_for_each_entry_safe (struct pvr_render_state,

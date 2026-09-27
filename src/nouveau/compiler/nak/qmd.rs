@@ -11,7 +11,7 @@ use nvidia_headers::classes::{
     cla0c0, cla1c0, clc0c0, clc3c0, clc6c0, clcbc0, clcdc0,
 };
 
-use bitview::*;
+use mesa_util::bitview::*;
 use paste::paste;
 
 type QMDBitView<'a> = BitMutView<'a, [u32]>;

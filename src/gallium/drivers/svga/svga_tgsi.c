@@ -222,8 +222,6 @@ svga_tgsi_vgpu9_translate(struct svga_context *svga,
    if (unit == MESA_SHADER_FRAGMENT) {
       struct svga_fs_variant *fs_variant = svga_fs_variant(variant);
 
-      fs_variant->pstipple_sampler_unit = emit.pstipple_sampler_unit;
-
       /* If there was exactly one write to a fragment shader output register
        * and it came from a constant buffer, we know all fragments will have
        * the same color (except for blending).

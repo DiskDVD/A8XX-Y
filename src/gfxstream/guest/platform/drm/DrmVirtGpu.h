@@ -5,14 +5,15 @@
 
 #pragma once
 
-#include "VirtGpu.h"
 #include <xf86drm.h>
 
+#include "VirtGpu.h"
+
 class DrmVirtGpuResource : public std::enable_shared_from_this<DrmVirtGpuResource>,
-                             public VirtGpuResource {
+                           public VirtGpuResource {
    public:
     DrmVirtGpuResource(int64_t deviceHandle, uint32_t blobHandle, uint32_t resourceHandle,
-                         uint64_t size);
+                       uint64_t size);
     ~DrmVirtGpuResource();
 
     void intoRaw() override;

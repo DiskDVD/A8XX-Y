@@ -45,41 +45,37 @@ struct goldfish_address_space_claim_shared {
     __u64 size;
 };
 
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_MAGIC		'G'
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_OP(OP, T)		_IOWR(GOLDFISH_ADDRESS_SPACE_IOCTL_MAGIC, OP, T)
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_ALLOCATE_BLOCK	GOLDFISH_ADDRESS_SPACE_IOCTL_OP(10, struct goldfish_address_space_allocate_block)
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_DEALLOCATE_BLOCK	GOLDFISH_ADDRESS_SPACE_IOCTL_OP(11, __u64)
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_PING		GOLDFISH_ADDRESS_SPACE_IOCTL_OP(12, struct address_space_ping)
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_CLAIM_SHARED		GOLDFISH_ADDRESS_SPACE_IOCTL_OP(13, struct goldfish_address_space_claim_shared)
-#define GOLDFISH_ADDRESS_SPACE_IOCTL_UNCLAIM_SHARED		GOLDFISH_ADDRESS_SPACE_IOCTL_OP(14, __u64)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_MAGIC 'G'
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_OP(OP, T) _IOWR(GOLDFISH_ADDRESS_SPACE_IOCTL_MAGIC, OP, T)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_ALLOCATE_BLOCK \
+    GOLDFISH_ADDRESS_SPACE_IOCTL_OP(10, struct goldfish_address_space_allocate_block)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_DEALLOCATE_BLOCK GOLDFISH_ADDRESS_SPACE_IOCTL_OP(11, __u64)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_PING \
+    GOLDFISH_ADDRESS_SPACE_IOCTL_OP(12, struct address_space_ping)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_CLAIM_SHARED \
+    GOLDFISH_ADDRESS_SPACE_IOCTL_OP(13, struct goldfish_address_space_claim_shared)
+#define GOLDFISH_ADDRESS_SPACE_IOCTL_UNCLAIM_SHARED GOLDFISH_ADDRESS_SPACE_IOCTL_OP(14, __u64)
 
 const char GOLDFISH_ADDRESS_SPACE_DEVICE_NAME[] = "/dev/goldfish_address_space";
 
 const int HOST_MEMORY_ALLOCATOR_COMMAND_ALLOCATE_ID = 1;
 const int HOST_MEMORY_ALLOCATOR_COMMAND_UNALLOCATE_ID = 2;
 
-int create_address_space_fd()
-{
-    return ::open(GOLDFISH_ADDRESS_SPACE_DEVICE_NAME, O_RDWR);
-}
+int create_address_space_fd() { return ::open(GOLDFISH_ADDRESS_SPACE_DEVICE_NAME, O_RDWR); }
 
-long ioctl_allocate(int fd, struct goldfish_address_space_allocate_block *request)
-{
+long ioctl_allocate(int fd, struct goldfish_address_space_allocate_block* request) {
     return ::ioctl(fd, GOLDFISH_ADDRESS_SPACE_IOCTL_ALLOCATE_BLOCK, request);
 }
 
-long ioctl_deallocate(int fd, uint64_t offset)
-{
+long ioctl_deallocate(int fd, uint64_t offset) {
     return ::ioctl(fd, GOLDFISH_ADDRESS_SPACE_IOCTL_DEALLOCATE_BLOCK, &offset);
 }
 
-long ioctl_ping(int fd, struct address_space_ping *request)
-{
+long ioctl_ping(int fd, struct address_space_ping* request) {
     return ::ioctl(fd, GOLDFISH_ADDRESS_SPACE_IOCTL_PING, request);
 }
 
-long set_address_space_subdevice_type(int fd, uint64_t type)
-{
+long set_address_space_subdevice_type(int fd, uint64_t type) {
     struct address_space_ping request;
     ::memset(&request, 0, sizeof(request));
     request.resourceId = sizeof(request);
@@ -93,21 +89,19 @@ long set_address_space_subdevice_type(int fd, uint64_t type)
     return request.metadata;
 }
 
-long ioctl_claim_shared(int fd, struct goldfish_address_space_claim_shared *request)
-{
+long ioctl_claim_shared(int fd, struct goldfish_address_space_claim_shared* request) {
     return ::ioctl(fd, GOLDFISH_ADDRESS_SPACE_IOCTL_CLAIM_SHARED, request);
 }
 
-long ioctl_unclaim_shared(int fd, uint64_t offset)
-{
+long ioctl_unclaim_shared(int fd, uint64_t offset) {
     return ::ioctl(fd, GOLDFISH_ADDRESS_SPACE_IOCTL_UNCLAIM_SHARED, &offset);
 }
 
 }  // namespace
 
-GoldfishAddressSpaceBlockProvider::GoldfishAddressSpaceBlockProvider(GoldfishAddressSpaceSubdeviceType subdevice)
-  : m_handle(create_address_space_fd())
-{
+GoldfishAddressSpaceBlockProvider::GoldfishAddressSpaceBlockProvider(
+    GoldfishAddressSpaceSubdeviceType subdevice)
+    : m_handle(create_address_space_fd()) {
     if ((subdevice != GoldfishAddressSpaceSubdeviceType::NoSubdevice) && is_opened()) {
         const long ret = set_address_space_subdevice_type(m_handle, subdevice);
         if (ret != 0 && ret != subdevice) {  // TODO: retire the 'ret != subdevice' check
@@ -118,53 +112,38 @@ GoldfishAddressSpaceBlockProvider::GoldfishAddressSpaceBlockProvider(GoldfishAdd
     }
 }
 
-GoldfishAddressSpaceBlockProvider::~GoldfishAddressSpaceBlockProvider()
-{
+GoldfishAddressSpaceBlockProvider::~GoldfishAddressSpaceBlockProvider() {
     if (is_opened()) {
         ::close(m_handle);
     }
 }
 
-bool GoldfishAddressSpaceBlockProvider::is_opened() const
-{
-    return m_handle >= 0;
-}
+bool GoldfishAddressSpaceBlockProvider::is_opened() const { return m_handle >= 0; }
 
-void GoldfishAddressSpaceBlockProvider::close()
-{
+void GoldfishAddressSpaceBlockProvider::close() {
     if (is_opened()) {
         ::close(m_handle);
         m_handle = -1;
     }
 }
 
-address_space_handle_t GoldfishAddressSpaceBlockProvider::release()
-{
+address_space_handle_t GoldfishAddressSpaceBlockProvider::release() {
     address_space_handle_t handle = m_handle;
     m_handle = -1;
     return handle;
 }
 
-void GoldfishAddressSpaceBlockProvider::closeHandle(address_space_handle_t handle)
-{
+void GoldfishAddressSpaceBlockProvider::closeHandle(address_space_handle_t handle) {
     ::close(handle);
 }
 
 GoldfishAddressSpaceBlock::GoldfishAddressSpaceBlock()
-    : m_handle(-1)
-    , m_mmaped_ptr(NULL)
-    , m_phys_addr(0)
-    , m_host_addr(0)
-    , m_offset(0)
-    , m_size(0) {}
+    : m_handle(-1), m_mmaped_ptr(NULL), m_phys_addr(0), m_host_addr(0), m_offset(0), m_size(0) {}
 
-GoldfishAddressSpaceBlock::~GoldfishAddressSpaceBlock()
-{
-    destroy();
-}
+GoldfishAddressSpaceBlock::~GoldfishAddressSpaceBlock() { destroy(); }
 
-GoldfishAddressSpaceBlock &GoldfishAddressSpaceBlock::operator=(const GoldfishAddressSpaceBlock &rhs)
-{
+GoldfishAddressSpaceBlock& GoldfishAddressSpaceBlock::operator=(
+    const GoldfishAddressSpaceBlock& rhs) {
     m_mmaped_ptr = rhs.m_mmaped_ptr;
     m_phys_addr = rhs.m_phys_addr;
     m_host_addr = rhs.m_host_addr;
@@ -175,8 +154,7 @@ GoldfishAddressSpaceBlock &GoldfishAddressSpaceBlock::operator=(const GoldfishAd
     return *this;
 }
 
-bool GoldfishAddressSpaceBlock::allocate(GoldfishAddressSpaceBlockProvider *provider, size_t size)
-{
+bool GoldfishAddressSpaceBlock::allocate(GoldfishAddressSpaceBlockProvider* provider, size_t size) {
     destroy();
 
     if (!provider->is_opened()) {
@@ -201,8 +179,8 @@ bool GoldfishAddressSpaceBlock::allocate(GoldfishAddressSpaceBlockProvider *prov
     }
 }
 
-bool GoldfishAddressSpaceBlock::claimShared(GoldfishAddressSpaceBlockProvider *provider, uint64_t offset, uint64_t size)
-{
+bool GoldfishAddressSpaceBlock::claimShared(GoldfishAddressSpaceBlockProvider* provider,
+                                            uint64_t offset, uint64_t size) {
     destroy();
 
     if (!provider->is_opened()) {
@@ -226,18 +204,11 @@ bool GoldfishAddressSpaceBlock::claimShared(GoldfishAddressSpaceBlockProvider *p
     return true;
 }
 
-uint64_t GoldfishAddressSpaceBlock::physAddr() const
-{
-    return m_phys_addr;
-}
+uint64_t GoldfishAddressSpaceBlock::physAddr() const { return m_phys_addr; }
 
-uint64_t GoldfishAddressSpaceBlock::hostAddr() const
-{
-    return m_host_addr;
-}
+uint64_t GoldfishAddressSpaceBlock::hostAddr() const { return m_host_addr; }
 
-void *GoldfishAddressSpaceBlock::mmap(uint64_t host_addr)
-{
+void* GoldfishAddressSpaceBlock::mmap(uint64_t host_addr) {
     if (m_size == 0) {
         mesa_loge("%s: called with zero size\n", __func__);
         return NULL;
@@ -247,7 +218,7 @@ void *GoldfishAddressSpaceBlock::mmap(uint64_t host_addr)
         ::abort();
     }
 
-    void *result;
+    void* result;
     const int res = memoryMap(NULL, m_size, m_handle, m_offset, &result);
     if (res) {
         mesa_loge(
@@ -262,13 +233,11 @@ void *GoldfishAddressSpaceBlock::mmap(uint64_t host_addr)
     }
 }
 
-void *GoldfishAddressSpaceBlock::guestPtr() const
-{
-    return reinterpret_cast<char *>(m_mmaped_ptr) + (m_host_addr & (kPageSize - 1));
+void* GoldfishAddressSpaceBlock::guestPtr() const {
+    return reinterpret_cast<char*>(m_mmaped_ptr) + (m_host_addr & (kPageSize - 1));
 }
 
-void GoldfishAddressSpaceBlock::destroy()
-{
+void GoldfishAddressSpaceBlock::destroy() {
     if (m_mmaped_ptr && m_size) {
         memoryUnmap(m_mmaped_ptr, m_size);
         m_mmaped_ptr = NULL;
@@ -300,8 +269,7 @@ void GoldfishAddressSpaceBlock::destroy()
     }
 }
 
-void GoldfishAddressSpaceBlock::release()
-{
+void GoldfishAddressSpaceBlock::release() {
     m_handle = -1;
     m_mmaped_ptr = NULL;
     m_phys_addr = 0;
@@ -310,11 +278,8 @@ void GoldfishAddressSpaceBlock::release()
     m_size = 0;
 }
 
-int GoldfishAddressSpaceBlock::memoryMap(void *addr,
-                                         size_t len,
-                                         address_space_handle_t fd,
-                                         uint64_t off,
-                                         void** dst) {
+int GoldfishAddressSpaceBlock::memoryMap(void* addr, size_t len, address_space_handle_t fd,
+                                         uint64_t off, void** dst) {
     void* ptr = ::mmap64(addr, len, PROT_WRITE, MAP_SHARED, fd, off);
     if (MAP_FAILED == ptr) {
         return errno;
@@ -324,22 +289,18 @@ int GoldfishAddressSpaceBlock::memoryMap(void *addr,
     }
 }
 
-void GoldfishAddressSpaceBlock::memoryUnmap(void *ptr, size_t size)
-{
-    ::munmap(ptr, size);
-}
+void GoldfishAddressSpaceBlock::memoryUnmap(void* ptr, size_t size) { ::munmap(ptr, size); }
 
-GoldfishAddressSpaceHostMemoryAllocator::GoldfishAddressSpaceHostMemoryAllocator(bool useSharedSlots)
-  : m_provider(useSharedSlots
-        ? GoldfishAddressSpaceSubdeviceType::SharedSlotsHostMemoryAllocator
-        : GoldfishAddressSpaceSubdeviceType::HostMemoryAllocator),
-    m_useSharedSlots(useSharedSlots)
-{}
+GoldfishAddressSpaceHostMemoryAllocator::GoldfishAddressSpaceHostMemoryAllocator(
+    bool useSharedSlots)
+    : m_provider(useSharedSlots ? GoldfishAddressSpaceSubdeviceType::SharedSlotsHostMemoryAllocator
+                                : GoldfishAddressSpaceSubdeviceType::HostMemoryAllocator),
+      m_useSharedSlots(useSharedSlots) {}
 
 bool GoldfishAddressSpaceHostMemoryAllocator::is_opened() const { return m_provider.is_opened(); }
 
-long GoldfishAddressSpaceHostMemoryAllocator::hostMalloc(GoldfishAddressSpaceBlock *block, size_t size)
-{
+long GoldfishAddressSpaceHostMemoryAllocator::hostMalloc(GoldfishAddressSpaceBlock* block,
+                                                         size_t size) {
     if (size == 0) {
         return -EINVAL;
     }
@@ -394,8 +355,7 @@ long GoldfishAddressSpaceHostMemoryAllocator::hostMalloc(GoldfishAddressSpaceBlo
     return 0;
 }
 
-void GoldfishAddressSpaceHostMemoryAllocator::hostFree(GoldfishAddressSpaceBlock *block)
-{
+void GoldfishAddressSpaceHostMemoryAllocator::hostFree(GoldfishAddressSpaceBlock* block) {
     if (block->size() == 0) {
         return;
     }
@@ -426,14 +386,10 @@ address_space_handle_t goldfish_address_space_open() {
     return ::open(GOLDFISH_ADDRESS_SPACE_DEVICE_NAME, O_RDWR);
 }
 
-void goldfish_address_space_close(address_space_handle_t handle) {
-    ::close(handle);
-}
+void goldfish_address_space_close(address_space_handle_t handle) { ::close(handle); }
 
-bool goldfish_address_space_allocate(
-    address_space_handle_t handle,
-    size_t size, uint64_t* phys_addr, uint64_t* offset) {
-
+bool goldfish_address_space_allocate(address_space_handle_t handle, size_t size,
+                                     uint64_t* phys_addr, uint64_t* offset) {
     struct goldfish_address_space_allocate_block request;
     ::memset(&request, 0, sizeof(request));
     request.size = size;
@@ -447,9 +403,7 @@ bool goldfish_address_space_allocate(
     return true;
 }
 
-bool goldfish_address_space_free(
-    address_space_handle_t handle, uint64_t offset) {
-
+bool goldfish_address_space_free(address_space_handle_t handle, uint64_t offset) {
     long res = ioctl_deallocate(handle, offset);
 
     if (res) {
@@ -460,9 +414,8 @@ bool goldfish_address_space_free(
     return true;
 }
 
-bool goldfish_address_space_claim_shared(
-    address_space_handle_t handle, uint64_t offset, uint64_t size) {
-
+bool goldfish_address_space_claim_shared(address_space_handle_t handle, uint64_t offset,
+                                         uint64_t size) {
     struct goldfish_address_space_claim_shared request;
     request.offset = offset;
     request.size = size;
@@ -473,8 +426,7 @@ bool goldfish_address_space_claim_shared(
     return true;
 }
 
-bool goldfish_address_space_unclaim_shared(
-        address_space_handle_t handle, uint64_t offset) {
+bool goldfish_address_space_unclaim_shared(address_space_handle_t handle, uint64_t offset) {
     long res = ioctl_unclaim_shared(handle, offset);
     if (res) {
         mesa_loge("ioctl_unclaim_shared failed, res=%ld", res);
@@ -485,11 +437,8 @@ bool goldfish_address_space_unclaim_shared(
 }
 
 // pgoff is the offset into the page to return in the result
-void* goldfish_address_space_map(
-    address_space_handle_t handle,
-    uint64_t offset, uint64_t size,
-    uint64_t pgoff) {
-
+void* goldfish_address_space_map(address_space_handle_t handle, uint64_t offset, uint64_t size,
+                                 uint64_t pgoff) {
     void* res = ::mmap64(0, size, PROT_WRITE, MAP_SHARED, handle, offset);
 
     if (res == MAP_FAILED) {
@@ -505,18 +454,16 @@ void goldfish_address_space_unmap(void* ptr, uint64_t size) {
     ::munmap(pagePtr, size);
 }
 
-bool goldfish_address_space_set_subdevice_type(
-    address_space_handle_t handle, GoldfishAddressSpaceSubdeviceType type,
-    address_space_handle_t* handle_out) {
+bool goldfish_address_space_set_subdevice_type(address_space_handle_t handle,
+                                               GoldfishAddressSpaceSubdeviceType type,
+                                               address_space_handle_t* handle_out) {
     struct address_space_ping request;
     request.metadata = (uint64_t)type;
     *handle_out = handle;
     return goldfish_address_space_ping(handle, &request);
 }
 
-bool goldfish_address_space_ping(
-    address_space_handle_t handle,
-    struct address_space_ping* ping) {
+bool goldfish_address_space_ping(address_space_handle_t handle, struct address_space_ping* ping) {
     long res = ioctl_ping(handle, ping);
 
     if (res) {
@@ -527,8 +474,7 @@ bool goldfish_address_space_ping(
     return true;
 }
 
-void GoldfishAddressSpaceBlock::replace(GoldfishAddressSpaceBlock *other)
-{
+void GoldfishAddressSpaceBlock::replace(GoldfishAddressSpaceBlock* other) {
     destroy();
 
     if (other) {

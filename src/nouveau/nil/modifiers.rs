@@ -5,7 +5,7 @@ use crate::format::Format;
 use crate::image::Image;
 use crate::tiling::{GOBType, Tiling};
 
-use bitview::*;
+use mesa_util::bitview::*;
 
 pub const MAX_DRM_FORMAT_MODS: usize = 7;
 

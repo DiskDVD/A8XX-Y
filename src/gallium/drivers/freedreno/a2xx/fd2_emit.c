@@ -175,7 +175,7 @@ fd2_emit_state_binning(struct fd_context *ctx,
 
    /* subset of fd2_emit_state needed for hw binning on a20x */
 
-   if (dirty & (FD_DIRTY_PROG | FD_DIRTY_VTXSTATE))
+   if (dirty & (FD_DIRTY_PROG | FD_DIRTY_VTXSTATE | FD_DIRTY_TEXSTATE))
       fd2_program_emit(ctx, ring, &ctx->prog);
 
    if (dirty & (FD_DIRTY_PROG | FD_DIRTY_CONST)) {

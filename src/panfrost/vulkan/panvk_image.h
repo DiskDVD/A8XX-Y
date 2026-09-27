@@ -53,14 +53,20 @@ struct panvk_image {
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
                                VK_OBJECT_TYPE_IMAGE)
 
-/* Check whether it is possible that images in a given configuration may use
- * AFBC tiling. This function does not have access to all of the relevant
- * image configuration, and returns true if any images with the specified
- * configuration subset may use AFBC. */
-bool panvk_image_can_use_afbc(
-   struct panvk_physical_device *phys_dev, VkFormat fmt,
-   VkImageUsageFlags usage, VkImageType type, VkImageTiling tiling,
-   VkImageCreateFlags flags);
+
+static inline void
+panvk_image_set_compression_props(VkImageCompressionPropertiesEXT *props,
+                                  bool compressed)
+{
+   /* AFBC is our only compression and it is lossless. Tiled modifiers are not
+    * compression.
+    */
+   props->imageCompressionFlags = compressed
+                                     ? VK_IMAGE_COMPRESSION_DEFAULT_EXT
+                                     : VK_IMAGE_COMPRESSION_DISABLED_EXT;
+   props->imageCompressionFixedRateFlags =
+      VK_IMAGE_COMPRESSION_FIXED_RATE_NONE_EXT;
+}
 
 static inline unsigned
 panvk_plane_index(const struct panvk_image *image,

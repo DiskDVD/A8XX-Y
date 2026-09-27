@@ -1507,6 +1507,10 @@ alu_opt_gather_info(opt_ctx& ctx, Instruction* instr, alu_opt_info& info)
       std::swap(info.operands[0], info.operands[1]);
       info.opcode = aco_opcode::v_sub_u32;
       break;
+   case aco_opcode::v_subrev_u16:
+      std::swap(info.operands[0], info.operands[1]);
+      info.opcode = aco_opcode::v_sub_u16;
+      break;
    default: break;
    }
 
@@ -3255,6 +3259,16 @@ backpropagate_input_modifiers(opt_ctx& ctx, alu_opt_info& info, const alu_opt_op
    case aco_opcode::s_cvt_f32_f16:
    case aco_opcode::p_v_cvt_f16_f32_rtne:
    case aco_opcode::p_s_cvt_f16_f32_rtne:
+   case aco_opcode::v_trunc_f64:
+   case aco_opcode::v_trunc_f32:
+   case aco_opcode::v_trunc_f16:
+   case aco_opcode::s_trunc_f32:
+   case aco_opcode::s_trunc_f16:
+   case aco_opcode::v_rndne_f64:
+   case aco_opcode::v_rndne_f32:
+   case aco_opcode::v_rndne_f16:
+   case aco_opcode::s_rndne_f32:
+   case aco_opcode::s_rndne_f16:
       for (alu_opt_op& op : info.operands) {
          op.neg &= ~op_info.abs;
          op.abs |= op_info.abs;
@@ -3319,6 +3333,16 @@ backpropagate_input_modifiers(opt_ctx& ctx, alu_opt_info& info, const alu_opt_op
    case aco_opcode::s_max_f16:
    case aco_opcode::v_pk_min_f16:
    case aco_opcode::v_pk_max_f16:
+   case aco_opcode::v_floor_f64:
+   case aco_opcode::v_floor_f32:
+   case aco_opcode::v_floor_f16:
+   case aco_opcode::s_floor_f32:
+   case aco_opcode::s_floor_f16:
+   case aco_opcode::v_ceil_f64:
+   case aco_opcode::v_ceil_f32:
+   case aco_opcode::v_ceil_f16:
+   case aco_opcode::s_ceil_f32:
+   case aco_opcode::s_ceil_f16:
       if (op_info.abs)
          return false;
 
@@ -3350,6 +3374,16 @@ backpropagate_input_modifiers(opt_ctx& ctx, alu_opt_info& info, const alu_opt_op
       case aco_opcode::s_max_f16: info.opcode = aco_opcode::s_min_f16; break;
       case aco_opcode::v_pk_min_f16: info.opcode = aco_opcode::v_pk_max_f16; break;
       case aco_opcode::v_pk_max_f16: info.opcode = aco_opcode::v_pk_min_f16; break;
+      case aco_opcode::v_floor_f64: info.opcode = aco_opcode::v_ceil_f64; break;
+      case aco_opcode::v_floor_f32: info.opcode = aco_opcode::v_ceil_f32; break;
+      case aco_opcode::v_floor_f16: info.opcode = aco_opcode::v_ceil_f16; break;
+      case aco_opcode::s_floor_f32: info.opcode = aco_opcode::s_ceil_f32; break;
+      case aco_opcode::s_floor_f16: info.opcode = aco_opcode::s_ceil_f16; break;
+      case aco_opcode::v_ceil_f64: info.opcode = aco_opcode::v_floor_f64; break;
+      case aco_opcode::v_ceil_f32: info.opcode = aco_opcode::v_floor_f32; break;
+      case aco_opcode::v_ceil_f16: info.opcode = aco_opcode::v_floor_f16; break;
+      case aco_opcode::s_ceil_f32: info.opcode = aco_opcode::s_floor_f32; break;
+      case aco_opcode::s_ceil_f16: info.opcode = aco_opcode::s_floor_f16; break;
       default: UNREACHABLE("invalid op");
       }
       break;
@@ -3364,6 +3398,12 @@ backpropagate_input_modifiers(opt_ctx& ctx, alu_opt_info& info, const alu_opt_op
          }
          info.operands[comp].neg[0] ^= op_info.neg[comp];
       }
+      break;
+   case aco_opcode::v_sin_f32:
+   case aco_opcode::v_sin_f16:
+      if (op_info.abs)
+         return false;
+      info.operands[0].neg ^= op_info.neg;
       break;
    default: return false;
    }
@@ -3846,8 +3886,14 @@ op_info_get_constant(opt_ctx& ctx, alu_opt_op op_info, aco_type type, uint64_t* 
 {
    if (op_info.op.isTemp()) {
       unsigned id = original_temp_id(ctx, op_info.op.getTemp());
+
+      /* Use the size from the Temp, not the type here, to avoid truncating
+       * values that are accessed with extracts of the high bits.
+       */
+      unsigned constant_size = op_info.op.bytes() * 8;
+
       if (ctx.info[id].is_constant())
-         op_info.op = get_constant_op(ctx, ctx.info[id], type.bytes() * 8);
+         op_info.op = get_constant_op(ctx, ctx.info[id], constant_size);
    }
    if (!op_info.op.isConstant())
       return false;
@@ -4160,16 +4206,24 @@ reassoc_omod_cb(opt_ctx& ctx, alu_opt_info& info)
    return false;
 }
 
-template <unsigned bits>
+template <unsigned bits, unsigned num_components = 1>
 bool
 shift_to_mad_cb(opt_ctx& ctx, alu_opt_info& info)
 {
-   aco_type type = {aco_base_type_uint, 1, 32};
-   uint64_t constant = 0;
-   if (!op_info_get_constant(ctx, info.operands[1], type, &constant))
+   aco_type type = {aco_base_type_uint, num_components, bits};
+   uint64_t shift = 0;
+   if (!op_info_get_constant(ctx, info.operands[1], type, &shift))
       return false;
 
-   info.operands[1] = {Operand::c32(1u << (constant % bits))};
+   uint32_t mul = 0;
+   for (unsigned i = 0; i < num_components; i++) {
+      uint32_t constant = (shift >> (i * bits)) & BITFIELD_MASK(bits);
+
+      mul |= (1u << (constant % bits)) << (i * bits);
+   }
+
+   info.operands[1] = {Operand::c32(mul)};
+   info.operands[1].extract[1] = num_components == 1 ? SubdwordSel::dword : SubdwordSel::uword1;
    return true;
 }
 
@@ -4206,6 +4260,29 @@ neg_mul_to_i24_cb(opt_ctx& ctx, alu_opt_info& info)
       if (multiplier < int32_t(0xff80'0000) || multiplier > 0x007f'ffff)
          return false;
       info.operands[i] = {Operand::c32(multiplier)};
+      return true;
+   }
+
+   return false;
+}
+
+bool
+neg_mul_to_i16_cb(opt_ctx& ctx, alu_opt_info& info)
+{
+   aco_type type = {aco_base_type_uint, 2, 16};
+   for (unsigned i = 0; i < 2; i++) {
+      uint64_t constant = 0;
+      if (!op_info_get_constant(ctx, info.operands[i], type, &constant))
+         continue;
+
+      uint32_t multiplier = 0;
+      for (unsigned comp = 0; comp < 2; comp++) {
+         int32_t part = (constant >> (comp * 16)) & 0xffff;
+         multiplier |= (uint32_t)-part << (comp * 16);
+      }
+
+      info.operands[i] = {Operand::c32(multiplier)};
+      info.operands[i].extract[1] = SubdwordSel::uword1;
       return true;
    }
 
@@ -4535,19 +4612,78 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
    } else if (info.opcode == aco_opcode::v_add_u16 && !info.clamp) {
       if (ctx.program->gfx_level < GFX9) {
          add_opt(v_mul_lo_u16, v_mad_legacy_u16, 0x3, "120");
+         add_opt(s_mul_i32, v_mad_legacy_u16, 0x3, "120");
+         add_opt(v_lshlrev_b16, v_mad_legacy_u16, 0x3, "210", shift_to_mad_cb<16>);
+         add_opt(s_lshl_b32, v_mad_legacy_u16, 0x3, "120", shift_to_mad_cb<32>);
       } else {
          add_opt(v_mul_lo_u16, v_mad_u16, 0x3, "120");
          add_opt(v_pk_mul_lo_u16, v_mad_u16, 0x3, "120");
+         add_opt(s_mul_i32, v_mad_u16, 0x3, "120");
+         add_opt(v_lshlrev_b16, v_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+         add_opt(v_pk_lshlrev_b16, v_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+         add_opt(s_lshl_b32, v_mad_u16, 0x3, "120", shift_to_mad_cb<32>);
       }
    } else if (info.opcode == aco_opcode::v_add_u16_e64 && !info.clamp) {
       add_opt(v_mul_lo_u16_e64, v_mad_u16, 0x3, "120");
       add_opt(v_pk_mul_lo_u16, v_mad_u16, 0x3, "120");
+      add_opt(s_mul_i32, v_mad_u16, 0x3, "120");
+      add_opt(v_lshlrev_b16_e64, v_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+      add_opt(v_pk_lshlrev_b16, v_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+      add_opt(s_lshl_b32, v_mad_u16, 0x3, "120", shift_to_mad_cb<32>);
    } else if (info.opcode == aco_opcode::v_pk_add_u16 && !info.clamp) {
       add_opt(v_pk_mul_lo_u16, v_pk_mad_u16, 0x3, "120");
-      if (ctx.program->gfx_level < GFX10)
+      add_opt(v_pk_lshlrev_b16, v_pk_mad_u16, 0x3, "210", shift_to_mad_cb<16, 2>);
+      add_opt(s_mul_i32, v_pk_mad_u16, 0x3, "120");
+      add_opt(s_lshl_b32, v_pk_mad_u16, 0x3, "120", shift_to_mad_cb<32>);
+      if (ctx.program->gfx_level < GFX10) {
          add_opt(v_mul_lo_u16, v_pk_mad_u16, 0x3, "120");
-      else
+         add_opt(v_lshlrev_b16, v_pk_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+      } else {
          add_opt(v_mul_lo_u16_e64, v_pk_mad_u16, 0x3, "120");
+         add_opt(v_lshlrev_b16_e64, v_pk_mad_u16, 0x3, "210", shift_to_mad_cb<16>);
+      }
+   } else if (info.opcode == aco_opcode::v_sub_u16 && !info.clamp) {
+      if (ctx.program->gfx_level < GFX9) {
+         add_opt(v_mul_lo_u16, v_mad_legacy_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(s_mul_i32, v_mad_legacy_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(v_lshlrev_b16, v_mad_legacy_u16, 0x2, "210",
+                 and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+         add_opt(s_lshl_b32, v_mad_legacy_u16, 0x2, "120",
+                 and_cb<shift_to_mad_cb<32>, neg_mul_to_i16_cb>);
+      } else {
+         add_opt(v_mul_lo_u16, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(v_pk_mul_lo_u16, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(s_mul_i32, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(v_lshlrev_b16, v_mad_u16, 0x2, "210",
+                 and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+         add_opt(v_pk_lshlrev_b16, v_mad_u16, 0x2, "210",
+                 and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+         add_opt(s_lshl_b32, v_mad_u16, 0x2, "120", and_cb<shift_to_mad_cb<32>, neg_mul_to_i16_cb>);
+      }
+   } else if (info.opcode == aco_opcode::v_sub_u16_e64 && !info.clamp) {
+      add_opt(v_mul_lo_u16_e64, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+      add_opt(v_pk_mul_lo_u16, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+      add_opt(s_mul_i32, v_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+      add_opt(v_lshlrev_b16_e64, v_mad_u16, 0x2, "210",
+              and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+      add_opt(v_pk_lshlrev_b16, v_mad_u16, 0x2, "210",
+              and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+      add_opt(s_lshl_b32, v_mad_u16, 0x2, "120", and_cb<shift_to_mad_cb<32>, neg_mul_to_i16_cb>);
+   } else if (info.opcode == aco_opcode::v_pk_sub_u16 && !info.clamp) {
+      add_opt(v_pk_mul_lo_u16, v_pk_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+      add_opt(v_pk_lshlrev_b16, v_pk_mad_u16, 0x2, "210",
+              and_cb<shift_to_mad_cb<16, 2>, neg_mul_to_i16_cb>);
+      add_opt(s_mul_i32, v_pk_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+      add_opt(s_lshl_b32, v_pk_mad_u16, 0x2, "120", and_cb<shift_to_mad_cb<32>, neg_mul_to_i16_cb>);
+      if (ctx.program->gfx_level < GFX10) {
+         add_opt(v_mul_lo_u16, v_pk_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(v_lshlrev_b16, v_pk_mad_u16, 0x2, "210",
+                 and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+      } else {
+         add_opt(v_mul_lo_u16_e64, v_pk_mad_u16, 0x2, "120", neg_mul_to_i16_cb);
+         add_opt(v_lshlrev_b16_e64, v_pk_mad_u16, 0x2, "210",
+                 and_cb<shift_to_mad_cb<16>, neg_mul_to_i16_cb>);
+      }
    } else if (info.opcode == aco_opcode::v_or_b32) {
       add_opt(v_not_b32, v_bfi_b32, 0x3, "10", insert_const_cb<2, UINT32_MAX>, true);
       add_opt(s_not_b32, v_bfi_b32, 0x3, "10", insert_const_cb<2, UINT32_MAX>, true);
@@ -4672,6 +4808,14 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
       add_opt(v_add_u32, v_add_lshl_u32, 0x2, "120", nullptr, true);
       add_opt(s_add_u32, v_add_lshl_u32, 0x2, "120", nullptr, true);
       add_opt(s_add_i32, v_add_lshl_u32, 0x2, "120", nullptr, true);
+   } else if (info.opcode == aco_opcode::v_lshrrev_b32) {
+      add_opt(v_lshlrev_b32, v_alignbyte_b32, 0x1, "021",
+              and_cb<remove_const_cb<3>, insert_const_cb<0, 0>>);
+      add_opt(s_lshl_b32, v_alignbyte_b32, 0x1, "012",
+              and_cb<remove_const_cb<3>, insert_const_cb<0, 0>>);
+   } else if (info.opcode == aco_opcode::v_alignbit_b32) {
+      add_opt(v_lshlrev_b32, v_alignbyte_b32, 0x4, "0132", remove_const_cb<3>);
+      add_opt(s_lshl_b32, v_alignbyte_b32, 0x4, "0123", remove_const_cb<3>);
    } else if (info.opcode == aco_opcode::v_and_b32) {
       add_opt(v_not_b32, v_bfi_b32, 0x3, "10", insert_const_cb<1, 0>, true);
       add_opt(s_not_b32, v_bfi_b32, 0x3, "10", insert_const_cb<1, 0>, true);

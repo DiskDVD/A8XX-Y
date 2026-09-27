@@ -514,6 +514,9 @@ check_instr(struct ir3_sched_ctx *ctx, struct ir3_sched_notes *notes,
     * bary.f is scheduled.  The hw seems unhappy if the thread
     * gets killed before the end-input (ei) flag is hit.
     *
+    * TODO: this isn't true anymore on newer gens (probably a5xx+) so we should
+    * evaluate if scheduling kills earlier would be better for performance.
+    *
     * We could do this by adding each bary.f instruction as
     * virtual ssa src for the kill instruction.  But we have
     * fixed length instr->srcs[].
@@ -525,6 +528,19 @@ check_instr(struct ir3_sched_ctx *ctx, struct ir3_sched_notes *notes,
 
       for (unsigned i = 0; i < ir->baryfs_count; i++) {
          struct ir3_instruction *baryf = ir->baryfs[i];
+         if (baryf->block != instr->block) {
+            /* It's impossible to schedule the kill relative to instructions in
+             * a different block so ignore those. This could, in theory, lead to
+             * issues on gens where the hw really wants kills before (ei).
+             * However, this shouldn't happen because we don't support
+             * interpolateAt* there which is the only source of bary.f
+             * instructions that cannot be moved to the first block (see
+             * 1201aa9332a ("ir3: do not move varying inputs that depend on
+             * unmovable instrs")). Just assert that we are new enough.
+             */
+            assert(is_scheduled(baryf) || ctx->compiler->gen >= 5);
+            continue;
+         }
          if (baryf->flags & IR3_INSTR_UNUSED)
             continue;
          if (!is_scheduled(baryf)) {

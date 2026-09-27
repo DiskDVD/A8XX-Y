@@ -79,11 +79,11 @@ radv_tex_mipfilter(VkSamplerMipmapMode mode)
 {
    switch (mode) {
    case VK_SAMPLER_MIPMAP_MODE_NEAREST:
-      return V_008F38_SQ_TEX_Z_FILTER_POINT;
+      return V_008F38_SQ_TEX_MIP_FILTER_POINT;
    case VK_SAMPLER_MIPMAP_MODE_LINEAR:
-      return V_008F38_SQ_TEX_Z_FILTER_LINEAR;
+      return V_008F38_SQ_TEX_MIP_FILTER_LINEAR;
    default:
-      return V_008F38_SQ_TEX_Z_FILTER_NONE;
+      return V_008F38_SQ_TEX_MIP_FILTER_NONE;
    }
 }
 

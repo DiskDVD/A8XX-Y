@@ -299,7 +299,7 @@ etna_rs_gen_clear_cmd(struct etna_context *ctx,
    struct etna_resource_level *level = &res->levels[psurf->level];
    uint32_t format;
 
-   switch (util_format_get_blocksizebits(psurf->format)) {
+   switch (util_format_get_blocksizebits(res->internal_format)) {
    case 8:
       assert(VIV_FEATURE(screen, ETNA_FEATURE_S8));
       format = RS_FORMAT_S8;
@@ -455,10 +455,12 @@ etna_blit_clear_zs_rs(struct pipe_context *pctx, struct pipe_surface *dst,
    switch (dst->format) {
    case PIPE_FORMAT_Z16_UNORM:
    case PIPE_FORMAT_X8Z24_UNORM:
+   case PIPE_FORMAT_Z32_FLOAT:
       clear_bits_depth = 0xffff;
       clear_bits_stencil = 0;
       break;
    case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
       clear_bits_depth = 0xeeee;
       clear_bits_stencil = 0x1111;
       break;
@@ -798,15 +800,23 @@ etna_try_rs_blit(struct pipe_context *pctx,
    assert(blit_info->dst.box.x + blit_info->dst.box.width <= dst_lev->padded_width);
    assert(blit_info->dst.box.y + blit_info->dst.box.height <= dst_lev->padded_height);
 
+   struct pipe_box src_box = blit_info->src.box;
+   struct pipe_box dst_box = blit_info->dst.box;
+
+   src_box.x *= src_xscale;
+   src_box.y *= src_yscale;
+   dst_box.x *= dst_xscale;
+   dst_box.y *= dst_yscale;
+
    unsigned src_offset = src_lev->offset +
                          blit_info->src.box.z * src_lev->layer_stride +
-                         etna_compute_tileoffset(&blit_info->src.box,
+                         etna_compute_tileoffset(&src_box,
                                                  blit_info->src.format,
                                                  src_lev->stride,
                                                  src->layout);
    unsigned dst_offset = dst_lev->offset +
                          blit_info->dst.box.z * dst_lev->layer_stride +
-                         etna_compute_tileoffset(&blit_info->dst.box,
+                         etna_compute_tileoffset(&dst_box,
                                                  blit_info->dst.format,
                                                  dst_lev->stride,
                                                  dst->layout);

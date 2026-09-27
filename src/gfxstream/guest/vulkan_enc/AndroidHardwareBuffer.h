@@ -8,8 +8,8 @@
 
 #include <vulkan/vulkan.h>
 
-#include "gfxstream/guest/GfxStreamGralloc.h"
 #include "HostVisibleMemoryVirtualization.h"
+#include "gfxstream/guest/GfxStreamGralloc.h"
 
 // Structure similar to
 // https://github.com/mesa3d/mesa/blob/master/src/intel/vulkan/anv_android.c

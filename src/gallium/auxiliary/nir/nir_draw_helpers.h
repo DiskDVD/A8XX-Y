@@ -36,6 +36,7 @@ nir_lower_pstipple_fs(struct nir_shader *shader,
                       unsigned *samplerUnitOut,
                       unsigned fixedUnit,
                       bool fs_pos_is_sysval,
+                      bool samplers_as_deref,
                       nir_alu_type bool_type);
 
 void

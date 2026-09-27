@@ -278,8 +278,6 @@ st_RasterPos(struct gl_context *ctx, const GLfloat v[4])
    _mesa_set_varying_vp_inputs(ctx, VERT_BIT_POS &
                                ctx->Array._DrawVAO->_EnabledWithMapMode);
 
-   ST_PIPELINE_RENDER_STATE_MASK(pipeline_mask);
-   st_prepare_draw(ctx, pipeline_mask);
    st_feedback_draw_vbo(ctx, &rs->info, 0, NULL, &rs->draw, 1);
 
    _mesa_restore_draw_vao(ctx, old_vao, old_vp_input_filter);

@@ -356,7 +356,7 @@ static void gfx11_sh_query_get_result_resource(struct si_context *sctx, struct s
 
    /* TODO: Range-invalidate GL2 */
    if (sctx->screen->info.cp_sdma_ge_use_system_memory_scope)
-      si_set_barrier_flags(sctx, SI_BARRIER_INV_L2);
+      si_set_barrier_flags(sctx, AC_BARRIER_INV_L2);
 
    struct gfx11_sh_query_buffer *qbuf = query->first;
    for (;;) {

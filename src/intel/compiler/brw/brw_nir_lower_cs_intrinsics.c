@@ -327,7 +327,7 @@ brw_nir_lower_cs_intrinsics(nir_shader *nir,
        !nir->info.workgroup_size_variable &&
        util_is_power_of_two_nonzero(nir->info.workgroup_size[0]) &&
        util_is_power_of_two_nonzero(nir->info.workgroup_size[1]) &&
-       !intel_use_jay(devinfo, nir->info.stage)) {
+       !intel_use_jay(devinfo, nir)) {
 
       state.hw_generated_local_id = true;
 

@@ -56,6 +56,7 @@ pvr_files = files(
   'pvr_spm.c',
   'pvr_usc.c',
   'pvr_wsi.c',
+  'pvr_utrace.c',
 )
 
 pvr_includes = [
@@ -70,6 +71,7 @@ pvr_deps = [
   idep_mesautil,
   idep_pco_uscgen_programs,
   idep_pdsc_precomp_programs,
+  idep_pvr_driver_ds,
   idep_vulkan_runtime,
   idep_vulkan_util,
   idep_vulkan_wsi,
@@ -162,6 +164,7 @@ foreach arch : ['rogue']
       idep_nir_headers,
       idep_pco_uscgen_programs_headers,
       idep_pdsc_precomp_programs_headers,
+      idep_pvr_driver_ds_headers,
       idep_vulkan_runtime_headers,
       idep_vulkan_util_headers,
       idep_vulkan_wsi_headers,

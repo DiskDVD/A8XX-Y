@@ -46,26 +46,12 @@ spec@!opengl 1.0@gl-1.0-beginend-coverage
 tex-miplevel-selection
 spec@arb_direct_state_access@transformfeedback-bufferrange
 spec@arb_direct_state_access@transformfeedback-bufferbase
-spec@arb_uniform_buffer_object@rendering-array
-spec@arb_uniform_buffer_object@rendering-array-offset
-spec@arb_point_sprite@arb_point_sprite-interactions
-gles-3.0-transform-feedback-uniform-buffer-object
-
-spec@!opengl 1.1@gl-1.1-drawarrays-vertex-count 100000 varray gl_lines
-spec@!opengl 1.1@gl-1.1-drawarrays-vertex-count 100000 vbo gl_lines
-spec@ext_framebuffer_object@fbo-stencil-gl_stencil_index8-clear
-spec@arb_framebuffer_srgb@arb_framebuffer_srgb-srgb_conformance
-spec@arb_framebuffer_srgb@blit renderbuffer linear
-spec@arb_framebuffer_srgb@blit texture srgb
-spec@!opengl 1.1@dlist-fdo3129-01
 
 # Unsupported legacy gl features
 .*edgeflag.*
-.*stipple.*
+spec@.*line.*stipple.*
 # uses edgeflags:
 shaders@point-vertex-id.*
-# uses stipple:
-spec@!opengl 1.0@gl-1.0-no-op-paths
 
 # Times out
 glx@glx-visuals-depth

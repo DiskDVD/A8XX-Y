@@ -4076,7 +4076,8 @@ tu_pipeline_builder_emit_state(struct tu_pipeline_builder *builder,
                    pipeline_contains_all_shader_state(pipeline) &&
                       pipeline->disable_fs.valid,
                    builder->graphics_state.rs, builder->graphics_state.vp,
-                   builder->graphics_state.mv->view_mask != 0,
+                   builder->graphics_state.mv->view_mask != 0 &&
+                      builder->device->physical_device->info->props.has_hw_multiview,
                    pipeline->program.per_view_viewport,
                    pipeline->disable_fs.disable_fs,
                    builder->fragment_density_map);
@@ -4339,6 +4340,11 @@ tu_emit_draw_state(struct tu_cmd_buffer *cmd)
                cmd->state.program.writes_shading_rate,
                cmd->state.program.reads_shading_rate);
    }
+   /* For SW multiview (no HW multiview), don't enable HW multiview
+    * registers -- the driver handles multiview via draw duplication.
+    */
+   bool hw_multiview = cmd->state.vk_mv.view_mask != 0 &&
+      cmd->device->physical_device->info->props.has_hw_multiview;
    DRAW_STATE_COND(rast, TU_DYNAMIC_STATE_RAST,
                    cmd->state.dirty & (TU_CMD_DIRTY_SUBPASS |
                                        TU_CMD_DIRTY_FDM |
@@ -4346,7 +4352,7 @@ tu_emit_draw_state(struct tu_cmd_buffer *cmd)
                                        TU_CMD_DIRTY_RAST),
                    &cmd->vk.dynamic_graphics_state.rs,
                    &cmd->vk.dynamic_graphics_state.vp,
-                   cmd->state.vk_mv.view_mask != 0,
+                   hw_multiview,
                    cmd->state.per_view_viewport,
                    cmd->state.disable_fs,
                    cmd->state.has_fdm);

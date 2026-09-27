@@ -249,7 +249,7 @@ radv_cp_dma_copy_memory(struct radv_cmd_buffer *cmd_buffer, uint64_t src_va, uin
 
    if (!(pdev->info.cp_dma_use_L2 && pdev->info.gfx_level >= GFX9)) {
       /* Invalidate L2 in case "src_va" or "dest_va" were previously written through L2. */
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_INV_L2;
+      cmd_buffer->state.flush_bits |= AC_BARRIER_INV_L2;
    }
 
    /* Assume that we are not going to sync after the last DMA operation. */
@@ -333,7 +333,7 @@ radv_cp_dma_fill_memory(struct radv_cmd_buffer *cmd_buffer, uint64_t va, uint64_
 
    if (!(pdev->info.cp_dma_use_L2 && pdev->info.gfx_level >= GFX9)) {
       /* Invalidate L2 in case "va" was previously written through L2. */
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_INV_L2;
+      cmd_buffer->state.flush_bits |= AC_BARRIER_INV_L2;
    }
 
    assert(va % 4 == 0 && size % 4 == 0);

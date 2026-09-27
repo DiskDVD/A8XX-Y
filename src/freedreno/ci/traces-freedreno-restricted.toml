@@ -750,7 +750,7 @@ freedreno-a750 = { checksum = "4a74817ec7271b26251a1f0a678cae95b6e3cf140b1bf7b0e
 [[traces]]
 path = "steam-d3d9/starcraft2_unknown_dx9_unknown_unknown_none.trace"
 [traces.devices]
-freedreno-a660 = { checksum = "43dfeef2a17b9bb31eb96c817d8f53137708ac8777e38b3eec49ac13cc9e8842" }
+freedreno-a660 = { checksum = "f87dbb232ec3993b0c892c23df3e198ee2b9eb7c6b34e1e8ea44deef73de0f2d" }
 freedreno-a750 = { checksum = "43dfeef2a17b9bb31eb96c817d8f53137708ac8777e38b3eec49ac13cc9e8842" }
 
 # steam-d3d9/Star Wars Empire At War_unknown_dx9_unknown_unknown_none.trace: Crashes Xwayland:

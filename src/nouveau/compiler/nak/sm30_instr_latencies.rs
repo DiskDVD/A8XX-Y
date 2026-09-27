@@ -1,4 +1,4 @@
-use bitview::{BitMutViewable, BitViewable, SetField};
+use mesa_util::bitview::{BitMutViewable, BitViewable, SetField};
 use rustc_hash::FxHashMap;
 
 use crate::ir::{Instr, InstrDeps, Label, Op, OpNop, Shader};

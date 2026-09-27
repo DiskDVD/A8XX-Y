@@ -3194,13 +3194,19 @@ nir_print_shader_annotated(nir_shader *shader, FILE *fp,
 }
 
 void
+nir_print_shader_dbg(nir_shader *shader, FILE *fp)
+{
+   nir_print_shader_annotated(shader, fp, NULL);
+   fflush(fp);
+}
+
+void
 nir_print_shader(nir_shader *shader, FILE *fp)
 {
    nir_foreach_function_impl(impl, shader) {
       nir_index_ssa_defs(impl);
    }
-   nir_print_shader_annotated(shader, fp, NULL);
-   fflush(fp);
+   nir_print_shader_dbg(shader, fp);
 }
 
 static char *

@@ -129,6 +129,7 @@ nv30_init_screen_caps(struct nv30_screen *screen)
    caps->clear_scissored = true;
    caps->allow_mapped_buffers_during_execution = true;
    caps->query_memory_info = true;
+   caps->polygon_stipple = true;
    caps->vertex_input_alignment = PIPE_VERTEX_INPUT_ALIGNMENT_4BYTE;
    caps->texture_transfer_modes = PIPE_TEXTURE_TRANSFER_BLIT;
    /* nv35 capabilities */

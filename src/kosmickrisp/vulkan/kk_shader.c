@@ -499,6 +499,13 @@ kk_lower_fs(struct kk_device *dev, nir_shader *nir,
    nir->info.fs.uses_sample_shading |=
       state->ms && state->ms->sample_shading_enable;
 
+   /* Must be lowered before blending */
+   if (state->ms) {
+      NIR_PASS(_, nir, msl_nir_lower_multisample_alpha,
+               state->ms->alpha_to_coverage_enable,
+               state->ms->alpha_to_one_enable);
+   }
+
    /* msl_nir_lower_sample_shading needs to go before blending since
     * nir_lower_blend will always set uses_sample_shading to true if there's any
     * output read. I believe we do not need to lower it always, that is why it
@@ -1362,8 +1369,6 @@ gather_graphics_pipeline_create_info(
    if (info->vs.has_ms) {
       const struct vk_multisample_state *ms = state->ms;
       info->vs.sample_count = ms->rasterization_samples;
-      info->vs.has_alpha_to_coverage_enabled = ms->alpha_to_coverage_enable;
-      info->vs.has_alpha_to_one_enabled = ms->alpha_to_one_enable;
    }
 
    /* We need to store all other stage sources in the vertex too otherwise we
@@ -1494,10 +1499,6 @@ kk_compile_graphics_pipeline(struct kk_device *device, struct kk_shader *vs)
    if (vs->info.vs.has_ms) {
       mtl_render_pipeline_descriptor_set_raster_sample_count(
          pipeline_descriptor, vs->info.vs.sample_count);
-      mtl_render_pipeline_descriptor_set_alpha_to_coverage(
-         pipeline_descriptor, vs->info.vs.has_alpha_to_coverage_enabled);
-      mtl_render_pipeline_descriptor_set_alpha_to_one(
-         pipeline_descriptor, vs->info.vs.has_alpha_to_one_enabled);
    }
 
    pipe->gfx.render =

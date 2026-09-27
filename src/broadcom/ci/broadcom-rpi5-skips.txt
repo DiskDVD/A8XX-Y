@@ -14,6 +14,9 @@ spec@glsl-3.*
 spec@glsl-4.*
 spec@glsl-es-3.20.*
 
+# Slow piglit tests (> 1 minute to run)
+spec@ext_texture_env_combine@texture-env-combine
+
 # Slow CL tests (> 5 minute to run)
 
 # Slow CTS tests (close to or over the 60s test timeout)

@@ -159,14 +159,20 @@ struct anv_drv_push_data {
       } gfx;
 
       struct {
+         /** gl_NumWorkgroups.
+          *
+          * Either directly specified or (if the last channel is the sentinel
+          * UINT_MAX) an indirect 64-bit address to load.  Putting this first
+          * helps reduce copies required in the shader by ensuring this is
+          * GRF-aligned if ray query is not used.
+          */
+         uint32_t num_workgroups[3];
+
          /** Base workgroup ID
           *
           * Used for vkCmdDispatchBase.
           */
          uint32_t base_workgroup[3];
-
-         /** gl_NumWorkgroups */
-         uint32_t num_workgroups[3];
 
          /** Unaligned invocation lane disabling
           *
@@ -176,6 +182,9 @@ struct anv_drv_push_data {
       } cs;
    };
 };
+
+static_assert(offsetof(struct anv_drv_push_data, cs.num_workgroups[0]) == 8,
+              "comes first if there is no ray query");
 
 struct anv_binding_heap_data {
    /** Base offset of the surface descriptors */

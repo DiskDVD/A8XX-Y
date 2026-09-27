@@ -13,16 +13,29 @@
 #include "jay_opcodes.h"
 #include "jay_private.h"
 
+static bool
+tracked(jay_def x)
+{
+   return x.file == GPR || x.file == ACCUM;
+}
+
+static unsigned
+liveness_key(jay_def x)
+{
+   return x.file == GPR ? (x.reg + JAY_MAX_ACCUMS) : (x.reg / 2);
+}
+
 static void
 postra_liveness_ins(BITSET_WORD *live, jay_inst *I)
 {
-   if (I->dst.file == GPR && !I->predication) {
-      BITSET_CLEAR_COUNT(live, I->dst.reg, jay_num_values(I->dst));
+   if (tracked(I->dst) && !I->predication) {
+      BITSET_CLEAR_COUNT(live, liveness_key(I->dst), jay_num_values(I->dst));
    }
 
    jay_foreach_src(I, s) {
-      if (I->src[s].file == GPR) {
-         BITSET_SET_COUNT(live, I->src[s].reg, jay_num_values(I->src[s]));
+      if (tracked(I->src[s])) {
+         BITSET_SET_COUNT(live, liveness_key(I->src[s]),
+                          jay_num_values(I->src[s]));
       }
    }
 }
@@ -56,7 +69,7 @@ postra_liveness(jay_function *func)
                    (*succ)->postra_gpr_live_in);
       }
 
-      BITSET_DECLARE(live, JAY_MAX_PHYS_GRF);
+      BITSET_DECLARE(live, JAY_MAX_ACCUMS + JAY_MAX_PHYS_GRF);
       memcpy(live, blk->postra_gpr_live_out, sizeof(live));
 
       jay_foreach_inst_in_block_rev(blk, ins) {
@@ -84,7 +97,7 @@ postra_liveness(jay_function *func)
 static bool
 source_killed(BITSET_WORD *live, const jay_inst *I, unsigned s)
 {
-   return !BITSET_TEST(live, I->src[s].reg) ||
+   return !BITSET_TEST(live, liveness_key(I->src[s])) ||
           (I->dst.file == GPR &&
            I->src[s].reg >= I->dst.reg &&
            (I->src[s].reg - I->dst.reg) < jay_num_values(I->dst));
@@ -234,12 +247,11 @@ pass(jay_function *func)
       util_dynarray_clear(&candidates);
 
       /* Live-set at each point in the program */
-      BITSET_DECLARE(live, JAY_MAX_PHYS_GRF);
+      BITSET_DECLARE(live, JAY_MAX_ACCUMS + JAY_MAX_PHYS_GRF);
       memcpy(live, block->postra_gpr_live_out, sizeof(live));
 
       uint32_t ip = ip_bound;
       uint32_t last_use_ip[JAY_MAX_PHYS_GRF] = { 0 };
-      uint32_t pre_live = 0;
       bool mac_candidates[JAY_MAX_PHYS_GRF] = { false };
 
       jay_foreach_inst_in_block_rev(block, I) {
@@ -256,10 +268,6 @@ pass(jay_function *func)
 
             last_use_ip[I->dst.reg] = 0;
             mac_candidates[I->dst.reg] = 0;
-         }
-
-         if (I->dst.file == ACCUM) {
-            pre_live &= ~BITFIELD_BIT(I->dst.reg / 2);
          }
 
          jay_foreach_src(I, s) {
@@ -280,14 +288,6 @@ pass(jay_function *func)
                   mac_candidates[I->src[s].reg + c] = false;
                }
             }
-
-            if (I->src[s].file == ACCUM) {
-               pre_live |= BITFIELD_BIT(I->src[s].reg / 2);
-            }
-         }
-
-         u_foreach_bit(i, pre_live) {
-            BITSET_SET(in_use[i], ip);
          }
 
          /* Implicit use of the integer accumulator acc0 corrupts acc0/acc1,
@@ -303,6 +303,11 @@ pass(jay_function *func)
          }
 
          postra_liveness_ins(live, I);
+
+         unsigned i;
+         BITSET_FOREACH_SET(i, live, nr_accums) {
+            BITSET_SET(in_use[i], ip);
+         }
       }
 
       qsort(candidates.data,

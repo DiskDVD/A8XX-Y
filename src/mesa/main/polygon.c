@@ -181,6 +181,8 @@ polygon_mode(struct gl_context *ctx, GLenum face, GLenum mode, bool no_error)
       FLUSH_VERTICES(ctx, 0,
                      GL_POLYGON_BIT);
       ST_SET_STATE(ctx->NewDriverState, ST_NEW_RASTERIZER);
+      /* Emulated polygon stipple keys off the front-face fill mode. */
+      ST_SET_STATES(ctx->NewDriverState, ctx->DriverFlags.NewStippleEmulate);
       ctx->Polygon.FrontMode = mode;
       _mesa_update_edgeflag_state_vao(ctx);
       break;
@@ -190,6 +192,8 @@ polygon_mode(struct gl_context *ctx, GLenum face, GLenum mode, bool no_error)
       FLUSH_VERTICES(ctx, 0,
                      GL_POLYGON_BIT);
       ST_SET_STATE(ctx->NewDriverState, ST_NEW_RASTERIZER);
+      /* Emulated polygon stipple keys off the front-face fill mode. */
+      ST_SET_STATES(ctx->NewDriverState, ctx->DriverFlags.NewStippleEmulate);
       ctx->Polygon.FrontMode = mode;
       ctx->Polygon.BackMode = mode;
       _mesa_update_edgeflag_state_vao(ctx);

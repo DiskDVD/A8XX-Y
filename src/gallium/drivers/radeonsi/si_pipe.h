@@ -18,6 +18,7 @@
 #include "util/u_vertex_state_cache.h"
 #include "util/perf/u_trace.h"
 #include "util/log.h"
+#include "ac_barrier.h"
 #include "ac_cmdbuf.h"
 #include "ac_descriptors.h"
 #include "ac_guardband.h"
@@ -55,39 +56,6 @@ struct ac_llvm_compiler;
 #define SI_GS_PER_ES              128
 /* Alignment for optimal CP DMA performance. */
 #define SI_CPDMA_ALIGNMENT 32
-
-/* Pipeline & streamout query start/stop events. */
-#define SI_BARRIER_EVENT_PIPELINESTAT_START     BITFIELD_BIT(0)
-#define SI_BARRIER_EVENT_PIPELINESTAT_STOP      BITFIELD_BIT(1)
-/* Events only used by workarounds. These shouldn't be used for API barriers. */
-#define SI_BARRIER_EVENT_FLUSH_AND_INV_DB_META  BITFIELD_BIT(2)
-#define SI_BARRIER_EVENT_VGT_FLUSH              BITFIELD_BIT(3)
-/* PFP waits for ME to finish. Used to sync for index and indirect buffers and render condition. */
-#define SI_BARRIER_PFP_SYNC_ME                  BITFIELD_BIT(4)
-/* Instruction cache. */
-#define SI_BARRIER_INV_ICACHE                   BITFIELD_BIT(5)
-/* Scalar cache. (GFX6-9: scalar L1; GFX10+: scalar L0)
- * GFX10: This also invalidates the L1 shader array cache. */
-#define SI_BARRIER_INV_SMEM                     BITFIELD_BIT(6)
-/* Vector cache. (GFX6-9: vector L1; GFX10+: vector L0)
- * GFX10: This also invalidates the L1 shader array cache. */
-#define SI_BARRIER_INV_VMEM                     BITFIELD_BIT(7)
-/* L2 cache + L2 metadata cache writeback & invalidate.
- * GFX6-8: Used by shaders only. GFX9+: Used by everything. */
-#define SI_BARRIER_INV_L2                       BITFIELD_BIT(8)
-/* L2 writeback (write dirty L2 lines to memory for non-L2 clients).
- * Only used for coherency with non-L2 clients like CB, DB, CP on GFX6-8.
- * GFX6-7 will do complete invalidation because the writeback is unsupported. */
-#define SI_BARRIER_WB_L2                        BITFIELD_BIT(9)
-/* Writeback & invalidate the L2 metadata cache only. */
-#define SI_BARRIER_INV_L2_METADATA              BITFIELD_BIT(10)
-/* These wait for shaders to finish. (SYNC_VS = wait for the whole geometry pipeline to finish) */
-#define SI_BARRIER_SYNC_VS                      BITFIELD_BIT(11)
-#define SI_BARRIER_SYNC_PS                      BITFIELD_BIT(12)
-#define SI_BARRIER_SYNC_CS                      BITFIELD_BIT(13)
-/* Framebuffer caches. */
-#define SI_BARRIER_SYNC_AND_INV_DB              BITFIELD_BIT(14)
-#define SI_BARRIER_SYNC_AND_INV_CB              BITFIELD_BIT(15)
 
 #define SI_PREFETCH_LS              (1 << 1)
 #define SI_PREFETCH_HS              (1 << 2)
@@ -1258,7 +1226,7 @@ struct si_context {
    unsigned num_resident_handles;
    uint64_t num_alloc_tex_transfer_bytes;
    unsigned last_tex_ps_draw_ratio; /* for query */
-   unsigned context_roll;
+   bool context_roll;
 
    /* Queries. */
    /* Maintain the list of active queries for pausing between IBs. */
@@ -1523,10 +1491,6 @@ MESAPROC bool si_init_cp_reg_shadowing(struct si_context *sctx) TAILBT;
 void si_cp_release_acquire_mem_pws(struct si_context *sctx, struct radeon_cmdbuf *cs,
                                    unsigned event_type, unsigned gcr_cntl, unsigned stage_sel,
                                    unsigned sqtt_flush_flags);
-void si_cp_acquire_mem(struct ac_cmdbuf *cs, enum amd_gfx_level gfx_level,
-                       enum amd_ip_type ip_type, unsigned gcr_cntl,
-                       unsigned engine, unsigned *context_roll,
-                       enum ac_rgp_flush_bits *rgp_flush_bits);
 
 /* si_debug.c */
 void si_save_cs(struct radeon_winsys *ws, struct radeon_cmdbuf *cs, struct radeon_saved_cs *saved,
@@ -1832,26 +1796,26 @@ static inline void si_saved_cs_reference(struct si_saved_cs **dst, struct si_sav
 static inline void si_make_CB_shader_coherent(struct si_context *sctx, unsigned num_samples,
                                               bool shaders_read_metadata, bool dcc_pipe_aligned)
 {
-   sctx->barrier_flags |= SI_BARRIER_SYNC_AND_INV_CB | SI_BARRIER_INV_VMEM;
+   sctx->barrier_flags |= AC_BARRIER_SYNC_AND_INV_CB | AC_BARRIER_INV_VMEM;
    sctx->force_shader_coherency.with_cb = false;
 
    if (sctx->gfx_level >= GFX10 && sctx->gfx_level < GFX12) {
       if (sctx->screen->info.tcc_rb_non_coherent)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2;
       else if (shaders_read_metadata)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2_METADATA;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2_METADATA;
    } else if (sctx->gfx_level == GFX9) {
       /* Single-sample color is coherent with shaders on GFX9, but
        * L2 metadata must be flushed if shaders read metadata.
        * (DCC, CMASK).
        */
       if (num_samples >= 2 || (shaders_read_metadata && !dcc_pipe_aligned))
-         sctx->barrier_flags |= SI_BARRIER_INV_L2;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2;
       else if (shaders_read_metadata)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2_METADATA;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2_METADATA;
    } else if (sctx->gfx_level <= GFX8) {
       /* GFX6-GFX8 */
-      sctx->barrier_flags |= SI_BARRIER_INV_L2;
+      sctx->barrier_flags |= AC_BARRIER_INV_L2;
    }
 
    si_mark_atom_dirty(sctx, &sctx->atoms.s.barrier);
@@ -1860,26 +1824,26 @@ static inline void si_make_CB_shader_coherent(struct si_context *sctx, unsigned 
 static inline void si_make_DB_shader_coherent(struct si_context *sctx, unsigned num_samples,
                                               bool include_stencil, bool shaders_read_metadata)
 {
-   sctx->barrier_flags |= SI_BARRIER_SYNC_AND_INV_DB | SI_BARRIER_INV_VMEM;
+   sctx->barrier_flags |= AC_BARRIER_SYNC_AND_INV_DB | AC_BARRIER_INV_VMEM;
    sctx->force_shader_coherency.with_db = false;
 
    if (sctx->gfx_level >= GFX10 && sctx->gfx_level < GFX12) {
       if (sctx->screen->info.tcc_rb_non_coherent)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2;
       else if (shaders_read_metadata)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2_METADATA;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2_METADATA;
    } else if (sctx->gfx_level == GFX9) {
       /* Single-sample depth (not stencil) is coherent with shaders
        * on GFX9, but L2 metadata must be flushed if shaders read
        * metadata.
        */
       if (num_samples >= 2 || include_stencil)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2;
       else if (shaders_read_metadata)
-         sctx->barrier_flags |= SI_BARRIER_INV_L2_METADATA;
+         sctx->barrier_flags |= AC_BARRIER_INV_L2_METADATA;
    } else if (sctx->gfx_level <= GFX8) {
       /* GFX6-GFX8 */
-      sctx->barrier_flags |= SI_BARRIER_INV_L2;
+      sctx->barrier_flags |= AC_BARRIER_INV_L2;
    }
 
    si_mark_atom_dirty(sctx, &sctx->atoms.s.barrier);

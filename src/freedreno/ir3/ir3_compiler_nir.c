@@ -415,7 +415,11 @@ create_cov(struct ir3_context *ctx, unsigned nrpt,
    return cov;
 }
 
-/* For shift instructions NIR always has shift amount as 32 bit integer */
+/* NIR always has the shift amount as a 32 bit integer for shifts, and likewise
+ * the bit index for bitz/bitnz.  In both cases NIR masks it with the other
+ * source's bit_size - 1, which matches what the hardware does for a half
+ * operand, so narrowing it to match is all that is needed.
+ */
 static struct ir3_instruction_rpt
 resize_shift_amount(struct ir3_context *ctx, unsigned nrpt,
                     struct ir3_instruction_rpt src, unsigned bs)
@@ -826,14 +830,6 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
          }
       }
       break;
-   case nir_op_ihadd:
-      dst = ir3_ADD_S_rpt(b, dst_sz, src[0], 0, src[1], 0);
-      set_dst_flags(dst.rpts, dst_sz, IR3_REG_EI);
-      break;
-   case nir_op_uhadd:
-      dst = ir3_ADD_U_rpt(b, dst_sz, src[0], 0, src[1], 0);
-      set_dst_flags(dst.rpts, dst_sz, IR3_REG_EI);
-      break;
    case nir_op_iand:
       dst = ir3_AND_B_rpt(b, dst_sz, src[0], 0, src[1], 0);
       break;
@@ -1056,29 +1052,11 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       dst = ir3_COV_rpt(b, dst_sz, dst, TYPE_U16, TYPE_U32);
       break;
    }
-   case nir_op_ifind_msb: {
-      struct ir3_instruction_rpt cmp;
-      dst = ir3_CLZ_S_rpt(b, dst_sz, src[0], 0);
-      cmp =
-         ir3_CMPS_S_rpt(b, dst_sz, dst, 0,
-                        create_immed_shared_rpt(b, dst_sz, 0, use_shared), 0);
-      set_cat2_condition(cmp.rpts, dst_sz, IR3_COND_GE);
-      dst = ir3_SEL_B32_rpt(
-         b, dst_sz,
-         ir3_SUB_U_rpt(b, dst_sz,
-                       create_immed_shared_rpt(b, dst_sz, 31, use_shared), 0,
-                       dst, 0),
-         0, cmp, 0, dst, 0);
-      break;
-   }
-   case nir_op_ufind_msb:
+   case nir_op_ufind_msb_rev:
       dst = ir3_CLZ_B_rpt(b, dst_sz, src[0], 0);
-      dst = ir3_SEL_B32_rpt(
-         b, dst_sz,
-         ir3_SUB_U_rpt(b, dst_sz,
-                       create_immed_shared_rpt(b, dst_sz, 31, use_shared), 0,
-                       dst, 0),
-         0, src[0], 0, dst, 0);
+      break;
+   case nir_op_ifind_msb_rev:
+      dst = ir3_CLZ_S_rpt(b, dst_sz, src[0], 0);
       break;
    case nir_op_find_lsb:
       dst = ir3_BFREV_B_rpt(b, dst_sz, src[0], 0);
@@ -1086,6 +1064,20 @@ emit_alu(struct ir3_context *ctx, nir_alu_instr *alu)
       break;
    case nir_op_bitfield_reverse:
       dst = ir3_BFREV_B_rpt(b, dst_sz, src[0], 0);
+      break;
+   case nir_op_bfm:
+      dst = ir3_MGEN_B_rpt(b, dst_sz, src[0], 0, src[1], 0);
+      break;
+
+   case nir_op_bitnz:
+      dst = ir3_GETBIT_B_rpt(b, dst_sz, src[0], 0,
+                             resize_shift_amount(ctx, dst_sz, src[1], bs[0]),
+                             0);
+      break;
+   case nir_op_bitz:
+      dst = ir3_GETBIT_B_rpt(b, dst_sz, src[0], IR3_REG_BNOT,
+                             resize_shift_amount(ctx, dst_sz, src[1], bs[0]),
+                             0);
       break;
 
    case nir_op_uadd_sat:
@@ -2649,7 +2641,7 @@ apply_mov_half_shared_quirk(struct ir3_context *ctx,
                             struct ir3_instruction *src,
                             struct ir3_instruction *dst)
 {
-   if (!ctx->compiler->info->props.mov_half_shared_quirk) {
+   if (!IR3_QUIRK(ctx->compiler, QCTDD06363318_movs_half)) {
       return dst;
    }
 
@@ -3042,13 +3034,25 @@ emit_intrinsic(struct ir3_context *ctx, nir_intrinsic_instr *intr)
    case nir_intrinsic_load_base_instance:
       dst[0] = create_driver_param(ctx, IR3_DP_VS(instid_base));
       break;
-   case nir_intrinsic_load_view_index:
-      if (!ctx->view_index) {
-         ctx->view_index =
-            create_sysval_input(ctx, SYSTEM_VALUE_VIEW_INDEX, 0x1);
+   case nir_intrinsic_load_view_index: {
+      struct driver_param_info param_info;
+      /* Only the software-multiview path (no HW multiview) supplies the view
+       * index as a driver param.  On HW multiview devices load_view_index
+       * that survives to here (e.g. when the multipos optimization bails out
+       * and the hardware view-broadcast path is used) must read the
+       * SYSTEM_VALUE_VIEW_INDEX sysval instead.
+       */
+      if (ir3_get_driver_param_info(ctx->s, &ctx->so->key, intr, &param_info)) {
+         dst[0] = create_driver_param(ctx, param_info.offset);
+      } else {
+         if (!ctx->view_index) {
+            ctx->view_index =
+               create_sysval_input(ctx, SYSTEM_VALUE_VIEW_INDEX, 0x1);
+         }
+         dst[0] = ctx->view_index;
       }
-      dst[0] = ctx->view_index;
       break;
+   }
    case nir_intrinsic_load_vertex_id_zero_base:
    case nir_intrinsic_load_vertex_id:
       if (!ctx->vertex_id) {
@@ -5789,6 +5793,42 @@ ir3_remove_noop_subreg_moves(struct ir3 *ir)
    return progress;
 }
 
+static void
+apply_QCTDD13523866(struct ir3_context *ctx)
+{
+   struct ir3 *ir = ctx->ir;
+   struct ir3_instruction *alu = NULL;
+
+   foreach_main_block (block, ir) {
+      foreach_instr (instr, &block->instr_list) {
+         if (is_mov(instr) || !is_alu(instr))
+            continue;
+         if (alu)
+            return;
+         alu = instr;
+      }
+   }
+
+   if (!alu)
+      return;
+
+   /* Only a single ALU instruction.. if it has a const src, we must
+    * apply the workaround:
+    */
+   foreach_src (reg, alu) {
+      if (reg->flags & IR3_REG_CONST) {
+         struct ir3_instruction *end = ir3_find_end(ir);
+         struct ir3_instruction *dummy =
+            ir3_build_instr(&ctx->build, OPC_MOV, 1, 1);
+         dummy->cat1.src_type = dummy->cat1.dst_type = TYPE_F32;
+         ir3_src_create(dummy, 0, 0);
+         ir3_dst_create(dummy, 0, 0);
+         ir3_instr_move_before(dummy, end);
+         break;
+      }
+   }
+}
+
 int
 ir3_compile_shader_nir(struct ir3_compiler *compiler,
                        struct ir3_shader *shader,
@@ -6199,12 +6239,16 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
    if (ctx->compiler->gen == 4 && ctx->s->info.uses_texture_gather)
       fixup_tg4(ctx);
 
+   if (IR3_QUIRK(ctx->compiler, QCTDD13523866_dummy_alu))
+      apply_QCTDD13523866(ctx);
+
    /* We need to do legalize after (for frag shader's) the "bary.f"
     * offsets (inloc) have been assigned.
     */
    IR3_PASS(ir, ir3_legalize, so, &max_bary, is_preamble_speculatable);
 
-   if (ctx->compiler->info->props.cs_lock_unlock_quirk && ir3_shader_compute(so)) {
+   if (ir3_shader_compute(so) &&
+       IR3_QUIRK(ctx->compiler, QCTDD08407086_cs_lock_unlock)) {
       struct ir3_instruction *end = ir3_find_end(so->ir);
       struct ir3_instruction *lock =
          ir3_build_instr(&ctx->build, OPC_LOCK, 0, 0);
@@ -6242,7 +6286,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
    so->constlen = ir3_constlen(so);
 
    if (ctx->so->type == MESA_SHADER_FRAGMENT &&
-       compiler->info->props.fs_must_have_non_zero_constlen_quirk) {
+       IR3_QUIRK(compiler, QCTDD08517960_fs_constlen)) {
       so->constlen = MAX2(so->constlen, 4);
    }
 

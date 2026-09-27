@@ -59,6 +59,13 @@
 
 #define PVR_MAX_DESCRIPTORS_PER_SET 1024U
 
+#define PVR_MAX_PUSH_DESCRIPTORS 32U
+
+/* size in bytes of the largest descriptor */
+/* 6 uint64_t + 8 uint32_t  = 6 * 8 + 8 * 4 = 80 bytes */
+/* increase this a bit to give some head room */
+#define PVR_MAX_DESCRIPTOR_SIZE 96U
+
 #define PVR_MAX_FRAMEBUFFER_LAYERS PVR_MAX_ARRAY_LAYERS
 
 /* The limit is somewhat arbitrary, it just translates into more pds code

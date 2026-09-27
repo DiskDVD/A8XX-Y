@@ -81,18 +81,6 @@ mtl_render_pipeline_descriptor_set_raster_sample_count(
 }
 
 void
-mtl_render_pipeline_descriptor_set_alpha_to_coverage(
-   mtl_render_pipeline_descriptor *descriptor, bool enabled)
-{
-}
-
-void
-mtl_render_pipeline_descriptor_set_alpha_to_one(
-   mtl_render_pipeline_descriptor *descriptor, bool enabled)
-{
-}
-
-void
 mtl_render_pipeline_descriptor_set_rasterization_enabled(
    mtl_render_pipeline_descriptor *descriptor, bool enabled)
 {

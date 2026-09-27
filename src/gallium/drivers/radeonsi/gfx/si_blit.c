@@ -507,7 +507,7 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
          /* Required before and after FMASK and DCC_DECOMPRESS. */
          if (custom_blend == sctx->custom_blend_fmask_decompress ||
              custom_blend == sctx->custom_blend_dcc_decompress)
-            si_set_barrier_flags(sctx, SI_BARRIER_SYNC_AND_INV_CB);
+            si_set_barrier_flags(sctx, AC_BARRIER_SYNC_AND_INV_CB);
 
          si_blitter_begin(sctx, SI_DECOMPRESS);
          util_blitter_custom_color(sctx->blitter, &cbsurf, custom_blend);
@@ -515,7 +515,7 @@ static void si_blit_decompress_color(struct si_context *sctx, struct si_texture 
 
          if (custom_blend == sctx->custom_blend_fmask_decompress ||
              custom_blend == sctx->custom_blend_dcc_decompress) {
-            si_set_barrier_flags(sctx, SI_BARRIER_SYNC_AND_INV_CB);
+            si_set_barrier_flags(sctx, AC_BARRIER_SYNC_AND_INV_CB);
          }
 
          /* When running FMASK decompression with DCC, we need to run the "eliminate fast clear" pass
@@ -1121,7 +1121,7 @@ void si_gfx_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
         /* No scaling */
         (info->dst.box.width == abs(info->src.box.width) &&
          info->dst.box.height == abs(info->src.box.height)))) {
-      union ac_ps_resolve_key key;
+      ac_ps_resolve_key key;
       key.key = 0;
 
       /* LLVM is slower on GFX10.3 and older because it doesn't form VMEM clauses and it's more

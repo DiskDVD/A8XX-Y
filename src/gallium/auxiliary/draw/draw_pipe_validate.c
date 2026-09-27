@@ -99,10 +99,6 @@ draw_need_pipeline(const struct draw_context *draw,
       if (draw_current_shader_num_written_culldistances(draw))
          return true;
    } else if (reduced_prim == MESA_PRIM_TRIANGLES) {
-      /* polygon stipple */
-      if (rasterizer->poly_stipple_enable && draw->pipeline.pstipple)
-         return true;
-
       /* unfilled polygons */
       if (rasterizer->fill_front != PIPE_POLYGON_MODE_FILL ||
           rasterizer->fill_back != PIPE_POLYGON_MODE_FILL)
@@ -204,12 +200,6 @@ validate_pipeline(struct draw_stage *stage)
       draw->pipeline.stipple->next = next;
       next = draw->pipeline.stipple;
       precalc_flat = true;		/* only needed for lines really */
-   }
-
-   if (rast->poly_stipple_enable
-       && draw->pipeline.pstipple) {
-      draw->pipeline.pstipple->next = next;
-      next = draw->pipeline.pstipple;
    }
 
    if (rast->fill_front != PIPE_POLYGON_MODE_FILL ||

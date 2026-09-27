@@ -259,3 +259,62 @@ brw_register_file_size(const struct intel_device_info *devinfo)
            devinfo->ver >= 20 ? XE2_MAX_GRF :
            BRW_MAX_GRF) * REG_SIZE;
 }
+
+unsigned
+brw_implicit_accumulator_bits(unsigned exec_size, unsigned group,
+                              brw_reg_type type)
+{
+   if (type == BRW_TYPE_DF) {
+      /* On platforms that support this, there is a single SIMD4
+       * accumulator. These platforms have acc0 and acc1. Both are accessed.
+       */
+      return 0x3;
+   } else if (brw_type_is_int(type)) {
+      /* Integer types are always 33-bits. Yes, 33. This means that accesses
+       * uses twice the number of accumulators that would be expected.
+       *
+       * The Bspec says, "Writing to acc1/acc3 using any datatype may corrupt
+       * this result." Marking the accesses as always writing a pair of
+       * accumulators is the safe thing.
+       *
+       * For implicit access, acc2 is not possible.
+       */
+      return exec_size <= 8 ? 0x3 : 0xf;
+   } else if (type == BRW_TYPE_F || type == BRW_TYPE_HF) {
+      unsigned nr = group / 8;
+
+      return ((1u << (exec_size / 8)) - 1) << nr;
+   } else {
+      UNREACHABLE("Bad type.");
+      return 0xffffffff;
+   }
+}
+
+unsigned
+brw_explicit_accumulator_bits(unsigned exec_size, const brw_reg &reg)
+{
+   unsigned nr = reg.nr & 0x0f;
+
+   if (reg.type == BRW_TYPE_DF) {
+      /* On platforms that support this, there is a single SIMD4
+       * accumulator. These platforms have acc0 and acc1. Both are accessed.
+       */
+      return 0x3;
+   } else if (brw_type_is_int(reg.type)) {
+      /* Integer types are always 33-bits. Yes, 33. This means that accesses
+       * use twice the number of accumulators that would be expected.
+       *
+       * The Bspec says, "Writing to acc1/acc3 using any datatype may corrupt
+       * this result." Marking the accesses as always writing a pair of
+       * accumulators is the safe thing.
+       */
+      unsigned bits = exec_size <= 8 ? 0x3 : 0xf;
+
+      return bits << nr;
+   } else if (reg.type == BRW_TYPE_F || reg.type == BRW_TYPE_HF) {
+      return ((1u << (exec_size / 8)) - 1) << nr;
+   } else {
+      UNREACHABLE("Bad type.");
+      return 0xffffffff;
+   }
+}

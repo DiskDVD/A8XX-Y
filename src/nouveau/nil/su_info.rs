@@ -7,7 +7,7 @@
 use crate::format::Format;
 use crate::image::ViewType;
 use crate::image::{Image, SampleLayout, View, ViewAccess};
-use bitview::{BitMutView, SetField};
+use mesa_util::bitview::{BitMutView, SetField};
 use nil_rs_bindings::*;
 
 fn format_info(fmt: Format) -> Option<(u8, u8)> {

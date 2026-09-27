@@ -138,6 +138,8 @@ struct hk_descriptor_state {
 };
 
 struct hk_attachment {
+   VkRenderingAttachmentFlagBitsKHR flags;
+
    VkFormat vk_format;
    struct hk_image_view *iview;
 
@@ -204,7 +206,6 @@ struct hk_rendering_state {
 struct hk_index_buffer_state {
    struct hk_addr_range buffer;
    enum agx_index_size size;
-   uint32_t restart;
 };
 
 /* Dirty tracking bits for state not tracked by vk_dynamic_graphics_state or

@@ -46,7 +46,12 @@ analyze_per_inst(jay_shader *shader)
          if (!jay_is_null(x)) {
             unsigned size = util_next_power_of_two(jay_num_values(x));
 
-            if (x.file == UGPR) {
+            if (x.file == UGPR && i < 0) {
+               /* Ensure we have enough GRFs for SENDs with uniform dest &
+                * uniform source.
+                */
+               local.ugpr += MAX2(size, jay_dst_alignment(shader, I));
+            } else if (x.file == UGPR && i >= 0) {
                local.ugpr += size;
             } else if (x.file == GPR && i >= 0) {
                enum jay_stride min_stride = jay_src_stride_minmax(I, i, false);
@@ -104,6 +109,8 @@ build_partition(jay_shader *shader,
    signed j = -1;
    for (unsigned i = 0; i < n; ++i) {
       struct jay_partition_builder B = b[i];
+      assert(B.len_grf >= 0 && "precondition on partition");
+
       if (j >= 0 &&
           B.file == b[j].file &&
           B.stride == b[j].stride &&
@@ -378,7 +385,8 @@ jay_partition_grf(jay_shader *shader)
        * and if that fails, build one with it.
        */
       spilling_grfs = spilling ? shader->dispatch_width / ugpr_per_grf : 0;
-      uniform_grfs = DIV_ROUND_UP(demand[UGPR], ugpr_per_grf) + spilling_grfs;
+      uniform_grfs = DIV_ROUND_UP(MAX2(demand[UGPR], min_ugprs), ugpr_per_grf) +
+                     spilling_grfs;
 
       hw_grfs =
          intel_vrt_register_file_size(shader->devinfo,
@@ -395,11 +403,10 @@ jay_partition_grf(jay_shader *shader)
       }
 
       /* Finally, we need to snap to GPR bounds */
-      uniform_grfs =
-         CLAMP(uniform_grfs,
-               DIV_ROUND_UP(min_ugprs, ugpr_per_grf) + spilling_grfs,
-               hw_grfs - min_grf_for_gprs);
+      uniform_grfs = MIN2(uniform_grfs, hw_grfs - min_grf_for_gprs);
       uniform_grfs = align(uniform_grfs, grf_per_gpr);
+
+      assert(uniform_grfs <= hw_grfs);
       nonuniform_grfs = hw_grfs - uniform_grfs;
 
       /* Set the targets for the virtual register file accordingly */

@@ -18,15 +18,3 @@ nouveau_rust_args = [
   '-Aclippy::not_unsafe_ptr_arg_deref',
   '-Anon_snake_case',
 ]
-
-_libbitview_rs = static_library(
-  'bitview',
-  files('bitview/lib.rs'),
-  gnu_symbol_visibility : 'hidden',
-  rust_abi : 'rust',
-  rust_args : nouveau_rust_args,
-)
-
-idep_bitview_rs = declare_dependency(
-  link_with : _libbitview_rs,
-)

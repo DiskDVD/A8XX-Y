@@ -273,21 +273,23 @@ pub mod v9 {
         Register {
             idx: u8,
             last: bool,
+            zext: bool,
         },
         Fau {
             idx: u8,
             page: u8,
             fau32: bool,
+            zext: bool,
         },
         SmallConst(T),
         FauSpec {
             word_select: bool,
             name: String,
             _r: PhantomData<R>,
+            zext: bool,
         },
     }
 
-    // TODO v14: zext
     impl<T, R, const IS64: bool> SourceEncodingX<T, R, IS64>
     where
         EncodeError: From<<T as TryDecode<u8>>::Error>,
@@ -307,17 +309,23 @@ pub mod v9 {
             if arch > 14 {
                 return Err("Only supports up to v14 atm".into());
             }
+            /* V14 onwards, bit 0 sets the .zext flag in 64 bit sources */
+            let bit0_is_zext = IS64 && arch >= 14;
+            let bit0 = (v & 1) != 0;
+            let zext = bit0_is_zext && bit0;
             let mode = (v >> 6) & 0b11;
             let mode2 = (v >> 5) & 0b1;
             match (mode, mode2) {
                 (0b00, _) | (0b01, _) => Ok(SourceEncodingX::Register {
-                    idx: v & 0x3f,
+                    idx: if bit0_is_zext { v & 0x3e } else { v & 0x3f },
                     last: mode != 0,
+                    zext,
                 }),
                 (0b10, _) => Ok(SourceEncodingX::Fau {
-                    idx: v & 0x3f,
+                    idx: if bit0_is_zext { v & 0x3e } else { v & 0x3f },
                     page: fau_page_index,
                     fau32,
+                    zext,
                 }),
                 (0b11, 0b0) => {
                     let as_enum = T::try_decode((v & 0x1f) as u8, arch)?;
@@ -325,12 +333,12 @@ pub mod v9 {
                 }
                 (0b11, 0b1) => {
                     let idx32 = (v & 0x1f) >> 1;
-                    let word_select = (v & 0b1) == 1;
                     let name = R::get_name(fau_page_index, idx32, arch)?;
                     Ok(SourceEncodingX::FauSpec {
-                        word_select,
+                        word_select: !IS64 && bit0,
                         name,
                         _r: PhantomData,
+                        zext,
                     })
                 }
                 _ => Err("Invalid SourceEncoding".into()),
@@ -345,10 +353,19 @@ pub mod v9 {
     {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                SourceEncodingX::Register { idx, last } => {
+                SourceEncodingX::Register { idx, last, zext } => {
                     let tag = if *last { "^" } else { "" };
+                    let zext_tag = if *zext { ".zext" } else { "" };
                     if IS64 {
-                        write!(f, "[r{}{}:r{}{}]", idx, tag, idx + 1, tag)
+                        write!(
+                            f,
+                            "[r{}{}:r{}{}]{}",
+                            idx,
+                            tag,
+                            idx + 1,
+                            tag,
+                            zext_tag
+                        )
                     } else {
                         write!(f, "r{}{}", idx, tag)
                     }
@@ -356,9 +373,15 @@ pub mod v9 {
                 SourceEncodingX::SmallConst(value) => {
                     write!(f, "{}", value)
                 }
-                SourceEncodingX::Fau { idx, page, fau32 } => {
+                SourceEncodingX::Fau {
+                    idx,
+                    page,
+                    fau32,
+                    zext,
+                } => {
+                    let zext_tag = if *zext { ".zext" } else { "" };
                     if *fau32 {
-                        write!(f, "u{}", 64 * page + idx)
+                        write!(f, "u{}{}", 64 * page + idx, zext_tag)
                     } else {
                         let hl = if IS64 {
                             ""
@@ -368,12 +391,16 @@ pub mod v9 {
                             ".w0"
                         };
                         let idx32 = idx >> 1;
-                        write!(f, "u{}{}", 32 * page + idx32, hl)
+                        write!(f, "u{}{}{}", 32 * page + idx32, hl, zext_tag)
                     }
                 }
                 SourceEncodingX::FauSpec {
-                    name, word_select, ..
+                    name,
+                    word_select,
+                    zext,
+                    ..
                 } => {
+                    let zext_tag = if *zext { ".zext" } else { "" };
                     let hl = if IS64 {
                         ""
                     } else if *word_select {
@@ -381,7 +408,7 @@ pub mod v9 {
                     } else {
                         ".w0"
                     };
-                    write!(f, "{}{}", &name, hl)
+                    write!(f, "{}{}{}", &name, hl, zext_tag)
                 }
             }
         }

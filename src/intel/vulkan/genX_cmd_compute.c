@@ -312,9 +312,9 @@ anv_cmd_buffer_push_driver_values(struct anv_cmd_buffer *cmd_buffer,
          uint64_t addr64 = anv_address_physical(indirect_group);
          uint32_t lower_addr32 = addr64 & 0xffffffff;
          uint32_t upper_addr32 = addr64 >> 32;
-         UPDATE_PUSH(push->drv_data.cs.num_workgroups[0], UINT32_MAX);
-         UPDATE_PUSH(push->drv_data.cs.num_workgroups[1], lower_addr32);
-         UPDATE_PUSH(push->drv_data.cs.num_workgroups[2], upper_addr32);
+         UPDATE_PUSH(push->drv_data.cs.num_workgroups[0], lower_addr32);
+         UPDATE_PUSH(push->drv_data.cs.num_workgroups[1], upper_addr32);
+         UPDATE_PUSH(push->drv_data.cs.num_workgroups[2], UINT32_MAX);
       }
    }
 
@@ -585,9 +585,9 @@ emit_indirect_compute_walker(struct anv_cmd_buffer *cmd_buffer,
       .push_addr64 = push_addr64,
       .base_wg = {0, 0, 0},
       .num_wg = {
-         UINT32_MAX,
          indirect_addr64 & 0xffffffff,
          indirect_addr64 >> 32,
+         UINT32_MAX,
       },
       .unaligned_x_offset = 0,
    };
@@ -681,9 +681,9 @@ emit_compute_walker(struct anv_cmd_buffer *cmd_buffer,
    };
    if (!anv_address_is_null(indirect_addr)) {
       uint64_t indirect_addr64 = anv_address_physical(indirect_addr);
-      inline_value.num_wg[0] = UINT32_MAX;
-      inline_value.num_wg[1] = indirect_addr64 & 0xffffffff;
-      inline_value.num_wg[2] = indirect_addr64 >> 32;
+      inline_value.num_wg[0] = indirect_addr64 & 0xffffffff;
+      inline_value.num_wg[1] = indirect_addr64 >> 32;
+      inline_value.num_wg[2] = UINT32_MAX;
    } else {
       inline_value.num_wg[0] = num_wg[0];
       inline_value.num_wg[1] = num_wg[1];

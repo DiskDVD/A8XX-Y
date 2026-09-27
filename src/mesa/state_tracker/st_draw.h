@@ -35,12 +35,17 @@
 #define ST_DRAW_H
 
 #include "util/glheader.h"
+#include "compiler/shader_enums.h"
 
 struct gl_context;
 struct st_context;
 
 void st_init_draw_functions(struct pipe_screen *screen,
                             struct dd_function_table *functions);
+void st_update_draw_functions(struct gl_context *ctx);
+
+bool st_prepare_stipple_input_prim(struct st_context *st, enum mesa_prim mode);
+void st_validate_for_multidraw_mode(struct gl_context *ctx, enum mesa_prim mode);
 
 void st_destroy_draw( struct st_context *st );
 

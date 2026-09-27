@@ -51,7 +51,8 @@ static void initializeReifiedDescriptorSet(VkDescriptorPool pool, VkDescriptorSe
                                            ReifiedDescriptorSet* set) {
     set->pendingWriteArrayRanges.clear();
 
-    const auto& layoutInfo = *(as_goldfish_VkDescriptorSetLayout(setLayout)->layoutInfo);
+    const auto& layoutInfo =
+        *(gfxstream_vk_descriptor_set_layout_from_handle(setLayout)->layoutInfo);
 
     initDescriptorWriteTable(layoutInfo.bindings, set->allWrites);
 
@@ -370,7 +371,8 @@ static void freeBindingFeasible(const VkDescriptorSetLayoutBinding& binding,
 
 static VkResult validateDescriptorSetAllocation(const VkDescriptorSetAllocateInfo* pAllocateInfo) {
     VkDescriptorPool pool = pAllocateInfo->descriptorPool;
-    DescriptorPoolAllocationInfo* poolInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
+    DescriptorPoolAllocationInfo* poolInfo =
+        gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
 
     // Check the number of sets available.
     auto setsAvailable = poolInfo->maxSets - poolInfo->usedSets;
@@ -392,12 +394,13 @@ static VkResult validateDescriptorSetAllocation(const VkDescriptorSetAllocateInf
     for (uint32_t i = 0; i < pAllocateInfo->descriptorSetCount; ++i) {
         if (!pAllocateInfo->pSetLayouts[i]) {
             mesa_logd("%s: Error: Tried to allocate a descriptor set with null set layout.\n",
-                  __func__);
+                      __func__);
             return VK_ERROR_INITIALIZATION_FAILED;
         }
 
         auto setLayoutInfo =
-            as_goldfish_VkDescriptorSetLayout(pAllocateInfo->pSetLayouts[i])->layoutInfo;
+            gfxstream_vk_descriptor_set_layout_from_handle(pAllocateInfo->pSetLayouts[i])
+                ->layoutInfo;
         if (!setLayoutInfo) {
             return VK_ERROR_INITIALIZATION_FAILED;
         }
@@ -421,8 +424,8 @@ static VkResult validateDescriptorSetAllocation(const VkDescriptorSetAllocateInf
 }
 
 void applyDescriptorSetAllocation(VkDescriptorPool pool, VkDescriptorSetLayout setLayout) {
-    auto allocInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
-    auto setLayoutInfo = as_goldfish_VkDescriptorSetLayout(setLayout)->layoutInfo;
+    auto allocInfo = gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
+    auto setLayoutInfo = gfxstream_vk_descriptor_set_layout_from_handle(setLayout)->layoutInfo;
 
     ++allocInfo->usedSets;
 
@@ -437,7 +440,7 @@ void applyDescriptorSetAllocation(VkDescriptorPool pool, VkDescriptorSetLayout s
 
 static void removeDescriptorSetAllocation(
     VkDescriptorPool pool, const std::vector<VkDescriptorSetLayoutBinding>& bindings) {
-    auto allocInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
+    auto allocInfo = gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
 
     if (0 == allocInfo->usedSets) {
         mesa_logd("%s: Warning: a descriptor set was double freed.\n", __func__);
@@ -457,13 +460,14 @@ static void removeDescriptorSetAllocation(
 
 void fillDescriptorSetInfoForPool(VkDescriptorPool pool, VkDescriptorSetLayout setLayout,
                                   VkDescriptorSet set) {
-    DescriptorPoolAllocationInfo* allocInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
+    DescriptorPoolAllocationInfo* allocInfo =
+        gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
 
     ReifiedDescriptorSet* newReified = new ReifiedDescriptorSet;
-    newReified->poolId = as_goldfish_VkDescriptorSet(set)->underlying;
+    newReified->poolId = gfxstream_vk_descriptor_set_to_host_u64(set);
     newReified->allocationPending = true;
 
-    as_goldfish_VkDescriptorSet(set)->reified = newReified;
+    gfxstream_vk_descriptor_set_from_handle(set)->reified = newReified;
 
     allocInfo->allocedPoolIds.insert(newReified->poolId);
     allocInfo->allocedSets.insert(set);
@@ -482,7 +486,8 @@ VkResult validateAndApplyVirtualDescriptorSetAllocation(
     }
 
     VkDescriptorPool pool = pAllocateInfo->descriptorPool;
-    DescriptorPoolAllocationInfo* allocInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
+    DescriptorPoolAllocationInfo* allocInfo =
+        gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
 
     if (allocInfo->freePoolIds.size() < pAllocateInfo->descriptorSetCount) {
         mesa_loge(
@@ -496,7 +501,7 @@ VkResult validateAndApplyVirtualDescriptorSetAllocation(
         uint64_t id = allocInfo->freePoolIds.back();
         allocInfo->freePoolIds.pop_back();
 
-        VkDescriptorSet newSet = new_from_host_VkDescriptorSet((VkDescriptorSet)id);
+        VkDescriptorSet newSet = create_gfxstream_vk_descriptor_set(id);
         pSets[i] = newSet;
 
         fillDescriptorSetInfoForPool(pool, pAllocateInfo->pSetLayouts[i], newSet);
@@ -506,10 +511,11 @@ VkResult validateAndApplyVirtualDescriptorSetAllocation(
 }
 
 bool removeDescriptorSetFromPool(VkDescriptorSet set, bool usePoolIds) {
-    ReifiedDescriptorSet* reified = as_goldfish_VkDescriptorSet(set)->reified;
+    ReifiedDescriptorSet* reified = gfxstream_vk_descriptor_set_from_handle(set)->reified;
 
     VkDescriptorPool pool = reified->pool;
-    DescriptorPoolAllocationInfo* allocInfo = as_goldfish_VkDescriptorPool(pool)->allocInfo;
+    DescriptorPoolAllocationInfo* allocInfo =
+        gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo;
 
     if (usePoolIds) {
         // Look for the set's pool Id in the pool. If not found, then this wasn't really allocated,
@@ -533,7 +539,7 @@ bool removeDescriptorSetFromPool(VkDescriptorSet set, bool usePoolIds) {
 
 std::vector<VkDescriptorSet> clearDescriptorPool(VkDescriptorPool pool, bool usePoolIds) {
     std::vector<VkDescriptorSet> toClear;
-    for (auto set : as_goldfish_VkDescriptorPool(pool)->allocInfo->allocedSets) {
+    for (auto set : gfxstream_vk_descriptor_pool_from_handle(pool)->allocInfo->allocedSets) {
         toClear.push_back(set);
     }
 

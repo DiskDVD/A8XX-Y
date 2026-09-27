@@ -461,6 +461,8 @@ ir3_emit_driver_params(const struct ir3_shader_variant *v,
                        const struct ir3_driver_params_vs *vertex_params)
    assert_dt
 {
+   STATIC_ASSERT(sizeof(*vertex_params) % 16 == 0);
+   STATIC_ASSERT(sizeof(*vertex_params) == 40 * sizeof(uint32_t));
    assert(v->need_driver_params);
 
    const struct ir3_const_state *const_state = ir3_const_state(v);

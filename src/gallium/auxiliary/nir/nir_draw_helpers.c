@@ -42,14 +42,27 @@ typedef struct {
    nir_builder b;
    nir_shader *shader;
    bool fs_pos_is_sysval;
+   bool samplers_as_deref;
    nir_variable *stip_tex;
    nir_def *fragcoord;
    nir_alu_type bool_type;
 } lower_pstipple;
 
 static nir_def *
-load_frag_coord(nir_builder *b)
+load_frag_coord(nir_builder *b, bool fs_pos_is_sysval)
 {
+   if (fs_pos_is_sysval)
+      return nir_build_frag_coord(b, 4);
+
+   /* Used in the mesa/st variants case. */
+   if (b->shader->info.io_lowered) {
+      nir_def *baryc =
+         nir_load_barycentric_pixel(b, 32,
+                                    .interp_mode = INTERP_MODE_NOPERSPECTIVE);
+      return nir_load_interpolated_input(b, 2, 32, baryc, nir_imm_int(b, 0),
+                                         .io_semantics.location = VARYING_SLOT_POS);
+   }
+
    nir_variable *pos = nir_get_variable_with_location(b->shader, nir_var_shader_in,
                                                       VARYING_SLOT_POS, glsl_vec4_type());
    pos->data.interpolation = INTERP_MODE_NOPERSPECTIVE;
@@ -65,21 +78,27 @@ nir_lower_pstipple_block(nir_block *block,
 
    b->cursor = nir_before_block(block);
 
-   nir_def *frag_coord = state->fs_pos_is_sysval ? nir_build_frag_coord(b, 4)
-                                                 : load_frag_coord(b);
+   nir_def *frag_coord = load_frag_coord(b, state->fs_pos_is_sysval);
 
    texcoord = nir_fmul(b, nir_trim_vector(b, frag_coord, 2),
                        nir_imm_vec2(b, 1.0/32.0, 1.0/32.0));
 
-   nir_tex_instr *tex = nir_tex_instr_create(b->shader, 1);
+   nir_tex_instr *tex =
+      nir_tex_instr_create(b->shader, state->samplers_as_deref * 2 + 1);
    tex->op = nir_texop_tex;
    tex->sampler_dim = GLSL_SAMPLER_DIM_2D;
    tex->coord_components = 2;
    tex->dest_type = nir_type_float32;
-   tex->texture_index = state->stip_tex->data.binding;
-   tex->sampler_index = state->stip_tex->data.binding;
    tex->can_speculate = true;
    tex->src[0] = nir_tex_src_for_ssa(nir_tex_src_coord, texcoord);
+   if (state->samplers_as_deref) {
+      nir_deref_instr *deref = nir_build_deref_var(b, state->stip_tex);
+      tex->src[1] = nir_tex_src_for_ssa(nir_tex_src_texture_deref, &deref->def);
+      tex->src[2] = nir_tex_src_for_ssa(nir_tex_src_sampler_deref, &deref->def);
+   } else {
+      tex->texture_index = state->stip_tex->data.binding;
+      tex->sampler_index = state->stip_tex->data.binding;
+   }
    nir_def_init(&tex->instr, &tex->def, 4, 32);
 
    nir_builder_instr_insert(b, &tex->instr);
@@ -117,11 +136,13 @@ nir_lower_pstipple_fs(struct nir_shader *shader,
                       unsigned *samplerUnitOut,
                       unsigned fixedUnit,
                       bool fs_pos_is_sysval,
+                      bool samplers_as_deref,
                       nir_alu_type bool_type)
 {
    lower_pstipple state = {
       .shader = shader,
       .fs_pos_is_sysval = fs_pos_is_sysval,
+      .samplers_as_deref = samplers_as_deref,
       .bool_type = bool_type,
    };
 

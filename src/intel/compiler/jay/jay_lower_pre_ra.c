@@ -300,16 +300,6 @@ jay_lower_pre_ra(jay_shader *s)
                jay_replace_src(&I->src[I->num_srcs - 2], copy);
             }
 
-            /* Shuffle(UGPR) can result from copyprop if there's a mismatch
-             * between isel and divergence analysis (e.g. because multipolygon
-             * is disabled). Legalize.
-             */
-            if (I->op == JAY_OPCODE_SHUFFLE && I->src[0].file == UGPR) {
-               assert(!I->predication);
-               I->op = JAY_OPCODE_MOV;
-               jay_shrink_sources(I, 1);
-            }
-
             /* lower_immediates must be last since it consumes I */
             lower_contiguous_sources(&b, I);
             b.cursor = f->prioritize_pressure ? jay_before_inst(I) :

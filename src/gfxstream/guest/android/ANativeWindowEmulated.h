@@ -10,8 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "gfxstream/guest/ANativeWindow.h"
 #include "GrallocEmulated.h"
+#include "gfxstream/guest/ANativeWindow.h"
 
 namespace gfxstream {
 

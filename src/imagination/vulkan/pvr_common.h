@@ -239,6 +239,8 @@ struct pvr_event {
 struct pvr_descriptor_state {
    struct pvr_descriptor_set *sets[PVR_MAX_DESCRIPTOR_SETS];
    uint32_t dirty_sets;
+   struct pvr_push_descriptor_set *push_set;
+   bool push_set_dirty;
 };
 
 struct pvr_pds_upload {

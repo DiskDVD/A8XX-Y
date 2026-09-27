@@ -46,6 +46,7 @@ html_docs = custom_target(
   depends: [
     u_format_gen_h,
     radv_drirc_rst,
+    pvr_xml_pack,
   ],
   output: 'html',
   build_by_default: get_option('html-docs').enabled(),

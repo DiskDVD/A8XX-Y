@@ -384,7 +384,7 @@ choose_isl_tiling_flags(const struct intel_device_info *devinfo,
          /* Disable support for tilings that are not supported by ISL's
           * tiled-memcpy functions.
           */
-         flags = ~(ISL_TILING_STD_64_MASK | ISL_TILING_STD_Y_MASK);
+         flags = ~ISL_TILING_STANDARD_MASK;
       } else {
          flags = ISL_TILING_ANY_MASK;
       }
@@ -1689,6 +1689,19 @@ alloc_private_binding(struct anv_device *device,
       }
    }
 
+   if (create_info->flags & VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT) {
+      alloc_flags |= ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
+
+      const VkOpaqueCaptureDataCreateInfoEXT *opaque_info =
+         vk_find_struct_const(create_info->pNext,
+                              OPAQUE_CAPTURE_DATA_CREATE_INFO_EXT);
+      if (opaque_info) {
+         const struct anv_image_opaque_capture_data *explicit_addresses =
+            opaque_info->pData->address;
+         explicit_address = explicit_addresses->private_binding;
+      }
+   }
+
    VkResult result = anv_device_alloc_bo(device, "image-binding-private",
                                          binding->memory_range.size,
                                          alloc_flags, explicit_address,
@@ -1737,7 +1750,7 @@ anv_image_init_sparse_bindings(struct anv_image *image,
    }
 
    if (image->vk.create_flags & VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT) {
-      alloc_flags |= ANV_BO_ALLOC_FIXED_ADDRESS;
+      alloc_flags |= ANV_BO_ALLOC_CLIENT_VISIBLE_ADDRESS;
 
       const VkOpaqueCaptureDataCreateInfoEXT *opaque_info =
          vk_find_struct_const(create_info->vk_info->pNext,
@@ -1746,7 +1759,7 @@ anv_image_init_sparse_bindings(struct anv_image *image,
          assert(opaque_info->pData[0].size ==
                 sizeof(struct anv_image_opaque_capture_data));
          explicit_addresses =
-            (const struct anv_image_opaque_capture_data *)opaque_info->pData;
+            (const struct anv_image_opaque_capture_data *)opaque_info->pData->address;
       }
    }
 
@@ -1921,13 +1934,16 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
          VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
    }
 
-   /* Disable aux if image supports export without modifiers. */
+   /* Disable aux and normalize tiling decisions if an image supports export
+    * without modifiers.
+    */
    if (image->vk.external_handle_types != 0 &&
        image->vk.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       anv_perf_warn(VK_LOG_OBJS(&image->vk.base),
                     "Disabling aux: "
                     "external image without DRM modifier");
       isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+      isl_extra_usage_flags |= ISL_SURF_USAGE_PREFER_4K_ALIGNMENT;
    }
 
    if (device->queue_count > 1) {
@@ -4439,22 +4455,19 @@ VkResult anv_GetImageOpaqueCaptureDataEXT(
     const VkImage*                              pImages,
     VkHostAddressRangeEXT*                      pDatas)
 {
-   ANV_FROM_HANDLE(anv_device, device, _device);
-
    for (uint32_t i = 0; i < imageCount; i++) {
       ANV_FROM_HANDLE(anv_image, image, pImages[i]);
 
-      if (pDatas[i].size < sizeof(uint64_t))
-         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-      if (anv_image_is_sparse(image) &&
-          (image->vk.create_flags & VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT)) {
-         *((uint64_t *)pDatas[i].address) = anv_address_physical(
-            image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN].address);
-      } else {
-         *((uint64_t *)pDatas[i].address) = 0;
+      struct anv_image_opaque_capture_data bound_addresses;
+      memset(&bound_addresses, 0, sizeof(bound_addresses));
+      /* Main binding is the sparse VA, we should return 0 consistently for non-sparse. */
+      if (anv_image_is_sparse(image)) {
+         bound_addresses.main_binding =
+            anv_address_physical(image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN].address);
       }
-      pDatas[i].size = sizeof(uint64_t);
+      bound_addresses.private_binding =
+         anv_address_physical(image->bindings[ANV_IMAGE_MEMORY_BINDING_PRIVATE].address);
+      memcpy(pDatas[i].address, &bound_addresses, sizeof(struct anv_image_opaque_capture_data));
    }
 
    return VK_SUCCESS;

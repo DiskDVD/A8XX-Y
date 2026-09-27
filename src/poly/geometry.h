@@ -600,21 +600,19 @@ poly_increment_ia(global uint32_t *ia_vertices, global uint32_t *ia_primitives,
 }
 
 static inline void
-poly_gs_setup_indirect(uint64_t index_buffer, constant uint *draw,
-                       global struct poly_vertex_params *vp /* output */,
-                       global struct poly_geometry_params *p /* output */,
-                       global struct poly_heap *heap,
-                       uint64_t vs_outputs /* Vertex (TES) output mask */,
-                       uint32_t index_size_B /* 0 if no index bffer */,
-                       uint32_t index_buffer_range_el,
-                       uint32_t prim /* Input primitive type, enum mesa_prim */,
-                       int is_prefix_summing, uint max_indices,
-                       enum poly_gs_shape shape)
+poly_gs_setup_indirect_inner(uint64_t index_buffer, uint vertex_count,
+                             uint instance_count, uint first_vertex,
+                             global struct poly_vertex_params *vp /* output */,
+                             global struct poly_geometry_params *p /* output */,
+                             global struct poly_heap *heap,
+                             uint64_t vs_outputs /* Vertex (TES) output mask */,
+                             uint32_t index_size_B /* 0 if no index bffer */,
+                             uint32_t index_buffer_range_el,
+                             /* Input primitive type, enum mesa_prim */
+                             uint32_t prim,
+                             int is_prefix_summing, uint max_indices,
+                             enum poly_gs_shape shape)
 {
-   /* Determine the (primitives, instances) grid size. */
-   uint vertex_count = draw[0];
-   uint instance_count = draw[1];
-
    poly_vertex_params_set_draw(vp, vertex_count, instance_count);
    poly_geometry_params_set_draw(p, prim, shape, max_indices,
                                  vertex_count, instance_count);
@@ -626,10 +624,10 @@ poly_gs_setup_indirect(uint64_t index_buffer, constant uint *draw,
     */
    if (index_size_B) {
       vp->index_buffer = poly_index_buffer(index_buffer, index_buffer_range_el,
-                                           draw[2], index_size_B);
+                                           first_vertex, index_size_B);
 
       vp->index_buffer_range_el =
-         poly_index_buffer_range_el(index_buffer_range_el, draw[2]);
+         poly_index_buffer_range_el(index_buffer_range_el, first_vertex);
    }
 
    /* We need to allocate VS and GS count buffers, do so now */
@@ -651,6 +649,55 @@ poly_gs_setup_indirect(uint64_t index_buffer, constant uint *draw,
       p->draw.first_index = index_offset / 4;
       p->output_index_buffer = (global uint *)(heap->base + index_offset);
    }
+}
+
+
+static inline void
+poly_gs_setup_indirect(uint64_t index_buffer, constant uint *draw,
+                       global struct poly_vertex_params *vp /* output */,
+                       global struct poly_geometry_params *p /* output */,
+                       global struct poly_heap *heap,
+                       uint64_t vs_outputs /* Vertex (TES) output mask */,
+                       uint32_t index_size_B /* 0 if no index bffer */,
+                       uint32_t index_buffer_range_el,
+                       uint32_t prim /* Input primitive type, enum mesa_prim */,
+                       int is_prefix_summing, uint max_indices,
+                       enum poly_gs_shape shape)
+{
+   uint vertex_count = draw[0];
+   uint instance_count = draw[1];
+   uint first_vertex = draw[2];
+
+   poly_gs_setup_indirect_inner(index_buffer, vertex_count,  instance_count,
+                                first_vertex, vp, p, heap, vs_outputs,
+                                index_size_B, index_buffer_range_el, prim,
+                                is_prefix_summing, max_indices, shape);
+}
+
+static inline void
+poly_gs_setup_indirect_byte_count(constant uint32_t *byte_count,
+                                  uint instance_count,
+                                  uint32_t counter_offset,
+                                  uint32_t vertex_stride,
+                                  /* output */
+                                  global struct poly_vertex_params *vp,
+                                  /* output */
+                                  global struct poly_geometry_params *p,
+                                  global struct poly_heap *heap,
+                                  /* Vertex (TES) output mask */
+                                  uint64_t vs_outputs,
+                                  /* Input primitive type, enum mesa_prim */
+                                  uint32_t prim,
+                                  int is_prefix_summing, uint max_indices,
+                                  enum poly_gs_shape shape)
+{
+   uint vertex_count =
+      MAX2(0, (int32_t) (*byte_count) - counter_offset) / vertex_stride;
+   uint first_vertex = 0;
+
+   poly_gs_setup_indirect_inner(0, vertex_count, instance_count, first_vertex,
+                                vp, p, heap, vs_outputs, 0, 0, prim,
+                                is_prefix_summing, max_indices, shape);
 }
 
 static uint

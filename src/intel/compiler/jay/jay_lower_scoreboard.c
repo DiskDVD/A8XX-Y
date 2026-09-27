@@ -500,7 +500,6 @@ typedef uint32_t u32_per_pipe[GEN_NUM_PIPES];
 struct swsb_regdist_state {
    jay_shader *shader;
    unsigned ip[GEN_NUM_PIPES];
-   unsigned last_shape[GEN_NUM_PIPES];
 
    /* finished_ip[X] = ip means ip on pipe X has already been waited on. */
    unsigned finished_ip[GEN_NUM_PIPES];
@@ -567,12 +566,6 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
    unsigned dep[GEN_NUM_PIPES] = { 0 };
    jay_def dsts[3] = { I->dst, I->cond_flag };
 
-   /* MUL_32 is a macro implicitly clobbering acc0/acc1 */
-   if (I->op == JAY_OPCODE_MUL_32) {
-      unsigned n = func->shader->dispatch_width < 32 ? 2 : 1;
-      dsts[2] = jay_bare_regs(ACCUM, 0, n);
-   }
-
    for (unsigned i = 0; i < ARRAY_SIZE(dsts); ++i) {
       struct jay_range r = jay_def_to_range(func, I, dsts[i]);
       depend_on_writer(ctx, r, dep, exec_pipe, true /* except_pipe */);
@@ -619,20 +612,6 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
    uint32_t last_pipe = util_logbase2(wait_pipes);
    bool single_wait = wait_pipes == BITFIELD_BIT(last_pipe);
 
-   /* If we're SIMD split the same way as our dependency, we can relax the
-    * dependency to have each half wait in parallel. We could do even better
-    * with more tracking but this should be good enough for now.
-    */
-   unsigned simd_split = jay_simd_split(func->shader, I);
-   unsigned shape = ((simd_split << 2) | jay_macro_length(I)) + 1;
-   bool same_shape = ctx->last_shape[last_pipe] == shape;
-
-   if (simd_split && same_shape && single_wait && min_delta == 1) {
-      min_delta += ((1 << simd_split) - 1) * jay_macro_length(I);
-      I->replicate_dep = true;
-      I->decrement_dep = last_pipe != exec_pipe;
-   }
-
    bool has_sbid = jay_inst_has_sbid(func->shader->devinfo, I);
    I->dep = (gen_swsb){
       .sbid = I->dep.sbid,
@@ -646,10 +625,10 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
                            GEN_PIPE_NONE,
    };
 
-   /* DPAS can only represent in-order dependency for its inferred pipe,
-    * so if it depends on something else, add an extra SYNC.nop for that.
+   /* DPAS and slow ALU on Gfx12 can only represent in-order dependency for its.
+    * inferred pipe, so if it depends on something else, add an extra SYNC.nop.
     */
-   if (I->op == JAY_OPCODE_DPAS &&
+   if (I->op != JAY_OPCODE_SEND &&
        wait_pipes &&
        (!single_wait ||
         last_pipe != jay_inferred_sync_pipe(func->shader->devinfo, I))) {
@@ -674,7 +653,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
        jay_sync_op(ctx->last_sync) == TGL_SYNC_NOP &&
        I->dep.mode == GEN_SBID_NULL &&
        !I->predication &&
-       !jay_simd_split(func->shader, I) &&
+       !I->simd_split &&
        (I->dep.regdist == 0 ||
         jay_inferred_sync_pipe(func->shader->devinfo, I) == I->dep.pipe)) {
 
@@ -688,9 +667,7 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
    }
 
    if (exec_pipe != GEN_PIPE_NONE) {
-      /* Advance the IP by the number of physical instructions emitted */
-      ctx->ip[exec_pipe] +=
-         jay_macro_length(I) << jay_simd_split(func->shader, I);
+      ctx->ip[exec_pipe]++;
 
       uint32_t now = make_writer(exec_pipe, ctx->ip[exec_pipe]);
 
@@ -708,8 +685,6 @@ lower_regdist(jay_function *func, jay_inst *I, struct swsb_regdist_state *ctx)
             ctx->access[r.base + i][exec_pipe] = ctx->ip[exec_pipe];
          }
       }
-
-      ctx->last_shape[exec_pipe] = shape;
    }
 
    ctx->last_sync = NULL;

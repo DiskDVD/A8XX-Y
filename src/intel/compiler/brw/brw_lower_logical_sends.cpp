@@ -1190,7 +1190,8 @@ setup_lsc_surface_descriptors(const brw_builder &bld, brw_send_inst *send,
    enum lsc_opcode op = lsc_msg_desc_opcode(devinfo, desc);
    enum lsc_addr_surface_type surf_type = lsc_msg_desc_addr_type(devinfo, desc);
 
-   ASSERTED const unsigned max_imm_bits = brw_max_immediate_offset_bits(surf_type, false);
+   ASSERTED const unsigned max_imm_bits = brw_max_immediate_offset_bits(
+      devinfo, surf_type, false, send->sfid == GEN_SFID_SLM);
    assert(base_offset >= u_intN_min(max_imm_bits));
    assert(base_offset <= u_intN_max(max_imm_bits));
 

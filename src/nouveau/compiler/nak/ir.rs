@@ -1,10 +1,12 @@
 // Copyright © 2022 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-extern crate bitview;
+extern crate mesa_util;
 extern crate nak_ir_proc;
 
-use bitview::{BitMutView, BitMutViewable, BitView, BitViewable, SetField};
+use mesa_util::bitview::{
+    BitMutView, BitMutViewable, BitView, BitViewable, SetField,
+};
 use nak_bindings::*;
 
 pub use crate::builder::{Builder, InstrBuilder, SSABuilder, SSAInstrBuilder};

@@ -584,7 +584,7 @@ radv_encode_as(VkCommandBuffer commandBuffer, struct vk_device *vk_device, struc
       radv_update_memory_cp(cmd_buffer, intermediate_header_addr + offsetof(struct vk_ir_header, dst_node_offset),
                             &dst_offset, sizeof(uint32_t));
       if (radv_device_physical(device)->info.cp_sdma_ge_use_system_memory_scope)
-         cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_INV_L2;
+         cmd_buffer->state.flush_bits |= AC_BARRIER_INV_L2;
 
       const struct encode_args args = {
          .intermediate_bvh = intermediate_bvh_addr,
@@ -670,7 +670,7 @@ radv_encode_as_gfx12(VkCommandBuffer commandBuffer, struct vk_device *vk_device,
       radv_update_memory_cp(cmd_buffer, intermediate_header_addr + offsetof(struct vk_ir_header, sync_data),
                             update_data, header_update_size);
       if (radv_device_physical(device)->info.cp_sdma_ge_use_system_memory_scope)
-         cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_INV_L2;
+         cmd_buffer->state.flush_bits |= AC_BARRIER_INV_L2;
 
       const struct encode_gfx12_args args = {
          .intermediate_bvh = intermediate_bvh_addr,
@@ -1076,7 +1076,7 @@ radv_flush_buffer_write_cp(VkCommandBuffer commandBuffer)
    const struct radv_physical_device *pdev = radv_device_physical(device);
 
    if (pdev->info.cp_sdma_ge_use_system_memory_scope)
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_INV_L2;
+      cmd_buffer->state.flush_bits |= AC_BARRIER_INV_L2;
 }
 
 static void

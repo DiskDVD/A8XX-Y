@@ -166,9 +166,6 @@ struct fd_dev_info {
        */
       bool has_getfiberid;
 
-      /* Whether half register shared->non-shared moves are broken. */
-      bool mov_half_shared_quirk;
-
       /* Whether movs is supported for subgroupBroadcast. */
       bool has_movs;
 
@@ -350,21 +347,11 @@ struct fd_dev_info {
        * A7XX / gen7
        */
 
-      /* stsc may need to be done twice for the same range to workaround
-       * _something_, observed in blob's disassembly.
-       */
-      bool stsc_duplication_quirk;
-
       /* Whether there is CP_EVENT_WRITE7::WRITE_SAMPLE_COUNT */
       bool has_event_write_sample_count;
 
       bool has_64b_ssbo_atomics;
       bool has_64b_image_atomics;
-
-      /* Blob executes a special compute dispatch at the start of each
-       * command buffers. We copy this dispatch as is.
-       */
-      bool cmdbuf_start_a725_quirk;
 
       bool load_inline_uniforms_via_preamble_ldgk;
       bool load_shader_consts_via_preamble;
@@ -383,12 +370,6 @@ struct fd_dev_info {
        * fully compatible.
        */
       bool ubwc_unorm_snorm_int_compatible;
-
-      /* Having zero consts in one FS may corrupt consts in follow up FSs,
-       * on such GPUs blob never has zero consts in FS. The mechanism of
-       * corruption is unknown.
-       */
-      bool fs_must_have_non_zero_constlen_quirk;
 
       /* On a750 there is a hardware bug where certain VPC sizes in a GS with
        * an input primitive type that is a triangle with adjacency can hang
@@ -417,9 +398,6 @@ struct fd_dev_info {
       /* Whether a single clear blit could be used for both sysmem and gmem.*/
       bool has_generic_clear;
 
-      /* Whether r8g8 UBWC fast-clear work correctly. */
-      bool r8g8_faulty_fast_clear_quirk;
-
       /* a750 has a bug where writing and then reading a UBWC-compressed UAV
        * requires flushing UCHE. This is reproducible in many CTS tests, for
        * example dEQP-VK.image.load_store.with_format.2d.*.
@@ -445,9 +423,6 @@ struct fd_dev_info {
        * This workaround was seen in the prop driver v512.762.12.
        */
       bool reading_shading_rate_requires_smask_quirk;
-
-      /* Is lock/unlock sequence needed at end of compute shader? */
-      bool cs_lock_unlock_quirk;
 
       /* Whether the ray_intersection instruction is present. */
       bool has_ray_intersection;
@@ -501,14 +476,6 @@ struct fd_dev_info {
       /* GMEM size in bytes */
       uint32_t gmem_size;
 
-      /* On a7xx alias.tex may hang when in between mova and (ul). */
-      bool alias_mova_quirk;
-
-      /* On some HW alias.tex may hang when predicated (i.e. between
-       * predt/predf and prede).
-       */
-      bool alias_predication_quirk;
-
       /* There seems to be a HW bug where a dummy prefetch sam.s2en always
        * reads its src2 from fiber 0. This may cause faults when fiber 0 is a
        * helper and helpers are disabled. We work around this by keeping
@@ -519,6 +486,46 @@ struct fd_dev_info {
       /* On a750+ SUBPASS_FENCE also implicitly does CCU_RESOLVE_CLEAN */
       bool subpass_fence_cleans_resolve;
    } props;
+
+#define FD_QUIRK(info, name) (info)->quirks.name
+   struct {
+      /* movs performs half->full conversion if src_type is half, regardless
+       * of dst_type
+       */
+      bool QCTDD06363318_movs_half : 1;
+      /* Is lock/unlock sequence needed at end of compute shader? */
+      bool QCTDD08407086_cs_lock_unlock : 1;
+      /* Having zero consts in one FS may corrupt consts in follow up FSs,
+       * on such GPUs blob never has zero consts in FS. The mechanism of
+       * corruption is unknown.
+       */
+      bool QCTDD08517960_fs_constlen : 1;
+      /* The last stsc before a consumer should be repeated to ensure
+       * the following (ss) waits for the stsc to complete.  The inserted
+       * stsc need only have a length of 1.
+       */
+      bool QCTDD08901551_stsc_ss : 1;
+      /* Blob executes a special compute dispatch at the start of each
+       * command buffers. We copy this dispatch as is.
+       */
+      bool QCTDD09112208_cmdbuf_start_cs : 1;
+      /* Need fake bary.f for (ei) if last input is flat: */
+      bool QCTDD10204462_flat_ei : 1;
+      /* Do not use a0 in early preamble. */
+      bool QCTDD10789828_no_a0_ep : 1;
+      /* On a7xx alias.tex may hang when in between mova and (ul). */
+      bool QCTDD11147232_alias_mova : 1;
+      /* On some HW alias.tex may hang when predicated (i.e. between
+       * predt/predf and prede).
+       */
+      bool QCTDD11183148_alias_pred : 1;
+      /* Whether r8g8 UBWC fast-clear work correctly. */
+      bool QCTDD12766770_r8g8_fc_alignment : 1;
+      /* When there is a main shader with single ALU instruction
+       * which has CONST access, insert dummy ALU.
+       */
+      bool QCTDD13523866_dummy_alu : 1;
+   } quirks;
 };
 
 struct fd_dev_id {

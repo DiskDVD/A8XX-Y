@@ -1050,8 +1050,10 @@ brw_compile_mesh(const struct brw_compiler *compiler,
     * immediate offset limits, so re-run the lowering.
     */
    if (BRW_NIR_PASS(nir_opt_offsets, &offset_options) &&
-       brw_lsc_supports_base_offset(devinfo))
-      BRW_NIR_PASS(brw_nir_lower_immediate_offsets, pt->key->use_efficient_64bit);
+       brw_lsc_supports_base_offset(devinfo)) {
+      BRW_NIR_PASS(brw_nir_lower_immediate_offsets, devinfo,
+                   pt->key->use_efficient_64bit);
+   }
 
    brw_simd_selection_state simd_state{
       .devinfo = compiler->devinfo,

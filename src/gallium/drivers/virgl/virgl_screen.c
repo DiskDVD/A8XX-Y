@@ -305,6 +305,7 @@ virgl_init_screen_caps(struct virgl_screen *vscreen)
    caps->max_texture_cube_levels = vscreen->caps.caps.v2.max_texture_cube_size ?
       1 + util_logbase2(vscreen->caps.caps.v2.max_texture_cube_size) :
       13; /* 4K x 4K */
+   caps->polygon_stipple = true;
    caps->blend_equation_separate = true;
    caps->indep_blend_enable = vscreen->caps.caps.v1.bset.indep_blend_enable;
    caps->indep_blend_func = vscreen->caps.caps.v1.bset.indep_blend_func;

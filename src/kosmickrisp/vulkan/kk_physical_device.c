@@ -17,6 +17,7 @@
 
 #include "kosmickrisp/bridge/mtl_bridge.h"
 #include "kosmickrisp/bridge/ns_process_info.h"
+#include "kosmickrisp/compiler/nir_to_msl.h"
 
 #include "util/disk_cache.h"
 #include "util/mesa-blake3.h"
@@ -538,6 +539,13 @@ kk_get_device_properties(
    float timestamp_period =
       timestamp_frequency ? (1000000000.0f / (float)timestamp_frequency) : 1.0f;
 
+   /* M1 and M2 are restricted to 1024 unique samplers, so there we advertise
+    * the minimum allowed by spec. Otherwise, we advertise the maximum that fit
+    * in our sampler table. */
+   uint32_t max_samplers = pdev->info.max_sampler_count >= MSL_MAX_SAMPLERS
+                              ? MSL_MAX_SAMPLERS
+                              : 4000;
+
    *properties = (struct vk_properties){
       .apiVersion = kk_get_vk_version(),
       .driverVersion = vk_get_driver_version(),
@@ -559,7 +567,7 @@ kk_get_device_properties(
       .maxStorageBufferRange = UINT32_MAX,
       .maxPushConstantsSize = KK_MAX_PUSH_SIZE,
       .maxMemoryAllocationCount = 4096,
-      .maxSamplerAllocationCount = 4000,
+      .maxSamplerAllocationCount = max_samplers,
       .bufferImageGranularity = 16,
       .sparseAddressSpaceSize = KK_SPARSE_ADDR_SPACE_SIZE,
       .maxBoundDescriptorSets = KK_MAX_SETS,
@@ -778,7 +786,7 @@ kk_get_device_properties(
       .advancedBlendAllOperations = true,
 
       /* VK_EXT_custom_border_color */
-      .maxCustomBorderColorSamplers = 4000,
+      .maxCustomBorderColorSamplers = max_samplers,
 
       /* VK_EXT_extended_dynamic_state3 */
       .dynamicPrimitiveTopologyUnrestricted = false,

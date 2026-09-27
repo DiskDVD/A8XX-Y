@@ -64,11 +64,19 @@ struct fd_bo *msm_bo_from_handle(struct fd_device *dev, uint32_t size,
 static inline void
 msm_dump_submit(struct drm_msm_gem_submit *req)
 {
-   for (unsigned i = 0; i < req->nr_bos; i++) {
+   /* A submit can reference tens of thousands of BOs, so only dump the
+    * whole table when debugging, to avoid flooding the log:
+    */
+   unsigned nr_bos = fd_dbg() ? req->nr_bos : MIN2(req->nr_bos, 32);
+
+   ERROR_MSG("  nr_bos=%u, nr_cmds=%u", req->nr_bos, req->nr_cmds);
+   for (unsigned i = 0; i < nr_bos; i++) {
       struct drm_msm_gem_submit_bo *bos = U642VOID(req->bos);
       struct drm_msm_gem_submit_bo *bo = &bos[i];
       ERROR_MSG("  bos[%d]: handle=%u, flags=%x", i, bo->handle, bo->flags);
    }
+   if (nr_bos < req->nr_bos)
+      ERROR_MSG("  ... %u more bos", req->nr_bos - nr_bos);
    for (unsigned i = 0; i < req->nr_cmds; i++) {
       struct drm_msm_gem_submit_cmd *cmds = U642VOID(req->cmds);
       struct drm_msm_gem_submit_cmd *cmd = &cmds[i];
