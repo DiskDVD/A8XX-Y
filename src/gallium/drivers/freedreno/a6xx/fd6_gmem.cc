@@ -1199,10 +1199,48 @@ template <chip CHIP>
 static void prepare_tile_fini(struct fd_batch *batch);
 
 template <chip CHIP>
-static void
-fd7_emit_static_binning_regs(fd_cs &cs, bool gmem)
+static bool
+fd7_full_attachments_in_gmem(const struct fd_batch *batch)
 {
-   bool full_in_gmem = false;  /* gen8 TODO */
+   if (CHIP < A8XX || !batch)
+      return false;
+
+   const struct fd_gmem_stateobj *gmem = batch->gmem_state;
+   const struct pipe_framebuffer_state *pfb = &batch->framebuffer;
+
+   if (!gmem || batch->restore || batch->resolve || pfb->samples > 1)
+      return false;
+
+   if (gmem->nbins_x != 1 || gmem->nbins_y != 1 ||
+       gmem->bin_w < pfb->width || gmem->bin_h < pfb->height)
+      return false;
+
+   for (unsigned i = 0; i < pfb->nr_cbufs; i++) {
+      if (pfb->cbufs[i].texture && !gmem->cbuf_cpp[i])
+         return false;
+   }
+
+   if (pfb->zsbuf.texture) {
+      const struct util_format_description *desc =
+         util_format_description(pfb->zsbuf.format);
+
+      if (util_format_has_depth(desc) && !gmem->zsbuf_cpp[0])
+         return false;
+
+      if (util_format_has_stencil(desc) &&
+          !gmem->zsbuf_cpp[1] && !gmem->zsbuf_cpp[0])
+         return false;
+   }
+
+   return true;
+}
+
+template <chip CHIP>
+static void
+fd7_emit_static_binning_regs(fd_cs &cs, bool gmem,
+                             const struct fd_batch *batch = nullptr)
+{
+   bool full_in_gmem = gmem && fd7_full_attachments_in_gmem<CHIP>(batch);
    bool sysmem = !gmem;
    fd_ncrb<CHIP> ncrb(cs, 4);
 
@@ -1335,7 +1373,7 @@ fd6_emit_tile_init(struct fd_batch *batch) assert_dt
    patch_fb_read_gmem<CHIP>(batch);
 
    if (CHIP >= A7XX) {
-      fd7_emit_static_binning_regs<CHIP>(cs, true);
+      fd7_emit_static_binning_regs<CHIP>(cs, true, batch);
    }
 
    if (use_hw_binning(batch)) {

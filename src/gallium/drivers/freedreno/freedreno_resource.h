@@ -375,6 +375,12 @@ fd_image_params(const struct pipe_resource *prsc, bool ubwc,
       .tile_mode = tile_mode,
       .ubwc = ubwc,
       .is_3d = (prsc->target == PIPE_TEXTURE_3D),
+      .usage =
+         COND(prsc->bind & (PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SHADER_BUFFER),
+              FDL_IMAGE_USAGE_SAMPLED) |
+         COND(prsc->bind & PIPE_BIND_SHADER_IMAGE, FDL_IMAGE_USAGE_STORAGE) |
+         COND(prsc->bind & (PIPE_BIND_RENDER_TARGET | PIPE_BIND_DEPTH_STENCIL),
+              FDL_IMAGE_USAGE_ATTACHMENT),
       .plane = plane,
    };
 }

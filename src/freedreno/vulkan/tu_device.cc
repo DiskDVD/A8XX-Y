@@ -50,6 +50,9 @@
 #include "wsi_common.h"
 #endif
 
+#include "git_sha1.h"
+#include "tu_version.h"
+
 #if DETECT_OS_ANDROID
 #include <vndk/hardware_buffer.h>
 #endif
@@ -1025,6 +1028,12 @@ tu_get_physical_device_properties_1_2(struct tu_physical_device *pdevice,
       .patch = 1,
    };
 
+   if (TU_DEBUG(DECK_EMU)) {
+      p->driverID = VK_DRIVER_ID_MESA_RADV;
+      memset(p->driverName, 0, sizeof(p->driverName));
+      snprintf(p->driverName, VK_MAX_DRIVER_NAME_SIZE, "radv");
+   }
+
    p->denormBehaviorIndependence =
       VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_ALL;
    p->roundingModeIndependence =
@@ -1320,6 +1329,11 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->deviceID = pdevice->dev_id.chip_id;
    props->deviceType = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
 
+   if (TU_DEBUG(DECK_EMU)) {
+      props->vendorID = 0x1002;
+      props->deviceID = 0x163F;
+   }
+
    /* Vulkan 1.4 */
    props->dynamicRenderingLocalReadDepthStencilAttachments = true;
    props->dynamicRenderingLocalReadMultisampledAttachments = true;
@@ -1331,10 +1345,15 @@ tu_get_properties(struct tu_physical_device *pdevice,
    props->sparseResidencyAlignedMipSize = false;
    props->sparseResidencyNonResidentStrict = true;
 
-   snprintf(props->deviceName, sizeof(props->deviceName), "%s",
-            (strlen(pdevice->instance->drirc.debug.force_vk_devicename) > 0) ?
-            pdevice->instance->drirc.debug.force_vk_devicename : pdevice->name);
+   char devname[128];
+   strcpy(devname, pdevice->name);
+   strcat(devname, MESA_GIT_SHA1 "/" TUGEN8_DRV_VERSION);
+   strcpy(props->deviceName, devname);
    memcpy(props->pipelineCacheUUID, pdevice->cache_uuid, VK_UUID_SIZE);
+
+   if (TU_DEBUG(DECK_EMU)) {
+      strcpy(props->deviceName, "AMD Custom GPU 0405 (RADV VANGOGH)");
+   }
 
    tu_get_physical_device_properties_1_1(pdevice, props);
    tu_get_physical_device_properties_1_2(pdevice, props);
@@ -2867,6 +2886,9 @@ tu_CreateDevice(VkPhysicalDevice physicalDevice,
       vk_device_dispatch_table_from_entrypoints(
          &dispatch_table, &tu_device_entrypoints_a8xx, false);
    }
+   
+   /* HACK: disable concurrent binning for now */
+   tu_env.debug |= TU_DEBUG_NO_CONCURRENT_BINNING;
 
    vk_device_dispatch_table_from_entrypoints(
       &dispatch_table, &wsi_device_entrypoints, false);

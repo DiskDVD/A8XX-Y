@@ -428,10 +428,14 @@ fd6_set_shader_images(struct pipe_context *pctx, mesa_shader_stage shader,
 
       if (buf->shader_access & (PIPE_IMAGE_ACCESS_COHERENT |
                                 PIPE_IMAGE_ACCESS_VOLATILE)) {
-         /* UBWC compression cannot be used with coherent/volatile access
-          * due to the extra caching (CCU) involved:
+         /* UBWC compression cannot be used with coherent/volatile access on
+          * older generations due to the extra caching (CCU) involved.  A8XX
+          * supports UBWC for UAV/image access, including read-only,
+          * write-only, and read/write usage, so keep the compressed layout
+          * only there when the device advertises the capability.
           */
-         if (rsc->layout.ubwc) {
+         if (rsc->layout.ubwc &&
+             !(CHIP == A8XX && ctx->screen->info->props.supports_uav_ubwc)) {
             bool linear =
                   fd6_check_valid_format(rsc, buf->format) == DEMOTE_TO_LINEAR;
 
@@ -441,6 +445,8 @@ fd6_set_shader_images(struct pipe_context *pctx, mesa_shader_stage shader,
                            util_format_short_name(buf->format));
 
             fd_resource_uncompress(ctx, rsc, linear);
+         } else {
+            fd6_validate_format(ctx, rsc, buf->format);
          }
       } else {
          fd6_validate_format(ctx, rsc, buf->format);

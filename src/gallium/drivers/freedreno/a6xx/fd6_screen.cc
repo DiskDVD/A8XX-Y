@@ -20,25 +20,18 @@
 #include "ir3/ir3_compiler.h"
 
 static bool
-valid_sample_count(unsigned sample_count, bool is_suboptimal)
+valid_sample_count(const struct fd_dev_info *info, unsigned sample_count,
+                   bool is_suboptimal)
 {
    /* NPoT formats do not support MSAA: */
    if (is_suboptimal && (sample_count > 1))
       return false;
 
-   switch (sample_count) {
-   case 0:
-   case 1:
-   case 2:
-   case 4:
-      // TODO seems 8x works, but increases lrz width or height.. but the
-      // blob I have doesn't seem to expose any egl configs w/ 8x, so
-      // just hide it for now and revisit later.
-      //	case 8:
-      return true;
-   default:
-      return false;
-   }
+   unsigned max_samples = info->props.max_samples ? info->props.max_samples : 4;
+
+   return sample_count == 0 || sample_count == 1 ||
+          (util_is_power_of_two_nonzero(sample_count) &&
+           sample_count <= max_samples);
 }
 
 static bool
@@ -74,7 +67,7 @@ fd6_screen_is_format_supported(struct pipe_screen *pscreen,
    }
 
    if ((target >= PIPE_MAX_TEXTURE_TYPES) ||
-       !valid_sample_count(sample_count, is_suboptimal)) {
+       !valid_sample_count(screen->info, sample_count, is_suboptimal)) {
       DBG("not supported: format=%s, target=%d, sample_count=%d, usage=%x",
           util_format_name(format), target, sample_count, usage);
       return false;
