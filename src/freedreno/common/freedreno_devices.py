@@ -1032,7 +1032,7 @@ add_gpus([
         fibers_per_sp = 128 * 2 * 16,
         highest_bank_bit = 15,
         magic_regs = a730_magic_regs,
-        raw_magic_regs = a710_raw_magic_regs,
+        raw_magic_regs = a730_raw_magic_regs,
     ))
 
 add_gpus([
@@ -1052,7 +1052,7 @@ add_gpus([
         fibers_per_sp = 128 * 2 * 16,
         highest_bank_bit = 15,
         magic_regs = a730_magic_regs,
-        raw_magic_regs = a720_raw_magic_regs,
+        raw_magic_regs = a730_raw_magic_regs,
     ))
 
 add_gpus([
