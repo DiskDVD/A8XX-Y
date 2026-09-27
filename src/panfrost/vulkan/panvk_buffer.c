@@ -123,7 +123,7 @@ panvk_CreateBuffer(VkDevice _device, const VkBufferCreateInfo *pCreateInfo,
       uint64_t va_range = panvk_buffer_get_sparse_size(buffer);
 
       buffer->vk.device_address =
-         panvk_as_alloc(device, &device->as.heap, va_range,
+         panvk_as_alloc(device, PANVK_NO_EXEC_VA_HEAP, va_range,
                         pan_choose_gpu_va_alignment(device->kmod.vm, va_range));
       if (!buffer->vk.device_address) {
          result = panvk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
@@ -165,7 +165,7 @@ panvk_CreateBuffer(VkDevice _device, const VkBufferCreateInfo *pCreateInfo,
 
 err_free_va:
    if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
-      panvk_as_free(device, &device->as.heap, buffer->vk.device_address,
+      panvk_as_free(device, buffer->vk.device_address,
                     panvk_buffer_get_sparse_size(buffer));
 
 err_destroy_buffer:
@@ -201,8 +201,7 @@ panvk_DestroyBuffer(VkDevice _device, VkBuffer _buffer,
          device->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &unmap, 1);
       assert(!ret);
 
-      panvk_as_free(device, &device->as.heap, buffer->vk.device_address,
-                    va_range);
+      panvk_as_free(device, buffer->vk.device_address, va_range);
    } else if (buffer->vk.device_address) {
       panvk_address_binding_report(device, &buffer->vk.base,
                                    buffer->vk.device_address, buffer->vk.size,

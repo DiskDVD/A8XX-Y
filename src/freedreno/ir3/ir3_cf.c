@@ -199,7 +199,7 @@ try_conversion_folding(struct ir3_instruction *conv,
       /* Don't fold in a conversion to a half register on gens where that is
        * broken.
        */
-      if (compiler->info->props.mov_half_shared_quirk &&
+      if (IR3_QUIRK(compiler, QCTDD06363318_movs_half) &&
           (conv->dsts[0]->flags & IR3_REG_HALF)) {
          return false;
       }

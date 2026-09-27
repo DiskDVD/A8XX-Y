@@ -93,6 +93,8 @@ void msl_nir_lower_clip_cull_distance(nir_shader *nir,
 bool msl_nir_lower_instance_id(nir_shader *nir);
 bool msl_nir_lower_vs_disabled_depth_clamp_clip(nir_shader *nir);
 bool msl_nir_lower_fs_combined_depth_clamp_clip(nir_shader *nir);
+bool msl_nir_lower_multisample_alpha(nir_shader *s, bool alpha_to_coverage,
+                                     bool alpha_to_one);
 
 bool msl_gather_uses_per_draw_data(nir_shader *nir);
 

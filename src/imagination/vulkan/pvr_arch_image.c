@@ -127,6 +127,18 @@ VkResult PVR_PER_ARCH(CreateImageView)(VkDevice _device,
    if (image->vk.create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT) {
       info.offset = 0;
       info.z_slice = iview->vk.base_array_layer;
+   } else if (image->vk.image_type == VK_IMAGE_TYPE_3D
+              && device->vk.enabled_features.imageSlicedViewOf3D
+              && image->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+      assert(iview->vk.storage.z_slice_offset <=
+             u_uintN_max(PVR_SLICED_VIEW_OFFSET_LENGTH));
+      assert(iview->vk.storage.z_slice_count <=
+             u_uintN_max(PVR_SLICED_VIEW_COUNT_LENGTH));
+      assert(iview->vk.storage.z_slice_count > 0);
+
+      info.z_slice =
+         (iview->vk.storage.z_slice_offset << PVR_SLICED_VIEW_OFFSET_OFFSET) |
+         (iview->vk.storage.z_slice_count << PVR_SLICED_VIEW_COUNT_OFFSET);
    }
 
    pvr_adjust_non_compressed_view(image, plane, &info);

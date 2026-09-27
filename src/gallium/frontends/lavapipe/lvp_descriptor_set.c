@@ -277,9 +277,8 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_CreatePipelineLayout(
 }
 
 static struct pipe_resource *
-get_buffer_resource(struct pipe_context *ctx, VkDeviceAddress address, size_t range)
+get_buffer_resource(struct pipe_screen *pscreen, VkDeviceAddress address, size_t range)
 {
-   struct pipe_screen *pscreen = ctx->screen;
    struct pipe_resource templ = {0};
 
    templ.screen = pscreen;
@@ -308,9 +307,7 @@ get_buffer_resource(struct pipe_context *ctx, VkDeviceAddress address, size_t ra
 static struct lp_texture_handle
 get_texture_handle_bda(struct lvp_device *device, VkDeviceAddress address, size_t range, enum pipe_format format)
 {
-   struct pipe_context *ctx = device->queue.ctx;
-
-   struct pipe_resource *pres = get_buffer_resource(ctx, address, range);
+   struct pipe_resource *pres = get_buffer_resource(device->pscreen, address, range);
 
    struct pipe_sampler_view templ;
    memset(&templ, 0, sizeof(templ));
@@ -322,17 +319,13 @@ get_texture_handle_bda(struct lvp_device *device, VkDeviceAddress address, size_
    templ.format = format;
    templ.u.buf.size = range;
    templ.texture = pres;
-   templ.context = ctx;
-   struct pipe_sampler_view *view = ctx->create_sampler_view(ctx, pres, &templ);
 
-   simple_mtx_lock(&device->queue.lock);
+   struct lp_texture_handle *handle = llvmpipe_create_texture_handle(device->pscreen, &templ, NULL);
 
-   struct lp_texture_handle *handle = llvmpipe_create_texture_handle(device->pscreen, view, NULL);
+   simple_mtx_lock(&device->bda_lock);
    util_dynarray_append(&device->bda_texture_handles, handle);
+   simple_mtx_unlock(&device->bda_lock);
 
-   simple_mtx_unlock(&device->queue.lock);
-
-   ctx->sampler_view_destroy(ctx, view);
    pipe_resource_reference(&pres, NULL);
 
    return *handle;
@@ -341,20 +334,17 @@ get_texture_handle_bda(struct lvp_device *device, VkDeviceAddress address, size_
 static struct lp_texture_handle
 get_image_handle_bda(struct lvp_device *device, VkDeviceAddress address, size_t range, enum pipe_format format)
 {
-   struct pipe_context *ctx = device->queue.ctx;
-
-   struct pipe_resource *pres = get_buffer_resource(ctx, address, range);
+   struct pipe_resource *pres = get_buffer_resource(device->pscreen, address, range);
    struct pipe_image_view view = {0};
    view.resource = pres;
    view.format = format;
    view.u.buf.size = range;
 
-   simple_mtx_lock(&device->queue.lock);
-
    struct lp_texture_handle *handle = llvmpipe_create_image_handle(device->pscreen, &view);
-   util_dynarray_append(&device->bda_image_handles, handle);
 
-   simple_mtx_unlock(&device->queue.lock);
+   simple_mtx_lock(&device->bda_lock);
+   util_dynarray_append(&device->bda_image_handles, handle);
+   simple_mtx_unlock(&device->bda_lock);
 
    pipe_resource_reference(&pres, NULL);
 

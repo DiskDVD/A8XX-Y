@@ -1247,6 +1247,7 @@ anv_GetEncodedVideoSessionParametersKHR(VkDevice device,
          for (unsigned i = 0; i < params->h264_enc.h264_sps_count; i++)
             if (params->h264_enc.h264_sps[i].base.seq_parameter_set_id == h264_get_info->stdSPSId) {
                vk_video_encode_h264_sps(&params->h264_enc.h264_sps[i].base, size_limit, &sps_size, pData);
+               size_limit = size_limit > sps_size ? size_limit - sps_size : 0;
                if (h264_feedback_info) {
                   /* SPS parameters are modified at session parameters creation */
                   h264_feedback_info->hasStdSPSOverrides = VK_TRUE;
@@ -1280,6 +1281,7 @@ anv_GetEncodedVideoSessionParametersKHR(VkDevice device,
          for (unsigned i = 0; i < params->h265_enc.h265_vps_count; i++)
             if (params->h265_enc.h265_vps[i].base.vps_video_parameter_set_id == h265_get_info->stdVPSId) {
                vk_video_encode_h265_vps(&params->h265_enc.h265_vps[i].base, size_limit, &vps_size, pData);
+               size_limit = size_limit > vps_size ? size_limit - vps_size : 0;
                if (h265_feedback_info)
                   h265_feedback_info->hasStdVPSOverrides = VK_FALSE;
             }
@@ -1289,6 +1291,7 @@ anv_GetEncodedVideoSessionParametersKHR(VkDevice device,
          for (unsigned i = 0; i < params->h265_enc.h265_sps_count; i++)
             if (params->h265_enc.h265_sps[i].base.sps_seq_parameter_set_id == h265_get_info->stdSPSId) {
                vk_video_encode_h265_sps(&params->h265_enc.h265_sps[i].base, size_limit, &sps_size, data_ptr);
+               size_limit = size_limit > sps_size ? size_limit - sps_size : 0;
                if (h265_feedback_info)
                   h265_feedback_info->hasStdSPSOverrides = VK_TRUE;
                has_overrides = VK_TRUE;

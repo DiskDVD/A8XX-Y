@@ -1,7 +1,6 @@
 // Copyright © 2026 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-use crate::bitview::*;
 use crate::data_type::*;
 use crate::flow::*;
 use crate::ir;
@@ -13,6 +12,7 @@ use crate::ops::{self, *};
 use crate::swizzle::*;
 
 use compiler::{as_slice::AsArray, enum_as_u8::EnumAsU8, index_of};
+use mesa_util::bitview::*;
 use paste::paste;
 use rustc_hash::FxHashMap;
 
@@ -1059,6 +1059,38 @@ impl V9Instr for OpF16ToF32 {
     }
 }
 
+impl V9Instr for OpF16ToI32 {
+    fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
+        let info = match self.dst_type {
+            DataType::U32 => F16ToU32::get_info((), arch),
+            DataType::S32 => F16ToS32::get_info((), arch),
+            _ => panic!("Invalid dst_type"),
+        };
+        V9InstrInfo::from_isa(
+            info,
+            src_map! {
+                src0: src,
+            },
+        )
+    }
+
+    fn encode(&self, e: V9Encoder) -> EncodedInstr {
+        match self.dst_type {
+            DataType::U32 => e.encode(F16ToU32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+                round: self.round.into(),
+            }),
+            DataType::S32 => e.encode(F16ToS32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+                round: self.round.into(),
+            }),
+            _ => panic!("Invalid dst_type"),
+        }
+    }
+}
+
 impl From<FRound> for Round {
     fn from(round: FRound) -> Round {
         match round {
@@ -1538,29 +1570,6 @@ impl V9Instr for OpFMin {
     }
 }
 
-impl V9Instr for OpFMul {
-    fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
-        V9InstrInfo::from_isa(
-            Fmul::get_info(self.dst_type, arch),
-            src_map! {
-                src0: srcs[0],
-                src1: srcs[1],
-            },
-        )
-    }
-
-    fn encode(&self, e: V9Encoder) -> EncodedInstr {
-        e.encode(Fmul {
-            variant: self.dst_type.try_into().unwrap(),
-            dst: op_encode_dst(self, &self.dst),
-            src0: op_encode_src(self, &self.srcs[0]),
-            src1: op_encode_src(self, &self.srcs[1]),
-            clamp: ClampM::None,
-            round: Round::None,
-        })
-    }
-}
-
 impl V9Instr for OpFRcp {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         V9InstrInfo::from_isa(
@@ -1593,7 +1602,7 @@ impl From<FrexpMode> for FrexpSpecialM {
 impl V9Instr for OpFrexpE {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         V9InstrInfo::from_isa(
-            Frexpe::get_info(FrexpeVariant::F32, arch),
+            Frexpe::get_info(self.src_type, arch),
             src_map! {
                 src0: src,
             },
@@ -1602,7 +1611,7 @@ impl V9Instr for OpFrexpE {
 
     fn encode(&self, e: V9Encoder) -> EncodedInstr {
         e.encode(Frexpe {
-            variant: FrexpeVariant::F32,
+            variant: self.src_type.try_into().unwrap(),
             dst: op_encode_dst(self, &self.dst),
             src0: op_encode_src(self, &self.src),
             neg_result: self.neg_result.into(),
@@ -1614,7 +1623,7 @@ impl V9Instr for OpFrexpE {
 impl V9Instr for OpFrexpM {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         V9InstrInfo::from_isa(
-            Frexpm::get_info(FrexpmVariant::F32, arch),
+            Frexpm::get_info(self.src_type, arch),
             src_map! {
                 src0: src,
             },
@@ -1623,7 +1632,7 @@ impl V9Instr for OpFrexpM {
 
     fn encode(&self, e: V9Encoder) -> EncodedInstr {
         e.encode(Frexpm {
-            variant: FrexpmVariant::F32,
+            variant: self.src_type.try_into().unwrap(),
             dst: op_encode_dst(self, &self.dst),
             src0: op_encode_src(self, &self.src),
             special: self.mode.into(),
@@ -1634,7 +1643,7 @@ impl V9Instr for OpFrexpM {
 impl V9Instr for OpFRound {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         V9InstrInfo::from_isa(
-            Fround::get_info(FroundVariant::F32, arch),
+            Fround::get_info(self.src_type, arch),
             src_map! {
                 src0: src,
             },
@@ -1643,7 +1652,7 @@ impl V9Instr for OpFRound {
 
     fn encode(&self, e: V9Encoder) -> EncodedInstr {
         e.encode(Fround {
-            variant: FroundVariant::F32,
+            variant: self.src_type.try_into().unwrap(),
             dst: op_encode_dst(self, &self.dst),
             src0: op_encode_src(self, &self.src),
             round: self.round.into(),
@@ -1686,6 +1695,32 @@ impl V9Instr for OpFSinTable {
             dst: op_encode_dst(self, &self.dst),
             src0: op_encode_src(self, &self.src),
             offset: self.offset.into(),
+        })
+    }
+}
+
+impl V9Instr for OpHAdd {
+    fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
+        V9InstrInfo::from_isa(
+            Hadd::get_info(self.dst_type.i_as_u(), arch),
+            src_map! {
+                src0: srcs[0],
+                src1: srcs[1],
+            },
+        )
+    }
+
+    fn encode(&self, e: V9Encoder) -> EncodedInstr {
+        e.encode(Hadd {
+            variant: self.dst_type.i_as_u().try_into().unwrap(),
+            dst: op_encode_dst(self, &self.dst),
+            src0: op_encode_src(self, &self.srcs[0]),
+            src1: op_encode_src(self, &self.srcs[1]),
+            round: if self.round_up {
+                Round::RoundUp
+            } else {
+                Round::RoundDown
+            },
         })
     }
 }
@@ -1934,11 +1969,55 @@ impl V9Instr for OpISub {
     }
 }
 
+impl V9Instr for OpIToF16 {
+    fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
+        let info = match self.src_type {
+            DataType::V2S8 => V2s8ToV2f16::get_info((), arch),
+            DataType::V2U8 => V2u8ToV2f16::get_info((), arch),
+            DataType::V2S16 => V2s16ToV2f16::get_info((), arch),
+            DataType::V2U16 => V2u16ToV2f16::get_info((), arch),
+            _ => None,
+        };
+        V9InstrInfo::from_isa(info, src_map! { src0: src })
+    }
+
+    fn encode(&self, e: V9Encoder) -> EncodedInstr {
+        if self.src_type.bits() == 8 {
+            assert!(self.round == FRound::NearestEven);
+        }
+        match self.src_type {
+            DataType::V2S8 => e.encode(V2s8ToV2f16 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::V2U8 => e.encode(V2u8ToV2f16 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::V2S16 => e.encode(V2s16ToV2f16 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+                round: self.round.into(),
+            }),
+            DataType::V2U16 => e.encode(V2u16ToV2f16 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+                round: self.round.into(),
+            }),
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl V9Instr for OpIToF32 {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         let info = match self.src_type {
-            DataType::U32 => U32ToF32::get_info((), arch),
+            DataType::S8 => S8ToF32::get_info((), arch),
+            DataType::U8 => U8ToF32::get_info((), arch),
+            DataType::S16 => S16ToF32::get_info((), arch),
+            DataType::U16 => U16ToF32::get_info((), arch),
             DataType::S32 => S32ToF32::get_info((), arch),
+            DataType::U32 => U32ToF32::get_info((), arch),
             _ => unreachable!(),
         };
         V9InstrInfo::from_isa(
@@ -1950,13 +2029,32 @@ impl V9Instr for OpIToF32 {
     }
 
     fn encode(&self, e: V9Encoder) -> EncodedInstr {
+        if self.src_type.bits() < 32 {
+            assert!(self.round == FRound::NearestEven);
+        }
         match self.src_type {
-            DataType::U32 => e.encode(U32ToF32 {
+            DataType::S8 => e.encode(S8ToF32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::U8 => e.encode(U8ToF32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::S16 => e.encode(S16ToF32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::U16 => e.encode(U16ToF32 {
+                dst: op_encode_dst(self, &self.dst),
+                src0: op_encode_src(self, &self.src),
+            }),
+            DataType::S32 => e.encode(S32ToF32 {
                 dst: op_encode_dst(self, &self.dst),
                 src0: op_encode_src(self, &self.src),
                 round: self.round.into(),
             }),
-            DataType::S32 => e.encode(S32ToF32 {
+            DataType::U32 => e.encode(U32ToF32 {
                 dst: op_encode_dst(self, &self.dst),
                 src0: op_encode_src(self, &self.src),
                 round: self.round.into(),
@@ -3333,6 +3431,28 @@ impl V9Instr for OpTexSingle {
     }
 }
 
+impl V9Instr for OpV2F32ToV2F16 {
+    fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
+        V9InstrInfo::from_isa(
+            V2f32ToV2f16::get_info((), arch),
+            src_map! {
+                src0: srcs[0],
+                src1: srcs[1],
+            },
+        )
+    }
+
+    fn encode(&self, e: V9Encoder) -> EncodedInstr {
+        e.encode(V2f32ToV2f16 {
+            dst: op_encode_dst(self, &self.dst),
+            src0: op_encode_src(self, &self.srcs[0]),
+            src1: op_encode_src(self, &self.srcs[1]),
+            round: self.round.into(),
+            clamp: self.clamp.into(),
+        })
+    }
+}
+
 impl V9Instr for OpWMask {
     fn get_info(&self, arch: u8) -> Option<V9InstrInfo> {
         V9InstrInfo::from_isa(
@@ -3399,6 +3519,7 @@ macro_rules! v9_op_match_else {
             Op::CubeSel($x) => $y,
             Op::Discard($x) => $y,
             Op::F16ToF32($x) => $y,
+            Op::F16ToI32($x) => $y,
             Op::F32ToF16($x) => $y,
             Op::F32ToI32($x) => $y,
             Op::FAdd($x) => $y,
@@ -3414,13 +3535,13 @@ macro_rules! v9_op_match_else {
             Op::FmaRScale($x) => $y,
             Op::FMax($x) => $y,
             Op::FMin($x) => $y,
-            Op::FMul($x) => $y,
             Op::FRcp($x) => $y,
             Op::FrexpE($x) => $y,
             Op::FrexpM($x) => $y,
             Op::FRound($x) => $y,
             Op::FRsq($x) => $y,
             Op::FSinTable($x) => $y,
+            Op::HAdd($x) => $y,
             Op::IAbs($x) => $y,
             Op::IAdd($x) => $y,
             Op::ICmp($x) => $y,
@@ -3428,6 +3549,7 @@ macro_rules! v9_op_match_else {
             Op::IDpAdd($x) => $y,
             Op::IMul($x) => $y,
             Op::ISub($x) => $y,
+            Op::IToF16($x) => $y,
             Op::IToF32($x) => $y,
             Op::Jump($x) => $y,
             Op::LdAttr($x) => $y,
@@ -3463,6 +3585,7 @@ macro_rules! v9_op_match_else {
             Op::TexGather($x) => $y,
             Op::TexGradient($x) => $y,
             Op::TexSingle($x) => $y,
+            Op::V2F32ToV2F16($x) => $y,
             Op::WMask($x) => $y,
             Op::ZSEmit($x) => $y,
             _ => $z,
@@ -3665,6 +3788,13 @@ pub fn v9_op_dst_supported_lanes(op: &Op, arch: u8) -> DstLanesSet {
     if matches!(op, Op::LdPka(_)) {
         lanes.remove(ir::DstLanes::B1);
         lanes.remove(ir::DstLanes::B3);
+    }
+    if arch <= 10
+        && matches!(op, Op::FRcp(_) | Op::FRsq(_))
+        && op.variant().unwrap().bits() == 16
+    {
+        // Writing only to H1 just masks the high bits (so that's always 0)
+        lanes.remove(ir::DstLanes::H1);
     }
 
     lanes

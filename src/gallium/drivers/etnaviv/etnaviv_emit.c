@@ -138,14 +138,14 @@ emit_halti5_only_state(struct etna_context *ctx, int vs_output_count)
    if (unlikely(dirty & (ETNA_DIRTY_SHADER))) {
       /* Magic states (load balancing, inter-unit sync, buffers) */
       /*007C4*/ EMIT_STATE(FE_HALTI5_ID_CONFIG, ctx->shader_state.FE_HALTI5_ID_CONFIG);
-      /*00870*/ EMIT_STATE(VS_HALTI5_OUTPUT_COUNT, vs_output_count | ((vs_output_count * 0x10) << 8));
-      /*008A0*/ EMIT_STATE(VS_HALTI5_UNK008A0, 0x0001000e | ((0x110/vs_output_count) << 20));
+      /*00870*/ EMIT_STATE(VS_HALTI5_OUTPUT_COUNT, ctx->shader_state.VS_HALTI5_OUTPUT_COUNT);
+      /*008A0*/ EMIT_STATE(VS_VERTEX_CACHE_CONFIG, ctx->shader_state.VS_VERTEX_CACHE_CONFIG);
       for (int x = 0; x < VIVS_VS_HALTI5_OUTPUT__LEN; ++x) {
          /*008E0*/ EMIT_STATE(VS_HALTI5_OUTPUT(x), ctx->shader_state.VS_OUTPUT[x]);
       }
    }
    if (unlikely(dirty & (ETNA_DIRTY_VERTEX_ELEMENTS | ETNA_DIRTY_SHADER))) {
-      for (int x = 0; x < 4; ++x) {
+      for (int x = 0; x < VIVS_VS_HALTI5_INPUT__LEN; ++x) {
          /*008C0*/ EMIT_STATE(VS_HALTI5_INPUT(x), ctx->shader_state.VS_INPUT[x]);
       }
    }

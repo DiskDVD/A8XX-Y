@@ -71,6 +71,56 @@ static_assert(GL_QUADS == MESA_PRIM_QUADS, "enum mismatch");
 static_assert(GL_TRIANGLE_STRIP_ADJACENCY == MESA_PRIM_TRIANGLE_STRIP_ADJACENCY, "enum mismatch");
 static_assert(GL_PATCHES == MESA_PRIM_PATCHES, "enum mismatch");
 
+/**
+ * Record the current draw's primitive type for emulated polygon stipple, and
+ * flag the dependent state when it changes.  st_update_stipple_emulate() then
+ * uses this as input to deciding whether to actually emulate polygon stipple.
+ * Other inputs to that (glPolygonMode, geometry/tess output primitive) are
+ * flagged at their own state-change sites.
+ */
+bool
+st_prepare_stipple_input_prim(struct st_context *st, enum mesa_prim mode)
+{
+   if (!st->emulate_polygon_stipple)
+      return false;
+
+   /* Record the unused value in the common case, so we don't flag
+    * NewStippleEmulate on every input primitive change.
+    */
+   if (!st->ctx->Polygon.StippleFlag)
+      mode = MESA_PRIM_COUNT;
+
+   if (mode == st->state.stipple_input_prim)
+      return false;
+
+   st->state.stipple_input_prim = mode;
+   ST_SET_STATES(st->ctx->NewDriverState, st->ctx->DriverFlags.NewStippleEmulate);
+
+   return true;
+}
+
+/**
+ * Multidraw paths may submit several different primitive modes.  Call this for
+ * each additional single-mode subset to update the input primitive and
+ * re-validate the emulated-stipple atoms if it changed.
+ */
+void
+st_validate_for_multidraw_mode(struct gl_context *ctx, enum mesa_prim mode)
+{
+   if (st_prepare_stipple_input_prim(ctx->st, mode)) {
+      /* Re-validate using NewStippleEmulate as the mask, so only the input-prim-
+       * dependent atoms (the FS variant and its stipple texture/sampler) can
+       * run. The full st_prepare_draw() validation already happened before this
+       * multidraw; we must not re-run anything else here.  In particular the
+       * draw_vertex_state path (vbo_save_draw.c) validated with
+       * ST_PIPELINE_RENDER_STATE_MASK_NO_VARRAYS and renders from a pre-built
+       * vertex state, so ST_NEW_VERTEX_ARRAYS may still be dirty -- running
+       * st_update_array() now would clobber that pre-built state.
+       */
+      st_validate_state(ctx->st, ctx->DriverFlags.NewStippleEmulate);
+   }
+}
+
 void
 st_prepare_draw(struct gl_context *ctx, const st_state_bitset state_mask)
 {
@@ -101,7 +151,27 @@ st_draw_gallium(struct gl_context *ctx,
 
    struct st_context *st = st_context(ctx);
 
+   ST_PIPELINE_RENDER_STATE_MASK(mask);
+   st_prepare_draw(ctx, mask);
+
    cso_draw_vbo(st->cso_context, info, drawid_offset, indirect, draws, num_draws);
+}
+
+static void
+st_draw_gallium_stipple(struct gl_context *ctx,
+                const struct pipe_draw_info *info,
+                unsigned drawid_offset,
+                const struct pipe_draw_indirect_info *indirect,
+                const struct pipe_draw_start_count_bias *draws,
+                unsigned num_draws)
+{
+   /* Flag emulated-polygon-stipple state for this primitive before validating.
+    * Callers that draw more than one primitive type at a time (multidraws) pass
+    * MESA_PRIM_COUNT and instead call st_validate_for_multidraw_mode() per
+    * single-mode run.
+    */
+   st_prepare_stipple_input_prim(ctx->st, info->mode);
+   st_draw_gallium(ctx, info, drawid_offset, indirect, draws, num_draws);
 }
 
 static void
@@ -116,6 +186,9 @@ st_draw_gallium_multimode(struct gl_context *ctx,
    unsigned i, first;
    struct cso_context *cso = st->cso_context;
 
+   ST_PIPELINE_RENDER_STATE_MASK(mask);
+   st_prepare_draw(ctx, mask);
+
    /* Find consecutive draws where mode doesn't vary. */
    for (i = 0, first = 0; i <= num_draws; i++) {
       if (i == num_draws || mode[i] != mode[first]) {
@@ -123,6 +196,23 @@ st_draw_gallium_multimode(struct gl_context *ctx,
          cso_draw_vbo(cso, info, 0, NULL, &draws[first], i - first);
          first = i;
       }
+   }
+}
+
+/* When doing polygon stipple emulation, just break multi-draws apart so we can
+ * handle the input primitive changes.  No need to get fancy, since this is very
+ * much a cold path.
+ */
+static void
+st_draw_gallium_multimode_stipple(struct gl_context *ctx,
+                          struct pipe_draw_info *info,
+                          const struct pipe_draw_start_count_bias *draws,
+                          const unsigned char *mode,
+                          unsigned num_draws)
+{
+   for (unsigned i = 0; i < num_draws; i++) {
+      info->mode = mode[i];
+      st_draw_gallium_stipple(ctx, info, i, NULL, &draws[i], 1);
    }
 }
 
@@ -160,8 +250,6 @@ st_indirect_draw_vbo(struct gl_context *ctx,
       return;
 
    assert(stride);
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
 
    memset(&indirect, 0, sizeof(indirect));
    util_draw_init_info(&info);
@@ -241,6 +329,9 @@ st_indirect_draw_vbo(struct gl_context *ctx,
 }
 
 
+/* Initial context setup for the DrawGallium* functions.  At runtime, use
+ * st_update_draw_functions instead.
+ */
 void
 st_init_draw_functions(struct pipe_screen *screen,
                        struct dd_function_table *functions)
@@ -249,6 +340,19 @@ st_init_draw_functions(struct pipe_screen *screen,
    functions->DrawGalliumMultiMode = st_draw_gallium_multimode;
 }
 
+void
+st_update_draw_functions(struct gl_context *ctx)
+{
+   struct st_context *st = st_context(ctx);
+
+   if (st->emulate_polygon_stipple && ctx->Polygon.StippleFlag) {
+      ctx->Driver.DrawGallium = st_draw_gallium_stipple;
+      ctx->Driver.DrawGalliumMultiMode = st_draw_gallium_multimode_stipple;
+   } else {
+      ctx->Driver.DrawGallium = st_draw_gallium;
+      ctx->Driver.DrawGalliumMultiMode = st_draw_gallium_multimode;
+   }
+}
 
 void
 st_destroy_draw(struct st_context *st)
@@ -374,6 +478,9 @@ st_hw_select_draw_gallium(struct gl_context *ctx,
    struct pipe_resource *releasebuf = NULL;
    enum mesa_prim old_mode = info->mode;
 
+   ST_PIPELINE_RENDER_STATE_MASK(mask);
+   st_prepare_draw(ctx, mask);
+
    if (st_draw_hw_select_prepare_common(ctx, &releasebuf) &&
        /* Removing "const" is fine because we restore the changed mode
         * at the end. */
@@ -396,6 +503,9 @@ st_hw_select_draw_gallium_multimode(struct gl_context *ctx,
 {
    struct st_context *st = st_context(ctx);
    struct pipe_resource *releasebuf = NULL;
+
+   ST_PIPELINE_RENDER_STATE_MASK(mask);
+   st_prepare_draw(ctx, mask);
 
    if (!st_draw_hw_select_prepare_common(ctx, &releasebuf))
       goto out;

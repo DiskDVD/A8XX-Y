@@ -13,7 +13,6 @@ issues:
         'blorp': 'blorp'
         'ci': 'CI'
         'clc': 'OpenCL'
-        'clover': 'clover'
         'crocus': 'crocus'
         'd3d10umd': 'd3d10umd'
         'd3d12': 'd3d12'
@@ -34,8 +33,7 @@ issues:
         'glvnd': 'GLVND'
         'glx': 'GLX'
         'hasvk': 'hasvk'
-        'i915': 'i915'
-        'i965': 'i965'
+        'i915': 'i915g'
         'intel/compiler': 'intel-compiler'
         'intel/brw': 'intel-brw'
         'intel/elk': 'intel-elk'
@@ -51,7 +49,6 @@ issues:
         'meson': 'meson'
         'microsoft/compiler': 'd3d12'
         'nak': 'NAK'
-        'nine': 'nine'
         'nir': 'NIR'
         'nir2dxil': 'd3d12'
         'nouveau': 'nouveau'
@@ -65,8 +62,6 @@ issues:
         'pan/midgard': 'panfrost'
         'poly': 'poly'
         'pvr': 'powervr'
-        'r100': 'r100'
-        'r200': 'r200'
         'r300': 'r300'
         'r600': 'r600'
         'radeonsi': 'radeonsi'
@@ -76,7 +71,6 @@ issues:
         'rusticl': 'Rusticl'
         'softpipe': 'softpipe'
         'spirv': 'SPIR-V'
-        'swr': 'swr'
         'swrast': 'swrast'
         'teflon': 'teflon'
         'tegra': 'tegra'
@@ -86,8 +80,6 @@ issues:
         'v3d': 'v3d'
         'vaapi': 'VA-API'
         'vc4': 'vc4'
-        'vdpau': 'VDPAU'
-        'vieux': 'vieux'
         'virgl': 'virgl'
         'vmwgfx': 'vmwgfx'
         'zink': 'zink'
@@ -102,12 +94,9 @@ issues:
         'haiku': 'haiku'
         'regression': 'regression'
 
-        'i915_dri.so': 'i915'
-        'i965_dri.so': 'i965'
+        'i915_dri.so': 'i915g'
         'iris_dri.so': 'iris'
         'nouveau_dri.so': 'nouveau'
-        'nouveau_vieux_dri.so': 'vieux'
-        'r200_dri.so': 'r200'
         'r300_dri.so': 'r300'
         'r600_dri.so': 'r600'
         'radeonsi_dri.so': 'radeonsi'
@@ -219,31 +208,25 @@ merge_requests:
         '^src/gallium/drivers/radeonsi': ['radeonsi']
         '^src/gallium/drivers/softpipe': ['softpipe']
         '^src/gallium/drivers/svga/': ['svga']
-        '^src/gallium/drivers/swr/': ['swr']
         '^src/gallium/drivers/tegra/': ['tegra']
         '^src/gallium/drivers/v3d/': ['v3d']
         '^src/gallium/drivers/vc4/': ['vc4']
         '^src/gallium/drivers/virgl/': ['virgl']
         '^src/gallium/drivers/zink/': ['zink']
-        '^src/gallium/frontends/clover/': ['clover']
         '^src/gallium/frontends/d3d10umd/': ['d3d10umd']
         '^src/gallium/frontends/dri/': ['gallium']
         '^src/gallium/frontends/glx/': ['GLX']
         '^src/gallium/frontends/hgl/': ['haiku']
         '^src/gallium/frontends/lavapipe/': ['lavapipe']
-        '^src/gallium/frontends/nine/': ['nine']
-        '^src/gallium/frontends/omx/': ['omx']
         '^src/gallium/frontends/rusticl/': ['Rusticl']
         '^src/gallium/frontends/teflon/': ['teflon']
         '^src/gallium/frontends/va/': ['VA-API']
-        '^src/gallium/frontends/vdpau/': ['VDPAU']
         '^src/gallium/frontends/wgl/': ['wgl']
         '^src/gallium/frontends/mediafoundation/': ['mediafoundation']
         # '^src/gallium/frontends/xa/': ['']
         '^src/gallium/include/': ['gallium']
         '^src/gallium/targets/': ['gallium']
         '^src/gallium/targets/d3d10umd': ['d3d10umd']
-        '^src/gallium/targets/opencl/': ['clover']
         '^src/gallium/targets/rusticl/': ['Rusticl']
         '^src/gallium/targets/mediafoundation/': ['mediafoundation']
         '^src/gallium/tests/': ['gallium']
@@ -289,12 +272,6 @@ merge_requests:
         '^src/intel/vulkan_hasvk/': ['hasvk']
         '^src/kosmickrisp/': ['KosmicKrisp']
         '^src/loader/': ['loader']
-        '^src/mesa/drivers/dri/i915/': ['i915']
-        '^src/mesa/drivers/dri/i965/': ['i965']
-        '^src/mesa/drivers/dri/nouveau/': ['vieux']
-        '^src/mesa/drivers/dri/r200/': ['r200']
-        '^src/mesa/drivers/dri/radeon/': ['radeon']
-        '^src/mesa/drivers/dri/swrast/': ['swrast']
         '^src/mesa/main/': ['mesa']
         '^src/mesa/state_tracker/.*glsl.*': ['GLSL']
         '^src/mesa/state_tracker/.*tgsi.*': ['TGSI']

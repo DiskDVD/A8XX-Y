@@ -2032,6 +2032,7 @@ agx_init_screen_caps(struct pipe_screen *pscreen)
    caps->query_memory_info = true;
    caps->primitive_restart = true;
    caps->primitive_restart_fixed_index = true;
+   caps->polygon_stipple = true;
    caps->anisotropic_filter = true;
    caps->native_fence_fd = true;
    caps->texture_barrier = true;

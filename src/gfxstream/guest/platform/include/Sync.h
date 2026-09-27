@@ -5,8 +5,9 @@
 
 #pragma once
 
-#include <cstdint>
 #include <stddef.h>
+
+#include <cstdint>
 
 namespace gfxstream {
 

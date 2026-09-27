@@ -131,6 +131,14 @@ PowerVR developers and users hang out on IRC at ``#powervr`` on OFTC. Note
 that registering and authenticating with ``NickServ`` is required to prevent
 spam. `Join the chat. <https://webchat.oftc.net/?channels=powervr>`_
 
+Driver Internals
+----------------
+
+.. toctree::
+   :maxdepth: 1
+
+   powervr/csbgen
+
 Hardware glossary
 -----------------
 

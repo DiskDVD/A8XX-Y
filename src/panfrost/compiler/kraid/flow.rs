@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use crate::bitview::*;
+use mesa_util::bitview::*;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]

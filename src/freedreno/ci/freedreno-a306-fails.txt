@@ -153,8 +153,6 @@ spec@!opengl 1.1@texwrap 1d proj bordercolor,Fail
 spec@!opengl 1.1@texwrap 1d proj bordercolor@GL_RGBA8- projected- border color only,Fail
 spec@!opengl 1.4@copy-pixels,Fail
 spec@!opengl 1.4@gl-1.4-polygon-offset,Fail
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 3.0@bindfragdata-link-error,Fail
 spec@!opengl 3.0@bindfragdata-nonexistent-variable,Fail
 spec@!opengl 3.0@clearbuffer-mixed-format,Fail
@@ -745,3 +743,8 @@ spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_xyuv,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_y410,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yuv420,Fail
 spec@ext_image_dma_buf_import@ext_image_dma_buf_import-sample_yvu420,Fail
+
+# This test was hanging prior to mesa!44653, now it's failing instead.
+spec@!opengl es 3.0@gles-3.0-transform-feedback-uniform-buffer-object,Fail
+
+spec@arb_point_sprite@arb_point_sprite-interactions 1.0,Fail

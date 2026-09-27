@@ -329,6 +329,13 @@ struct radv_device {
       struct u_trace_context *context;
       simple_mtx_t lock;
    } utrace;
+
+   struct {
+      simple_mtx_t mtx;
+      bool fault_addr_reported;
+      bool shader_abort_reported;
+      bool device_lost_reported;
+   } fault;
 };
 
 VK_DEFINE_HANDLE_CASTS(radv_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)

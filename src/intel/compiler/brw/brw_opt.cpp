@@ -85,6 +85,16 @@ brw_optimize(brw_shader &s)
    if (OPT(brw_opt_combine_convergent_txf))
       OPT(brw_opt_copy_propagation_defs);
 
+   /* Call this before brw_opt_combine_constants because it can eliminate some
+    * cases where constants would need to be combined.
+    *
+    * Also call it before brw_lower_load_payload because that pass (and the
+    * optimizations that follow) cause there to be orders of magnitude fewer
+    * defs in the shader for brw_opt_mac to use. This results in it making
+    * quite a bit less progress.
+    */
+   OPT(brw_opt_mac);
+
    if (OPT(brw_lower_load_reg)) {
       OPT(brw_opt_copy_propagation);
       OPT(brw_opt_register_coalesce);
@@ -128,7 +138,7 @@ brw_optimize(brw_shader &s)
    if (!OPT(brw_opt_copy_propagation_defs))
       OPT(brw_opt_copy_propagation);
 
-   if (s.devinfo->ver >= 30)
+   if (s.devinfo->ver >= 30 && !s.key->use_efficient_64bit)
       OPT(brw_opt_send_to_send_gather);
 
    OPT(brw_opt_split_sends);

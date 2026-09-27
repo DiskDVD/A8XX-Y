@@ -246,7 +246,10 @@ VKAPI_ATTR uint64_t VKAPI_CALL
 radv_GetBufferOpaqueCaptureAddress(VkDevice device, const VkBufferDeviceAddressInfo *pInfo)
 {
    VK_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
-   return buffer->vk.device_address;
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
+      return buffer->vk.device_address;
+   else
+      return 0;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -255,7 +258,10 @@ radv_GetBufferOpaqueCaptureDescriptorDataEXT(VkDevice device, const VkBufferCapt
 {
    VK_FROM_HANDLE(radv_buffer, buffer, pInfo->buffer);
 
-   *((uint64_t *)pData) = buffer->vk.device_address;
+   if (buffer->vk.create_flags & VK_BUFFER_CREATE_SPARSE_BINDING_BIT)
+      memcpy(pData, &buffer->vk.device_address, sizeof(buffer->vk.device_address));
+   else
+      memset(pData, 0, sizeof(buffer->vk.device_address));
    return VK_SUCCESS;
 }
 

@@ -89,7 +89,7 @@ isl_get_image_alignment(const struct isl_surf *surf)
    }
 
    if (GFX_VERx10 >= 125) {
-      if (isl_tiling_is_64(surf->tiling)) {
+      if (isl_tiling_is_standard(surf->tiling)) {
          /* The hardware ignores the alignment values. Anyway, the surface's
           * true alignment is likely outside the enum range of HALIGN* and
           * VALIGN*.
@@ -110,7 +110,7 @@ isl_get_image_alignment(const struct isl_surf *surf)
                              surf->image_alignment_el.d);
       }
    } else if (GFX_VER >= 9) {
-      if (isl_tiling_is_std_y(surf->tiling) ||
+      if (isl_tiling_is_standard(surf->tiling) ||
           surf->dim_layout == ISL_DIM_LAYOUT_GFX9_1D) {
          /* The hardware ignores the alignment values. Anyway, the surface's
           * true alignment is likely outside the enum range of HALIGN* and

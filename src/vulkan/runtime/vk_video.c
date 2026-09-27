@@ -2084,7 +2084,6 @@ vk_video_encode_h264_sps(const StdVideoH264SequenceParameterSet *sps,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 }
 
 void
@@ -2128,7 +2127,6 @@ vk_video_encode_h264_pps(const StdVideoH264PictureParameterSet *pps,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 }
 
 static void
@@ -2223,7 +2221,6 @@ vk_video_encode_h265_vps(const StdVideoH265VideoParameterSet *vps,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 }
 
 static void
@@ -2419,7 +2416,6 @@ vk_video_encode_h265_sps(const StdVideoH265SequenceParameterSet *sps,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 }
 
 void
@@ -2494,7 +2490,6 @@ vk_video_encode_h265_pps(const StdVideoH265PictureParameterSet *pps,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 }
 
 void
@@ -2674,7 +2669,6 @@ vk_video_encode_h264_slice_header(const StdVideoEncodeH264PictureInfo *pic_info,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += bits_written;
-   vl_bitstream_encoder_free(&enc);
 
    return;
 }
@@ -2980,7 +2974,6 @@ finish:
    vl_bitstream_rbsp_trailing(&enc);
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 
    return;
 }
@@ -3244,13 +3237,14 @@ vk_video_encode_av1_seq_hdr(const struct vk_video_session_parameters *params,
    vk_video_encode_av1_code_leb128(obu_size_bin, 2, obu_size);
 
    /* update obu_size */
-   for (int i = 0; i < sizeof(obu_size_bin); i++) {
-      *(size_offset++) = obu_size_bin[i];
+   if (data_ptr && !enc.overflow) {
+      for (int i = 0; i < sizeof(obu_size_bin); i++) {
+         *(size_offset++) = obu_size_bin[i];
+      }
    }
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 
    return VK_SUCCESS;
 }
@@ -3310,6 +3304,7 @@ vk_video_encode_av1_frame_hdr(const struct vk_video_session_parameters *params,
                               const StdVideoEncodeAV1PictureInfo *pic_info,
                               uint32_t base_q_idx,
                               bool reference_select, bool restoration_support,
+                              bool generate_obu_extension,
                               uint32_t frame_width, uint32_t frame_height,
                               size_t size_limit,
                               size_t *data_size_ptr,
@@ -3319,9 +3314,14 @@ vk_video_encode_av1_frame_hdr(const struct vk_video_session_parameters *params,
    const StdVideoAV1SequenceHeader *seq = &params->av1_enc.seq_hdr.base;
    const StdVideoAV1ColorConfig *color = &params->av1_enc.seq_hdr.color_config;
    const StdVideoAV1Quantization *quant = pic_info->pQuantization;
+   const StdVideoEncodeAV1ExtensionHeader *ext =
+      generate_obu_extension ? pic_info->pExtensionHeader : NULL;
    uint8_t *size_offset;
    uint8_t obu_size_bin[2];
    const int num_obu_size_bytes = 2;
+   uint32_t obu_extension_flag = generate_obu_extension;
+   uint32_t temporal_id = ext ? ext->temporal_id : 0;
+   uint32_t spatial_id = ext ? ext->spatial_id : 0;
 
    bool frame_is_intra = pic_info->frame_type == STD_VIDEO_AV1_FRAME_TYPE_KEY ||
                          pic_info->frame_type == STD_VIDEO_AV1_FRAME_TYPE_INTRA_ONLY;
@@ -3357,7 +3357,7 @@ vk_video_encode_av1_frame_hdr(const struct vk_video_session_parameters *params,
    /* AV1 does not need start code prevention */
    enc.prevent_start_code = false;
 
-   emit_obu_av1_header(&enc, OBU_FRAME_HEADER, 0, 0, 0);
+   emit_obu_av1_header(&enc, OBU_FRAME_HEADER, obu_extension_flag, temporal_id, spatial_id);
 
    /* obu_size, use two bytes for header, the size will be written in afterwards */
    size_offset = vl_bitstream_get_byte_offset(&enc);
@@ -3872,7 +3872,6 @@ vk_video_encode_av1_frame_hdr(const struct vk_video_session_parameters *params,
 
    vl_bitstream_flush(&enc);
    *data_size_ptr += vl_bitstream_get_byte_count(&enc);
-   vl_bitstream_encoder_free(&enc);
 
    return VK_SUCCESS;
 }

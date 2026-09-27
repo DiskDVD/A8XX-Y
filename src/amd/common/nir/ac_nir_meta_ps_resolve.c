@@ -26,7 +26,7 @@ build_tex_load_ms(nir_builder *b, unsigned num_components, unsigned bit_size,
 
 nir_shader *
 ac_create_resolve_ps(const struct ac_ps_resolve_options *options,
-                     const union ac_ps_resolve_key *key)
+                     const ac_ps_resolve_key *key)
 {
    if (options->print_key) {
       fprintf(stderr, "Internal shader: resolve_ps\n");

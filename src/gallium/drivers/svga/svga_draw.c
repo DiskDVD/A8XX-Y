@@ -375,18 +375,6 @@ svga_validate_sampler_resources(struct svga_context *svga,
          }
       }
 
-      if (shader == MESA_SHADER_FRAGMENT &&
-          svga->curr.rast->templ.poly_stipple_enable) {
-         const unsigned unit =
-            svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_unit;
-         struct svga_pipe_sampler_view *sv =
-            svga->polygon_stipple.sampler_view;
-
-         assert(sv);
-         surfaces[unit] = svga_texture(sv->base.texture)->handle;
-         count = MAX2(count, unit+1);
-      }
-
       /* rebind the shader resources if needed */
       if (svga->rebind.flags.texture_samplers) {
          for (i = 0; i < count; i++) {

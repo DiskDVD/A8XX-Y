@@ -1,14 +1,14 @@
 // Copyright © 2023 Collabora, Ltd.
 // SPDX-License-Identifier: MIT
 
-extern crate bitview;
+extern crate mesa_util;
 extern crate nvidia_headers;
 
 use crate::ir::{
     MeshShaderInfo, ShaderInfo, ShaderIoInfo, ShaderModel, ShaderModelInfo,
     ShaderStageInfo, VtgIoInfo,
 };
-use bitview::{
+use mesa_util::bitview::{
     BitMutView, BitMutViewable, BitView, BitViewable, SetBit, SetField,
 };
 use nak_bindings::*;

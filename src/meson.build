@@ -95,7 +95,7 @@ endif
 if with_gallium_freedreno or with_freedreno_vk or with_tools.contains('freedreno')
   subdir('freedreno')
 endif
-if with_imagination_vk or with_tools.contains('imagination')
+if with_imagination_vk or with_tools.contains('imagination') or get_option('html-docs').allowed()
   subdir('imagination')
 endif
 if with_any_intel

@@ -560,6 +560,7 @@ svga_init_screen_caps(struct svga_screen *svgascreen)
 
    caps->max_texture_lod_bias = 15.0;
    caps->query_pipeline_statistics = sws->have_vgpu10;
+   caps->texture_query_samples = sws->have_sm4_1;
 }
 
 static void

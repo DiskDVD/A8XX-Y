@@ -118,8 +118,6 @@ struct svga_shader_emitter
    int num_arl_consts;
    int current_arl;
 
-   unsigned pstipple_sampler_unit;
-
    int num_samplers;
    uint8_t sampler_target[PIPE_MAX_SAMPLERS];
 };

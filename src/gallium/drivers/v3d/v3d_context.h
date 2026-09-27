@@ -861,6 +861,8 @@ const uint8_t *v3d_get_format_swizzle(const struct v3d_device_info *devinfo,
                                       enum pipe_format f);
 bool v3d_format_supports_tlb_resolve_and_blend(const struct v3d_device_info *devinfo,
                                                enum pipe_format f);
+bool v3d_format_supports_filtering(const struct v3d_device_info *devinfo,
+                                   enum pipe_format f);
 bool v3d_format_needs_tlb_rb_swap(enum pipe_format format);
 void v3d_format_get_internal_type_and_bpp(const struct v3d_device_info *devinfo,
                                           enum pipe_format format,

@@ -629,6 +629,14 @@ ethosu_ml_subgraph_create(struct pipe_ml_device *pdevice,
    free(subgraph->cmd0_valid);
    free(subgraph->cmd1_valid);
 
+   if (DBG_ENABLED(ETHOSU_DBG_DUMP_BOS)) {
+      uint64_t cmdstream_size = (subgraph->cursor - subgraph->cmdstream) *
+      sizeof(*subgraph->cursor);
+
+      ethosu_dump_buffer((uint8_t *)subgraph->cmdstream, "cmdstream", 0, 0, 0,
+                         cmdstream_size);
+   }
+
    return &subgraph->base;
 }
 
@@ -643,6 +651,7 @@ ethosu_ml_subgraph_serialize(struct pipe_ml_device *pdevice,
       struct ethosu_tensor) * NUM_TENSOR_FIELDS * sizeof(uint32_t);
    uint64_t cmdstream_size = (subgraph->cursor - subgraph->cmdstream) *
       sizeof(*subgraph->cursor);
+
    uint64_t coefs_size = subgraph->coefs_used * sizeof(*subgraph->coefs);
    uint64_t io_size = subgraph->io_used;
    uint64_t total_size = header_size + cmdstream_size + coefs_size +
@@ -690,10 +699,6 @@ prepare_for_submission(struct ethosu_subgraph *subgraph,
    struct ethosu_screen *screen = subgraph->screen;
    uint64_t cmdstream_size = (subgraph->cursor - subgraph->cmdstream) *
       sizeof(*subgraph->cursor);
-
-   if (DBG_ENABLED(ETHOSU_DBG_DUMP_BOS))
-      ethosu_dump_buffer((uint8_t *)subgraph->cmdstream, "cmdstream", 0, 0, 0,
-                         cmdstream_size);
 
    if (cmdstream_size) {
       struct drm_ethosu_cmdstream_bo_create cmd_bo_create = {

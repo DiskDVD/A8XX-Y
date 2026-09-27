@@ -28,6 +28,21 @@ impl<'a> IntoIterator for &'a SmallConstantTable {
     }
 }
 
+impl SmallConstantTable {
+    pub fn find_imm8(&self, mut filter: impl FnMut(u8) -> bool) -> Option<Src> {
+        for small_const in self {
+            for byte_idx in 0..4 {
+                let imm8 = (small_const.imm32 >> (byte_idx * 8)) as u8;
+                if filter(imm8) {
+                    let src = Src::from(FAURef::from(small_const));
+                    return Some(src.byte(byte_idx));
+                }
+            }
+        }
+        None
+    }
+}
+
 pub struct FAUModel {
     user_fau_page_words: u16,
     pub small_constants: SmallConstantTable,
@@ -38,6 +53,9 @@ pub struct FAUModel {
     /// they need to be "aligned" to the same 64-bit address.
     /// This limit has been lifted from v14
     pub single_fau_ram_index: bool,
+
+    /// From v12 k0 does not consume any FAU bandwidth.
+    pub is_zero_free: bool,
 }
 
 impl FAUModel {
@@ -55,7 +73,7 @@ impl FAUModel {
 pub trait Model {
     fn arch(&self) -> u8;
 
-    fn pan_model(&self) -> &PanModel;
+    fn pan_model(&self) -> Option<&PanModel>;
 
     fn fau(&self) -> &FAUModel;
 
@@ -115,7 +133,7 @@ pub trait Model {
 
 struct ValhallModel {
     arch: u8,
-    pan_model: std::ptr::NonNull<PanModel>,
+    pan_model: *const PanModel,
     fau: FAUModel,
 }
 
@@ -124,7 +142,7 @@ unsafe impl Send for ValhallModel {}
 unsafe impl Sync for ValhallModel {}
 
 impl ValhallModel {
-    fn new(arch: u8, pan_model: std::ptr::NonNull<PanModel>) -> ValhallModel {
+    fn new(arch: u8, pan_model: *const PanModel) -> ValhallModel {
         use crate::isa::{SmallConstantTable, v9};
         let sc_table = SmallConstantTable(v9::SmallConstantT::collect(arch));
         let fau = FAUModel {
@@ -134,6 +152,7 @@ impl ValhallModel {
                 ValhallModel::special_fau(special, arch)
             }),
             single_fau_ram_index: arch < 14,
+            is_zero_free: arch >= 12,
         };
         ValhallModel {
             arch,
@@ -199,7 +218,7 @@ impl Model for ValhallModel {
         self.arch
     }
 
-    fn pan_model(&self) -> &PanModel {
+    fn pan_model(&self) -> Option<&PanModel> {
         unsafe { self.pan_model.as_ref() }
     }
 
@@ -400,10 +419,7 @@ pub fn model_for_gpu_id(
 ) -> Result<Box<dyn Model + Sync + Send>, &'static str> {
     // SAFETY: pan_arch() just translates one integer to another
     let arch = u8::try_from(unsafe { pan_arch(gpu_id) }).unwrap();
-    let pan_model = unsafe {
-        let model = pan_get_model(gpu_id, gpu_variant) as *mut _;
-        std::ptr::NonNull::new(model).ok_or("Invalid GPU ID or variant")?
-    };
+    let pan_model = unsafe { pan_get_model(gpu_id, gpu_variant) };
 
     if arch >= 15 {
         Err("Kraid does not yet support this GPU")

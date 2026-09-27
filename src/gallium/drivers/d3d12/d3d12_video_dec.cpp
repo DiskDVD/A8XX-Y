@@ -1215,9 +1215,16 @@ d3d12_video_decoder_reconfigure_dpb(struct d3d12_video_decoder *pD3D12Dec,
       pD3D12Dec->m_decoderDesc = decoderDesc;
    }
 
+   // Grow-only decoder heap: only (re)create the heap when the requested resolution exceeds the
+   // current heap, mirroring the grow-only policy used below for MaxDecodePictureBufferCount.
+   // DecodeFrame requires every referenced decoder heap to be the same object as the current decode
+   // heap unless the driver reports
+   // D3D12_VIDEO_DECODE_CONFIGURATION_FLAG_ALLOW_RESOLUTION_CHANGE_ON_NON_KEY_FRAME. Recreating a
+   // smaller heap on a mid-stream downscale would no longer match retained references in the DPB, so
+   // reuse the larger heap and let the smaller frame decode into it.
    if (!pD3D12Dec->m_spDPBManager || !pD3D12Dec->m_spVideoDecoderHeap ||
-       pD3D12Dec->m_decodeFormat != outputResourceDesc.Format || pD3D12Dec->m_decoderHeapDesc.DecodeWidth != width ||
-       pD3D12Dec->m_decoderHeapDesc.DecodeHeight != height ||
+       pD3D12Dec->m_decodeFormat != outputResourceDesc.Format || pD3D12Dec->m_decoderHeapDesc.DecodeWidth < width ||
+       pD3D12Dec->m_decoderHeapDesc.DecodeHeight < height ||
        pD3D12Dec->m_decoderHeapDesc.MaxDecodePictureBufferCount < maxDPB) {
       // Detect the combination of AOT/ReferenceOnly to configure the DPB manager
       uint16_t referenceCount = (conversionArguments.Enable) ? (uint16_t) conversionArguments.ReferenceFrameCount +

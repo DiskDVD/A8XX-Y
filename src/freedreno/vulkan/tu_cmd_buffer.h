@@ -294,6 +294,13 @@ struct tu_vs_params {
    uint32_t vertex_offset;
    uint32_t first_instance;
    uint32_t draw_id;
+   uint32_t view_index;
+   /* Whether the last emitted params were for a SW multiview replay. Both the
+    * size of the uploaded const and whether VFD registers are part of the draw
+    * state depend on it, so it has to invalidate the cache below.
+    */
+   bool sw_multiview;
+   bool skip_vfd;
    bool empty;
 };
 
@@ -644,6 +651,13 @@ struct tu_cmd_state
    struct tu_vs_params last_vs_params;
    bool last_draw_indexed;
 
+   /* Set by tu_sw_multiview_draw() while it replays a draw for a single view
+    * on devices without HW multiview. Outside of it SW multiview is never
+    * active, so ordinary draws are unaffected.
+    */
+   bool sw_multiview;
+   uint32_t sw_view_index;
+
    struct tu_tess_params tess_params;
 
    uint64_t descriptor_buffer_iova[MAX_SETS];
@@ -776,6 +790,17 @@ struct tu_cmd_buffer
 
    bool prev_fsr_is_null;
 };
+
+struct vk_device_dispatch_table;
+
+/* Replaces the draw entrypoints with wrappers emulating multiview by replaying
+ * each draw once per view. Only for devices without HW multiview.
+ */
+void
+tu_install_sw_multiview_draw_entrypoints(
+   struct vk_device_dispatch_table *dispatch_table,
+   const struct fd_dev_info *info);
+
 VK_DEFINE_HANDLE_CASTS(tu_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
 

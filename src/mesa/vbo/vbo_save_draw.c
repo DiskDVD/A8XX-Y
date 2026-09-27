@@ -281,6 +281,7 @@ vbo_save_playback_vertex_list_gallium(struct gl_context *ctx,
    /* Set edge flags. */
    _mesa_update_edgeflag_state_explicit(ctx, enabled & VERT_BIT_EDGEFLAG);
 
+   st_prepare_stipple_input_prim(ctx->st, node->modes ? node->modes[0] : node->mode);
    ST_PIPELINE_RENDER_STATE_MASK_NO_VARRAYS(mask);
    st_prepare_draw(ctx, mask);
 
@@ -308,6 +309,7 @@ vbo_save_playback_vertex_list_gallium(struct gl_context *ctx,
                   p_atomic_inc(&state->reference.count);
 
                info.mode = mode[first];
+               st_validate_for_multidraw_mode(ctx, info.mode);
                pipe->draw_vertex_state(pipe, state, velem_mask, info, &draws[first],
                                        current_num_draws);
                first = i;
@@ -377,9 +379,6 @@ vbo_save_playback_vertex_list(struct gl_context *ctx, void *data, bool copy_to_c
    assert(ctx->NewState == 0);
 
    struct pipe_draw_info *info = (struct pipe_draw_info *) &node->cold->info;
-
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
 
    if (node->modes) {
       ctx->Driver.DrawGalliumMultiMode(ctx, info,

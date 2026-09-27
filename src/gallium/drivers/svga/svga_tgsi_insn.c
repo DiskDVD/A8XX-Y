@@ -11,7 +11,6 @@
 #include "tgsi/tgsi_parse.h"
 #include "util/u_memory.h"
 #include "util/u_math.h"
-#include "util/u_pstipple.h"
 
 #include "svga_tgsi_emit.h"
 #include "svga_context.h"
@@ -3337,25 +3336,6 @@ svga_shader_emit_instructions(struct svga_shader_emitter *emit,
    bool helpers_emitted = false;
    unsigned line_nr = 0;
 
-   if (emit->unit == MESA_SHADER_FRAGMENT && emit->key.fs.pstipple) {
-      unsigned unit;
-
-      new_tokens = util_pstipple_create_fragment_shader(tokens, &unit, 0,
-                                                        TGSI_FILE_INPUT);
-
-      if (new_tokens) {
-         /* Setup texture state for stipple */
-         emit->sampler_target[unit] = TGSI_TEXTURE_2D;
-         emit->key.tex[unit].swizzle_r = TGSI_SWIZZLE_X;
-         emit->key.tex[unit].swizzle_g = TGSI_SWIZZLE_Y;
-         emit->key.tex[unit].swizzle_b = TGSI_SWIZZLE_Z;
-         emit->key.tex[unit].swizzle_a = TGSI_SWIZZLE_W;
-
-         emit->pstipple_sampler_unit = unit;
-
-         tokens = new_tokens;
-      }
-   }
 
    tgsi_parse_init(&parse, tokens);
    emit->internal_imm_count = 0;

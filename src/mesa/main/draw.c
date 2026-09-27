@@ -1172,9 +1172,6 @@ _mesa_draw_arrays(struct gl_context *ctx, GLenum mode, GLint start,
    draw.start = start;
    draw.count = count;
 
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
-
    ctx->Driver.DrawGallium(ctx, &info, ctx->DrawID, NULL, &draw, 1);
 
    if (MESA_DEBUG_FLAGS & DEBUG_ALWAYS_FLUSH) {
@@ -1478,9 +1475,6 @@ _mesa_MultiDrawArrays(GLenum mode, const GLint *first,
       draw[i].count = count[i];
    }
 
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
-
    ctx->Driver.DrawGallium(ctx, &info, 0, NULL, draw, primcount);
 
    if (MESA_DEBUG_FLAGS & DEBUG_ALWAYS_FLUSH)
@@ -1611,9 +1605,6 @@ _mesa_validated_drawrangeelements(struct gl_context *ctx,
       }
    }
 
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
-
    /* Fast path for a very common DrawElements case:
     * - there are no user indices here (always true with glthread)
     * - DrawGallium is st_draw_gallium (regular render mode, almost always
@@ -1623,41 +1614,54 @@ _mesa_validated_drawrangeelements(struct gl_context *ctx,
     *   vertex formats are also supported by the driver)
     * - DrawID is 0 (true if glthread isn't unrolling an indirect multi draw,
     *   which is almost always true)
+    *
+    * This bypasses ctx->Driver.DrawGallium, so we must prepare here.
+    * All other paths call the hook, which prepares internally.  The
+    * cso_context::draw_vbo test has to be done after st_prepare_draw(),
+    * because that's what switches it between tc_draw_vbo and u_vbuf_draw_vbo.
     */
    struct st_context *st = st_context(ctx);
    if (index_bo && ctx->Driver.DrawGallium == st_draw_gallium &&
-       st->cso_context->draw_vbo == tc_draw_vbo && ctx->DrawID == 0) {
-      assert(!st->draw_needs_minmax_index);
-      struct pipe_resource *index_buffer = index_bo->buffer;
-      struct tc_draw_single *draw =
-         tc_add_draw_single_call(st->pipe, index_buffer);
-      bool primitive_restart = ctx->Array._PrimitiveRestart[index_size_shift];
+       ctx->DrawID == 0) {
+      st_prepare_stipple_input_prim(ctx->st, mode);
+      ST_PIPELINE_RENDER_STATE_MASK(mask);
+      st_prepare_draw(ctx, mask);
 
-      /* This must be set exactly like u_threaded_context sets it, not like
-       * it would be set for draw_vbo.
-       */
-      draw->info.mode = mode;
-      draw->info.index_size = 1 << index_size_shift;
-      /* Packed section begin. */
-      draw->info.primitive_restart = primitive_restart;
-      draw->info.has_user_indices = false;
-      draw->info.index_bounds_valid = false;
-      draw->info.increment_draw_id = false;
-      draw->info.index_bias_varies = false;
-      draw->info.was_line_loop = false;
-      draw->info._pad = 0;
-      /* Packed section end. */
-      draw->info.start_instance = baseInstance;
-      draw->info.instance_count = numInstances;
-      draw->info.restart_index =
-         primitive_restart ? ctx->Array._RestartIndex[index_size_shift] : 0;
-      draw->info.index.resource = index_buffer;
+      if (st->cso_context->draw_vbo == tc_draw_vbo) {
+         assert(!st->draw_needs_minmax_index);
+         struct pipe_resource *index_buffer = index_bo->buffer;
+         struct tc_draw_single *draw =
+            tc_add_draw_single_call(st->pipe, index_buffer);
+         bool primitive_restart = ctx->Array._PrimitiveRestart[index_size_shift];
 
-      /* u_threaded_context stores start/count in min/max_index for single draws. */
-      draw->info.min_index = (uintptr_t)indices >> index_size_shift;
-      draw->info.max_index = count;
-      draw->index_bias = basevertex;
-      return;
+         /* This must be set exactly like u_threaded_context sets it, not like
+          * it would be set for draw_vbo.
+          */
+         draw->info.mode = mode;
+         draw->info.index_size = 1 << index_size_shift;
+         /* Packed section begin. */
+         draw->info.primitive_restart = primitive_restart;
+         draw->info.has_user_indices = false;
+         draw->info.index_bounds_valid = false;
+         draw->info.increment_draw_id = false;
+         draw->info.index_bias_varies = false;
+         draw->info.was_line_loop = false;
+         draw->info._pad = 0;
+         /* Packed section end. */
+         draw->info.start_instance = baseInstance;
+         draw->info.instance_count = numInstances;
+         draw->info.restart_index =
+            primitive_restart ? ctx->Array._RestartIndex[index_size_shift] : 0;
+         draw->info.index.resource = index_buffer;
+
+         /* u_threaded_context stores start/count in min/max_index for single
+          * draws.
+          */
+         draw->info.min_index = (uintptr_t)indices >> index_size_shift;
+         draw->info.max_index = count;
+         draw->index_bias = basevertex;
+         return;
+      }
    }
 
    struct pipe_draw_info info;
@@ -2098,8 +2102,6 @@ _mesa_validated_multidrawelements(struct gl_context *ctx,
          }
       }
 
-      ST_PIPELINE_RENDER_STATE_MASK(mask);
-      st_prepare_draw(ctx, mask);
       if (!validate_index_bounds(ctx, &info, draw, primcount))
          return;
 
@@ -2108,9 +2110,6 @@ _mesa_validated_multidrawelements(struct gl_context *ctx,
       /* draw[i].start would overflow. Draw one at a time. */
       assert(info.has_user_indices);
       info.increment_draw_id = false;
-
-      ST_PIPELINE_RENDER_STATE_MASK(mask);
-      st_prepare_draw(ctx, mask);
 
       for (int i = 0; i < primcount; i++) {
          struct pipe_draw_start_count_bias draw;
@@ -2272,9 +2271,6 @@ _mesa_DrawTransformFeedbackStreamInstanced(GLenum mode, GLuint name,
        !_mesa_validate_DrawTransformFeedback(ctx, mode, obj, stream,
                                              primcount))
       return;
-
-   ST_PIPELINE_RENDER_STATE_MASK(mask);
-   st_prepare_draw(ctx, mask);
 
    struct pipe_draw_indirect_info indirect;
    memset(&indirect, 0, sizeof(indirect));
@@ -2440,9 +2436,6 @@ _mesa_MultiDrawArraysIndirect(GLenum mode, const GLvoid *indirect,
       info.index_bias_varies = false;
       /* Packed section end. */
 
-      ST_PIPELINE_RENDER_STATE_MASK(mask);
-      st_prepare_draw(ctx, mask);
-
       const uint8_t *ptr = (const uint8_t *) indirect;
       for (unsigned i = 0; i < primcount; i++) {
          DrawArraysIndirectCommand *cmd = (DrawArraysIndirectCommand *) ptr;
@@ -2542,9 +2535,6 @@ _mesa_MultiDrawElementsIndirect(GLenum mode, GLenum type,
       /* No index buffer storage allocated - nothing to do. */
       if (!info.index.resource)
          return;
-
-      ST_PIPELINE_RENDER_STATE_MASK(mask);
-      st_prepare_draw(ctx, mask);
 
       const uint8_t *ptr = (const uint8_t *) indirect;
       for (unsigned i = 0; i < primcount; i++) {

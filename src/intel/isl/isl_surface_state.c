@@ -540,7 +540,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
       assert(isl_tiling_is_any_y(info->surf->tiling));
 
    s.TileMode = isl_encode_tiling[info->surf->tiling];
-   if (isl_tiling_is_std_y(info->surf->tiling)) {
+   if (isl_tiling_is_standard(info->surf->tiling)) {
       s.TiledResourceMode = isl_tiling_encode_trmode[info->surf->tiling];
 #if GFX_VER >= 11
       /* Use the ICL swizzles for CMS and UMS surfaces. Although the
@@ -567,7 +567,7 @@ isl_genX(surf_fill_state_s)(const struct isl_device *dev, void *state,
    }
 #elif GFX_VER >= 8
    assert(isl_format_get_layout(info->view->format)->txc != ISL_TXC_ASTC);
-   assert(!isl_tiling_is_std_y(info->surf->tiling));
+   assert(!isl_tiling_is_standard(info->surf->tiling));
    s.TileMode = isl_encode_tiling[info->surf->tiling];
 #else
    s.TiledSurface = info->surf->tiling != ISL_TILING_LINEAR,

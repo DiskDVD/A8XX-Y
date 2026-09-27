@@ -454,6 +454,7 @@ Struct("intel_device_info",
         Member("char", "name", array="INTEL_DEVICE_MAX_NAME_SIZE"),
         Member("bool", "no_hw"),
         Member("bool", "probe_forced", comment="Device needed INTEL_FORCE_PROBE"),
+        Member("bool", "no_jay", comment="Driver requested brw over Jay (e.g. per-app driconf)"),
         Member("intel_device_info_mem_desc", "mem"),
         Member("intel_device_info_pat_desc", "pat"),
 

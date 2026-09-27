@@ -289,6 +289,7 @@ crocus_init_screen_caps(struct crocus_screen *screen)
    caps->gl_clamp = true;
    caps->legacy_math_rules = true;
    caps->native_fence_fd = true;
+   caps->polygon_stipple = true;
 
    caps->int64 =
    caps->shader_ballot =

@@ -24,21 +24,6 @@ rewrite_1bit_ssa_def_to_32bit(nir_def *def, void *_progress)
    return true;
 }
 
-static uint32_t
-get_bool_convert_opcode(uint32_t dst_bit_size)
-{
-   switch (dst_bit_size) {
-   case 32:
-      return nir_op_i2i32;
-   case 16:
-      return nir_op_i2i16;
-   case 8:
-      return nir_op_i2i8;
-   default:
-      UNREACHABLE("invalid boolean bit-size");
-   }
-}
-
 static void
 resize_bool_alu_source(nir_builder *b, nir_alu_instr *alu,
                        uint32_t src_idx, uint32_t bit_size)
@@ -47,14 +32,12 @@ resize_bool_alu_source(nir_builder *b, nir_alu_instr *alu,
       return;
 
    b->cursor = nir_before_instr(&alu->instr);
-   nir_op convert_op = get_bool_convert_opcode(bit_size);
 
    /* Retain the number of components and swizzle of the original
     * instruction so that we don’t unnecessarily create a vectorized
     * instruction.
     */
-   nir_def *new_src =
-      nir_build_alu1(b, convert_op, nir_ssa_for_alu_src(b, alu, src_idx));
+   nir_def *new_src = nir_i2iN(b, nir_ssa_for_alu_src(b, alu, src_idx), bit_size);
 
    nir_src_rewrite(&alu->src[src_idx].src, new_src);
 
@@ -245,9 +228,8 @@ lower_phi_instr(nir_builder *b, nir_phi_instr *phi)
       uint32_t src_bit_size = nir_src_bit_size(phi_src->src);
       if (src_bit_size != dst_bit_size) {
          b->cursor = nir_before_src(&phi_src->src);
-         nir_op convert_op = get_bool_convert_opcode(dst_bit_size);
-         nir_def *new_src =
-            nir_build_alu(b, convert_op, phi_src->src.ssa, NULL, NULL, NULL);
+
+         nir_def *new_src = nir_i2iN(b, phi_src->src.ssa, dst_bit_size);
          nir_src_rewrite(&phi_src->src, new_src);
       }
    }

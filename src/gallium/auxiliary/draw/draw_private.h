@@ -154,7 +154,6 @@ struct draw_context
       struct draw_stage *stipple;
       struct draw_stage *aapoint;
       struct draw_stage *aaline;
-      struct draw_stage *pstipple;
       struct draw_stage *wide_line;
       struct draw_stage *wide_point;
       struct draw_stage *rasterize;

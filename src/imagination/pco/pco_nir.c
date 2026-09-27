@@ -44,7 +44,6 @@ static const nir_shader_compiler_options nir_options = {
 
    .has_f2i32_rtne = true,
    .has_fused_comp_and_csel = true,
-   .has_tanh = true,
 
    .instance_id_includes_base_index = true,
 
@@ -530,7 +529,7 @@ static void pco_nir_opt(pco_ctx *ctx, nir_shader *nir, pco_data *data, bool alge
 
       NIR_PASS(progress, nir, nir_opt_phi_precision);
       NIR_PASS(progress, nir, nir_lower_alu);
-      NIR_PASS(progress, nir, pco_nir_lower_alu, ctx);
+      NIR_PASS(progress, nir, pco_nir_lower_alu);
       NIR_PASS(progress, nir, nir_lower_pack);
 
       if (algebraic) {

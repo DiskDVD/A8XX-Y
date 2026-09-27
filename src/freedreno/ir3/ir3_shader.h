@@ -65,6 +65,10 @@ struct ir3_driver_params_vs {
    uint32_t instid_base;
    uint32_t vtxcnt_max;
    uint32_t is_indexed_draw;  /* Note: boolean, ie. 0 or ~0 */
+   /* For software multiview (draw duplication): view index loaded as a
+    * driver param when the hardware does not have native multiview.
+    */
+   uint32_t view_index;
    /* user-clip-plane components, up to 8x vec4's: */
    struct {
       uint32_t x;
@@ -72,7 +76,7 @@ struct ir3_driver_params_vs {
       uint32_t z;
       uint32_t w;
    } ucp[8];
-   uint32_t __pad_37_39[3];
+   uint32_t __pad_38_39[2];
 };
 #define IR3_DP_VS(name) dword_offsetof(struct ir3_driver_params_vs, name)
 
@@ -428,6 +432,14 @@ struct ir3_shader_key {
           * enabled
           */
          unsigned force_dual_color_blend : 1;
+
+         /* Software multiview (devices without HW multiview support): the
+          * driver emulates multiview by duplicating draws on the CPU and
+          * supplies the current view index as a VS driver param.  When set,
+          * load_view_index reads that driver param instead of the hardware
+          * SYSTEM_VALUE_VIEW_INDEX sysval.
+          */
+         unsigned sw_multiview : 1;
       };
       uint32_t global;
    };
@@ -1188,10 +1200,13 @@ ir3_max_const(const struct ir3_shader_variant *v)
    return _ir3_max_const(v, v->key.safe_constlen);
 }
 
+int32_t ir3_evaluate_src_mods(int32_t val, unsigned flags);
 bool ir3_const_ensure_imm_size(struct ir3_shader_variant *v, unsigned size);
 uint16_t ir3_const_imm_index_to_reg(const struct ir3_const_state *const_state,
                                     unsigned i);
-uint16_t ir3_const_find_imm(struct ir3_shader_variant *v, uint32_t imm);
+uint16_t ir3_const_find_imm(struct ir3_shader_variant *v,
+                            struct ir3_instruction *instr, unsigned n,
+                            int32_t iim_val, unsigned *new_flags);
 uint16_t ir3_const_add_imm(struct ir3_shader_variant *v, uint32_t imm);
 
 static inline unsigned

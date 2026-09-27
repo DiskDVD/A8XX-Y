@@ -214,8 +214,11 @@ impl<'a> ShaderFromNir<'a> {
                 Src::from(src_vec[usize::from(w)]).swizzle(swizzle)
             }
             32 => {
-                assert_eq!(swizzle.len(), 1);
-                src_vec[usize::from(swizzle[0])].into()
+                // We can have more than one source component in the case of
+                // nir_op_f2f16 where we support vec2.
+                let vec: SSARef =
+                    swizzle.iter().map(|c| src_vec[usize::from(*c)]).collect();
+                vec.into()
             }
             64 => {
                 assert_eq!(swizzle.len(), 1);
@@ -334,6 +337,16 @@ impl<'a> ShaderFromNir<'a> {
         } else if bits == 16 {
             let ssa = b.copy_i16((imm_u32[0] as u16).into());
             self.set_ssa(&load.def, vec![ssa]);
+        } else if load.def.bit_size == 64 {
+            let mut ssa = Vec::new();
+            for i in 0..load.def.num_components {
+                let off = usize::from(i * 2);
+                let n = u64::from(imm_u32[off])
+                    | (u64::from(imm_u32[off + 1]) << 32);
+                ssa.extend(b.copy_i64(n.into()).iter().copied());
+            }
+
+            self.set_ssa(&load.def, ssa);
         } else {
             self.set_ssa(
                 &load.def,
@@ -628,18 +641,41 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_f2f16 | nir_op_f2f16_rtz | nir_op_f2f16_rtne => {
                 assert!(alu.get_src(0).bit_size() == 32);
-                assert!(alu.def.num_components == 1);
-                b.push_op(OpF32ToF16 {
-                    dst: dst.into(),
-                    src: srcs(0),
-                    round: match alu.op {
-                        nir_op_f2f16 => self.fround(16),
-                        nir_op_f2f16_rtne => FRound::NearestEven,
-                        nir_op_f2f16_rtz => FRound::TowardsZero,
-                        _ => panic!("Invalid f2f16 op"),
-                    },
-                    clamp: FClamp::None,
-                });
+                let round = match alu.op {
+                    nir_op_f2f16 => self.fround(16),
+                    nir_op_f2f16_rtne => FRound::NearestEven,
+                    nir_op_f2f16_rtz => FRound::TowardsZero,
+                    _ => panic!("Invalid f2f16 op"),
+                };
+                match alu.def.num_components {
+                    1 => {
+                        if self.model.arch() > 10 {
+                            b.push_op(OpF32ToF16 {
+                                dst: dst.into(),
+                                src: srcs(0),
+                                round,
+                                clamp: FClamp::None,
+                            });
+                        } else {
+                            b.push_op(OpV2F32ToV2F16 {
+                                dst: dst.into(),
+                                srcs: [srcs(0).word(0), srcs(0).word(0)],
+                                round,
+                                clamp: FClamp::None,
+                            });
+                        }
+                    }
+                    2 => {
+                        assert!(self.model.arch() <= 10);
+                        b.push_op(OpV2F32ToV2F16 {
+                            dst: dst.into(),
+                            srcs: [srcs(0).word(0), srcs(0).word(1)],
+                            round,
+                            clamp: FClamp::None,
+                        });
+                    }
+                    _ => panic!("Unspported nir_op_f2f16 vector size"),
+                }
             }
             nir_op_f2f32 => {
                 assert!(alu.get_src(0).bit_size() == 16);
@@ -649,62 +685,96 @@ impl<'a> ShaderFromNir<'a> {
                     src: srcs(0),
                 });
             }
-            nir_op_u2f32 => {
+            nir_op_pack_half_2x16_split | nir_op_pack_half_2x16_rtz_split => {
                 assert!(alu.get_src(0).bit_size() == 32);
+                assert!(alu.get_src(1).bit_size() == 32);
+                assert!(alu.def.bit_size() == 32);
+                assert!(self.model.arch() <= 10);
+
+                let round = if alu.op == nir_op_pack_half_2x16_rtz_split {
+                    FRound::TowardsZero
+                } else {
+                    self.fround(16)
+                };
+                b.push_op(OpV2F32ToV2F16 {
+                    dst: dst.into(),
+                    srcs: [srcs(0), srcs(1)],
+                    round,
+                    clamp: FClamp::None,
+                });
+            }
+            nir_op_u2f32 => {
+                assert!(
+                    self.model.arch() <= 10 || alu.get_src(0).bit_size() == 32
+                );
                 assert!(alu.def.num_components == 1);
                 b.push_op(OpIToF32 {
                     dst: dst.into(),
-                    src_type: DataType::U32,
+                    src_type: DataType::u(alu.get_src(0).bit_size()),
                     src: srcs(0),
                     round: self.fround(alu.def.bit_size),
                 });
             }
-            nir_op_f2u32 => {
-                assert!(alu.get_src(0).bit_size() == 32);
+            nir_op_f2u32 | nir_op_f2u32_rtne | nir_op_f2i32
+            | nir_op_f2i32_rtne => {
                 assert!(alu.def.num_components == 1);
-                b.push_op(OpF32ToI32 {
-                    dst: dst.into(),
-                    dst_type: DataType::U32,
-                    src: srcs(0),
-                    round: FRound::TowardsZero,
-                });
-            }
-            nir_op_f2u32_rtne => {
-                assert!(alu.get_src(0).bit_size() == 32);
-                assert!(alu.def.num_components == 1);
-                b.push_op(OpF32ToI32 {
-                    dst: dst.into(),
-                    dst_type: DataType::U32,
-                    src: srcs(0),
-                    round: FRound::NearestEven,
-                });
-            }
-            nir_op_f2i32 => {
-                assert!(alu.get_src(0).bit_size() == 32);
-                assert!(alu.def.num_components == 1);
-                b.push_op(OpF32ToI32 {
-                    dst: dst.into(),
-                    dst_type: DataType::S32,
-                    src: srcs(0),
-                    round: FRound::TowardsZero,
-                });
-            }
-            nir_op_f2i32_rtne => {
-                assert!(alu.get_src(0).bit_size() == 32);
-                assert!(alu.def.num_components == 1);
-                b.push_op(OpF32ToI32 {
-                    dst: dst.into(),
-                    dst_type: DataType::S32,
-                    src: srcs(0),
-                    round: FRound::NearestEven,
-                });
+                let round = match alu.op {
+                    nir_op_f2u32 | nir_op_f2i32 => FRound::TowardsZero,
+                    nir_op_f2u32_rtne | nir_op_f2i32_rtne => {
+                        FRound::NearestEven
+                    }
+                    _ => unreachable!(),
+                };
+                let dst_type = match alu.op {
+                    nir_op_f2u32 | nir_op_f2u32_rtne => DataType::U32,
+                    nir_op_f2i32 | nir_op_f2i32_rtne => DataType::S32,
+                    _ => unreachable!(),
+                };
+                match alu.get_src(0).bit_size() {
+                    32 => {
+                        b.push_op(OpF32ToI32 {
+                            dst: dst.into(),
+                            dst_type,
+                            src: srcs(0),
+                            round,
+                        });
+                    }
+                    16 => {
+                        assert!(self.model.arch() <= 10);
+                        b.push_op(OpF16ToI32 {
+                            dst: dst.into(),
+                            dst_type,
+                            src: srcs(0),
+                            round,
+                        });
+                    }
+                    _ => unreachable!(),
+                }
             }
             nir_op_i2f32 => {
-                assert!(alu.get_src(0).bit_size() == 32);
+                assert!(
+                    self.model.arch() <= 10 || alu.get_src(0).bit_size() == 32
+                );
                 assert!(alu.def.num_components == 1);
                 b.push_op(OpIToF32 {
                     dst: dst.into(),
-                    src_type: DataType::S32,
+                    src_type: DataType::s(alu.get_src(0).bit_size()),
+                    src: srcs(0),
+                    round: self.fround(alu.def.bit_size),
+                });
+            }
+            nir_op_i2f16 | nir_op_u2f16 => {
+                assert!(self.model.arch() <= 10);
+
+                let num_type = if alu.op == nir_op_i2f16 {
+                    NumericType::SignedInteger
+                } else {
+                    NumericType::UnsignedInteger
+                };
+
+                b.push_op(OpIToF16 {
+                    dst: dst.into(),
+                    src_type: src_type(0, num_type),
                     src: srcs(0),
                     round: self.fround(alu.def.bit_size),
                 });
@@ -784,9 +854,7 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_op_fround_even | nir_op_ftrunc | nir_op_fceil
             | nir_op_ffloor => {
-                debug_assert!(alu.def.bit_size == 32);
-                debug_assert!(alu.def.num_components == 1);
-
+                let src_type = src_type(0, NumericType::Float);
                 let round = match alu.op {
                     nir_op_fround_even => FRound::NearestEven,
                     nir_op_ftrunc => FRound::TowardsZero,
@@ -803,7 +871,7 @@ impl<'a> ShaderFromNir<'a> {
 
                     b.push_op(OpFlush {
                         dst: t.into(),
-                        src_type: DataType::F32,
+                        src_type,
                         src: srcs(0),
                         ftz: true,
                         flush_inf: false,
@@ -817,6 +885,7 @@ impl<'a> ShaderFromNir<'a> {
 
                 b.push_op(OpFRound {
                     dst: dst.into(),
+                    src_type,
                     src,
                     round,
                 });
@@ -890,18 +959,26 @@ impl<'a> ShaderFromNir<'a> {
                 b.fexp_32_to(dst.into(), srcs(1), log2_base);
             }
             nir_op_frexp_exp => {
-                assert!(alu.get_src(0).bit_size() == 32);
+                assert!(alu.def.bit_size == 32);
+
+                let src = match alu.get_src(0).bit_size() {
+                    32 => srcs(0),
+                    16 => srcs(0).swizzle(Swizzle::HF0),
+                    _ => unreachable!(),
+                };
+
                 b.push_op(OpFrexpE {
                     dst: dst.into(),
-                    src: srcs(0),
+                    src_type: DataType::F32,
+                    src,
                     mode: FrexpMode::Normal,
                     neg_result: false,
                 });
             }
             nir_op_frexp_sig => {
-                assert!(alu.get_src(0).bit_size() == 32);
                 b.push_op(OpFrexpM {
                     dst: dst.into(),
+                    src_type: src_type(0, NumericType::Float),
                     src: srcs(0),
                     mode: FrexpMode::Normal,
                 });
@@ -949,12 +1026,21 @@ impl<'a> ShaderFromNir<'a> {
                 debug_assert!(alu.def.num_components == 1);
 
                 let x16 = b.alloc_ssa(16);
-                b.push_op(OpF32ToF16 {
-                    dst: x16.into(),
-                    src: srcs(0),
-                    round: FRound::NearestEven,
-                    clamp: FClamp::None,
-                });
+                if self.model.arch() > 10 {
+                    b.push_op(OpF32ToF16 {
+                        dst: x16.into(),
+                        src: srcs(0),
+                        round: FRound::NearestEven,
+                        clamp: FClamp::None,
+                    });
+                } else {
+                    b.push_op(OpV2F32ToV2F16 {
+                        dst: x16.into(),
+                        srcs: [srcs(0), srcs(0)],
+                        round: FRound::NearestEven,
+                        clamp: FClamp::None,
+                    });
+                }
 
                 let flush16 = b.alloc_ssa(16);
                 b.push_op(OpFlush {
@@ -1009,6 +1095,26 @@ impl<'a> ShaderFromNir<'a> {
                     dst: dst.into(),
                     dst_type: dst_type(NumericType::SignedInteger),
                     src: srcs(0),
+                });
+            }
+            nir_op_uhadd | nir_op_ihadd | nir_op_urhadd | nir_op_irhadd => {
+                assert!(self.model.arch() <= 10);
+                let dst_type = match alu.op {
+                    nir_op_uhadd | nir_op_urhadd => {
+                        dst_type(NumericType::UnsignedInteger)
+                    }
+                    nir_op_ihadd | nir_op_irhadd => {
+                        dst_type(NumericType::SignedInteger)
+                    }
+                    _ => unreachable!(),
+                };
+                let round_up = matches!(alu.op, nir_op_urhadd | nir_op_irhadd);
+
+                b.push_op(OpHAdd {
+                    dst: dst.into(),
+                    dst_type,
+                    round_up,
+                    srcs: [srcs(0), srcs(1)],
                 });
             }
             nir_op_iadd | nir_op_iadd_sat | nir_op_uadd_sat => {
@@ -2326,11 +2432,13 @@ impl<'a> ShaderFromNir<'a> {
             }
             nir_intrinsic_atest_pan => {
                 let dst = self.alloc_ssa(b, &intrin.def).into();
+                let datum =
+                    self.special_fau(SpecialFAU::ATestDatum).word(0).into();
                 b.push_op(OpATest {
                     dst,
                     coverage: self.get_src(&srcs[0]),
                     alpha: self.get_f32_src(&srcs[1]),
-                    datum: self.special_fau(SpecialFAU::ATestDatum).into(),
+                    datum,
                 });
             }
             nir_intrinsic_zs_emit_pan => {

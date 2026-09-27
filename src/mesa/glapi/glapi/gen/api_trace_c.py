@@ -11,6 +11,7 @@ import license
 
 from collections import defaultdict
 
+TRACE_POINTER_BUFSZ = 32
 TRACE_ARRAY_BUFSZ = 512
 TRACE_BITFIELD_BUFSZ = 512
 
@@ -115,7 +116,9 @@ def classify_param(p):
        ('array', kind, count_expr, name)
        ('opaque', spec, expr)        - printed as %p / hex fallback
     """
-    opaque = ('opaque', '%p', '(void *){0}'.format(p.name))
+    opaque = ('opaque', '%s',
+              '_mesa_trace_format_ptr((char[{sz}]){{0}}, {sz}, {name})'
+              .format(name=p.name, sz=TRACE_POINTER_BUFSZ))
 
     if not p.is_pointer():
         if p.type_string().strip() == 'GLbitfield' and p.group:

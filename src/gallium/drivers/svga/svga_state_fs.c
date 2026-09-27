@@ -129,7 +129,6 @@ make_fs_key(const struct svga_context *svga,
    if (!svga->state.sw.need_swtnl) {
       /* SVGA_NEW_RAST, SVGA_NEW_REDUCED_PRIMITIVE
        */
-      enum mesa_prim prim_mode;
       struct svga_shader *shader;
 
       /* Find the last shader in the vertex pipeline and the output primitive mode
@@ -137,19 +136,14 @@ make_fs_key(const struct svga_context *svga,
        */
       if (svga->curr.tes) {
          shader = &svga->curr.tes->base;
-         prim_mode = shader->info.tes.prim_mode;
       } else if (svga->curr.gs) {
          shader = &svga->curr.gs->base;
-         prim_mode = shader->info.gs.out_prim;
       } else {
          shader = &svga->curr.vs->base;
-         prim_mode = svga->curr.reduced_prim;
       }
 
       key->fs.light_twoside = svga->curr.rast->templ.light_twoside;
       key->fs.front_ccw = svga->curr.rast->templ.front_ccw;
-      key->fs.pstipple = (svga->curr.rast->templ.poly_stipple_enable &&
-                          prim_mode == MESA_PRIM_TRIANGLES);
 
       if (svga->curr.gs) {
          key->fs.aa_point = (svga->curr.rast->templ.point_smooth &&
@@ -414,7 +408,6 @@ struct svga_tracked_state svga_hw_fs =
     SVGA_NEW_TEXTURE_BINDING |
     SVGA_NEW_NEED_SWTNL |
     SVGA_NEW_RAST |
-    SVGA_NEW_STIPPLE |
     SVGA_NEW_REDUCED_PRIMITIVE |
     SVGA_NEW_SAMPLER |
     SVGA_NEW_FRAME_BUFFER |

@@ -1,8 +1,6 @@
 # Copyright © 2026 Valve Corporation
 # SPDX-License-Identifier: MIT
 
-inc_ntv = include_directories('.')
-
 files_ntv = files(
   'nir_to_spirv.c',
   'spirv_builder.c',

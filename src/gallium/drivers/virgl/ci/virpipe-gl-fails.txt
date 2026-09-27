@@ -555,7 +555,6 @@ spec@ext_texture_srgb@texwrap formats-s3tc bordercolor@GL_COMPRESSED_SRGB_S3TC_D
 spec@!opengl 1.1@depthstencil-default_fb-drawpixels-24_8 samples=6,Fail
 spec@ext_framebuffer_multisample@interpolation 8 centroid-edges,Fail
 spec@glsl-1.30@execution@glsl-packed-back-color,Fail
-spec@!opengl 1.1@large-tex,Crash
 spec@arb_texture_rectangle@copyteximage rect samples=8,Fail
 
 # New failures with GL CTS 4.6.6.0 & ES CTS 3.2.12.0

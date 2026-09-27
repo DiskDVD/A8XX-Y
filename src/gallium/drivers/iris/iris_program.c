@@ -80,7 +80,7 @@ iris_backend_compile(const struct iris_screen *screen,
 
    params->prog_data->source_hash = *(uint64_t *)nir->info.source_blake3;
 
-   if (intel_use_jay(devinfo, nir->info.stage)) {
+   if (intel_use_jay(devinfo, nir)) {
       struct jay_shader_bin *bin =
          jay_compile(devinfo, mem_ctx, nir,
                      (union brw_any_prog_data *)params->prog_data,

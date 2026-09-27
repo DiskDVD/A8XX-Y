@@ -8,8 +8,8 @@
 
 #include "VirtGpu.h"
 #include "goldfish_address_space.h"
-#include "util/u_mm.h"
 #include "util/detect_os.h"
+#include "util/u_mm.h"
 
 constexpr uint64_t kMegaByte = 1048576;
 

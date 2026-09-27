@@ -164,6 +164,21 @@ v3d_format_supports_tlb_resolve_and_blend(const struct v3d_device_info *devinfo,
 }
 
 /**
+ * If the format supports (linear) filtering when texturing.
+ */
+bool
+v3d_format_supports_filtering(const struct v3d_device_info *devinfo,
+                              enum pipe_format f)
+{
+        const struct v3d_format *vf = v3d_X(devinfo, get_format_desc)(f);
+
+        if (!vf)
+                return false;
+
+        return vf->supports_filtering;
+}
+
+/**
  * Determines if the R and B channels should be swapped for a given format.
  * We use the TLB load/store flags for this.
  */

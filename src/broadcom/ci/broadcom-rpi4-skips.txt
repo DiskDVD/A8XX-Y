@@ -1,4 +1,5 @@
 # Slow piglit tests (> 1 minute to run)
+spec@ext_texture_env_combine@texture-env-combine
 
 # Slow CL tests (> 5 minute to run)
 

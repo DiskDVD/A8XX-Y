@@ -34,7 +34,6 @@ static int
 ieee_754_to_r300_float(float f, unsigned char *r300_float_out)
 {
    unsigned float_bits = u_bitcast_f2u(f);
-   /* XXX: Handle big-endian */
    unsigned mantissa = float_bits & 0x007fffff;
    unsigned biased_exponent = (float_bits & 0x7f800000) >> 23;
    unsigned negate = !!(float_bits & 0x80000000);

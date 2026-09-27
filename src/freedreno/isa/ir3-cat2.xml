@@ -384,10 +384,12 @@ SOFTWARE.
 </bitset>
 
 <bitset name="clz.s" extends="#instruction-cat2-1src">
+	<doc>Number of leading bits (including sign) that match the sign bit, or -1 for input of 0/~0.</doc>
 	<pattern low="53" high="58">110100</pattern>
 </bitset>
 
 <bitset name="clz.b" extends="#instruction-cat2-1src">
+	<doc>Number of leading zeroes, or -1 if the input was 0.</doc>
 	<pattern low="53" high="58">110101</pattern>
 </bitset>
 
@@ -404,10 +406,12 @@ SOFTWARE.
 </bitset>
 
 <bitset name="mgen.b" extends="#instruction-cat2-2src">
+	<doc>Returns (1 &lt;&lt; (src0 &amp; (bit_size - 1)) - 1) &lt;&lt; (src1 &amp; (bit_size - 1)).</doc>
 	<pattern low="53" high="58">111010</pattern>
 </bitset>
 
 <bitset name="getbit.b" extends="#instruction-cat2-2src">
+	<doc>Returns src0 >> (src1 &amp; (bit_size - 1)) &amp; 1.</doc>
 	<pattern low="53" high="58">111011</pattern>
 </bitset>
 

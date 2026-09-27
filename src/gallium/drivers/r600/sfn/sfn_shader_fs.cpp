@@ -196,13 +196,13 @@ FragmentShader::do_allocate_reserved_registers()
    int next_register = allocate_interpolators_or_inputs();
 
    if (m_sv_values.test(es_pos)) {
-      set_input_gpr(m_pos_driver_loc, next_register);
+      set_input_gpr(R600_SHADERIO_SLOT_POS_LOCATION, next_register);
       m_pos_input = value_factory().allocate_pinned_vec4(next_register++, false);
    }
 
    int face_reg_index = -1;
    if (m_sv_values.test(es_face)) {
-      set_input_gpr(m_face_driver_loc, next_register);
+      set_input_gpr(R600_SHADERIO_FACE_LOCATION, next_register);
       face_reg_index = next_register++;
       m_face_input = value_factory().allocate_pinned_register(face_reg_index, 0);
    }
@@ -214,18 +214,19 @@ FragmentShader::do_allocate_reserved_registers()
       sfn_log << SfnLog::io << "Set sample mask in register to " << *m_sample_mask_reg
               << "\n";
       m_nsys_inputs = 1;
-      ShaderInput input(ninputs());
+      ShaderInput input(R600_SHADERIO_FACE_LOCATION);
       input.set_system_value(SYSTEM_VALUE_SAMPLE_MASK_IN);
       input.set_gpr(face_reg_index);
       add_input(input);
    }
 
-   if (m_sv_values.test(es_sample_id) || m_sv_values.test(es_sample_mask_in)) {
+   if ((m_sv_values.test(es_sample_id) || m_sv_values.test(es_sample_mask_in)) &&
+       !input_count(R600_SHADERIO_FIXED_PT_LOCATION)) {
       int sample_id_reg = next_register++;
       m_sample_id_reg = value_factory().allocate_pinned_register(sample_id_reg, 3);
       sfn_log << SfnLog::io << "Set sample id register to " << *m_sample_id_reg << "\n";
       m_nsys_inputs++;
-      ShaderInput input(ninputs());
+      ShaderInput input(R600_SHADERIO_FIXED_PT_LOCATION);
       input.set_system_value(SYSTEM_VALUE_SAMPLE_ID);
       input.set_gpr(sample_id_reg);
       add_input(input);
@@ -322,13 +323,24 @@ FragmentShader::emit_load_helper_invocation(nir_intrinsic_instr *instr)
    return true;
 }
 
+unsigned
+FragmentShader::check_input_bary_overlap(const unsigned driver_location,
+                                         const r600_interp_location interp_loc,
+                                         const unsigned new_location)
+{
+   auto linput = find_input(driver_location);
+   if (unlikely(linput != input_not_found() &&
+                linput->second.interpolate_loc() != interp_loc))
+      return new_location;
+   return driver_location;
+}
+
 bool
 FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
 {
    auto index = nir_src_as_const_value(intr->src[index_src_id]);
    assert(index);
 
-   const unsigned location_offset = chip_class() < ISA_CC_EVERGREEN ? 32 : 0;
    bool uses_interpol_at_centroid = false;
 
    auto location =
@@ -337,8 +349,7 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
 
    if (location == VARYING_SLOT_POS) {
       m_sv_values.set(es_pos);
-      m_pos_driver_loc = driver_location + location_offset;
-      ShaderInput pos_input(m_pos_driver_loc, location);
+      ShaderInput pos_input(R600_SHADERIO_SLOT_POS_LOCATION, location);
       pos_input.set_interpolator(INTERP_MODE_NOPERSPECTIVE,
                                  R600_INTERP_LOC_CENTER,
                                  false);
@@ -348,8 +359,7 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
 
    if (location == VARYING_SLOT_FACE) {
       m_sv_values.set(es_face);
-      m_face_driver_loc = driver_location + location_offset;
-      ShaderInput face_input(m_face_driver_loc, location);
+      ShaderInput face_input(R600_SHADERIO_FACE_LOCATION, location);
       add_input(face_input);
       return true;
    }
@@ -366,9 +376,18 @@ FragmentShader::scan_input(nir_intrinsic_instr *intr, int index_src_id)
       switch (parent->intrinsic) {
       case nir_intrinsic_load_barycentric_sample:
          interp_loc = R600_INTERP_LOC_SAMPLE;
+         if (driver_location == 0)
+            driver_location = check_input_bary_overlap(driver_location,
+                                                       interp_loc,
+                                                       R600_SHADERIO_BARY_SAMPLE);
          break;
       case nir_intrinsic_load_barycentric_at_sample:
       case nir_intrinsic_load_barycentric_at_offset:
+         if (driver_location == 0)
+            driver_location = check_input_bary_overlap(driver_location,
+                                                       R600_INTERP_LOC_CENTER,
+                                                       R600_SHADERIO_BARY_AT);
+         FALLTHROUGH;
       case nir_intrinsic_load_barycentric_pixel:
          interp_loc = R600_INTERP_LOC_CENTER;
          break;

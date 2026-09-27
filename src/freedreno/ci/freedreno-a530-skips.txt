@@ -46,8 +46,6 @@ KHR-GLES31.core.texture_buffer.texture_buffer_atomic_functions
 
 # Unsupported legacy gl features
 .*edgeflag.*
-.*stipple.*
+spec@.*line.*stipple.*
 # uses edgeflags:
 shaders@point-vertex-id.*
-# uses stipple:
-spec@!opengl 1.0@gl-1.0-no-op-paths

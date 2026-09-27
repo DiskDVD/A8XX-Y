@@ -49,7 +49,6 @@ extern struct svga_tracked_state svga_hw_gs;
 extern struct svga_tracked_state svga_hw_tcs;
 extern struct svga_tracked_state svga_hw_tes;
 extern struct svga_tracked_state svga_hw_rss;
-extern struct svga_tracked_state svga_hw_pstipple;
 extern struct svga_tracked_state svga_hw_sampler;
 extern struct svga_tracked_state svga_hw_sampler_bindings;
 extern struct svga_tracked_state svga_hw_tss;

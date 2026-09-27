@@ -100,7 +100,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_DestroyQueryPool(
    if (pool->base_type < PIPE_QUERY_TYPES) {
       for (unsigned i = 0; i < pool->vk.query_count; i++)
          if (pool->queries[i])
-            device->queue.ctx->destroy_query(device->queue.ctx, pool->queries[i]);
+            device->queue[0].ctx->destroy_query(device->queue[0].ctx, pool->queries[i]);
    }
    vk_query_pool_destroy(&device->vk, pAllocator, &pool->vk);
 }
@@ -145,7 +145,7 @@ VKAPI_ATTR VkResult VKAPI_CALL lvp_GetQueryPoolResults(
       }
 
       if (pool->queries[i]) {
-         ready = device->queue.ctx->get_query_result(device->queue.ctx,
+         ready = device->queue[0].ctx->get_query_result(device->queue[0].ctx,
                                                      pool->queries[i],
                                                      (flags & VK_QUERY_RESULT_WAIT_BIT),
                                                      &result);
@@ -231,7 +231,7 @@ VKAPI_ATTR void VKAPI_CALL lvp_ResetQueryPool(
       uint32_t idx = i + firstQuery;
 
       if (pool->queries[idx]) {
-         device->queue.ctx->destroy_query(device->queue.ctx, pool->queries[idx]);
+         device->queue[0].ctx->destroy_query(device->queue[0].ctx, pool->queries[idx]);
          pool->queries[idx] = NULL;
       }
    }

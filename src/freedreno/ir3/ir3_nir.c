@@ -279,6 +279,8 @@ ir3_lower_bit_size(const nir_instr *instr, UNUSED void *data)
       case nir_op_uge:
       case nir_op_ult:
       case nir_op_bit_count:
+      case nir_op_bitz:
+      case nir_op_bitnz:
          return nir_src_bit_size(alu->src[0].src) == 8 ? 16 : 0;
       default:
          break;
@@ -353,6 +355,7 @@ ir3_optimize_loop(struct ir3_compiler *compiler,
       if (is_compute_or_frag(s->info.stage)) {
          progress |= OPT(s, nir_opt_phi_precision);
       }
+      progress |= OPT(s, nir_opt_fp_math_ctrl);
       progress |= OPT(s, nir_opt_algebraic);
       progress |= OPT(s, nir_lower_alu);
       progress |= OPT(s, nir_lower_pack);
@@ -401,6 +404,7 @@ ir3_optimize_loop(struct ir3_compiler *compiler,
       }
       progress |= OPT(s, nir_opt_if, nir_opt_if_optimize_phi_true_false);
       progress |= OPT(s, nir_opt_loop_unroll);
+      progress |= OPT(s, nir_opt_phi_to_bool);
       progress |= OPT(s, nir_opt_remove_phis);
       progress |= OPT(s, nir_opt_undef);
       did_progress |= progress;
@@ -1723,6 +1727,7 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so,
          };
          OPT(s, nir_opt_16bit_tex_image, &opt_16bit_options);
       }
+      OPT(s, nir_opt_algebraic_distribute_src_mods);
       OPT(s, nir_opt_constant_folding);
       OPT(s, nir_opt_copy_prop);
       OPT(s, nir_opt_dce);
@@ -1741,7 +1746,9 @@ ir3_nir_lower_variant(struct ir3_shader_variant *so,
 }
 
 bool
-ir3_get_driver_param_info(const nir_shader *shader, nir_intrinsic_instr *intr,
+ir3_get_driver_param_info(const nir_shader *shader,
+                          const struct ir3_shader_key *key,
+                          nir_intrinsic_instr *intr,
                           struct driver_param_info *param_info)
 {
    param_info->extra_size = 0;
@@ -1816,6 +1823,20 @@ ir3_get_driver_param_info(const nir_shader *shader, nir_intrinsic_instr *intr,
    case nir_intrinsic_load_alpha_to_coverage_enable_ir3:
       param_info->offset = IR3_DP_FS(alpha_to_coverage_enable);
       break;
+   case nir_intrinsic_load_view_index:
+      /* Report the driver-param offset for the software-multiview path
+       * (devices without HW multiview), where the view index is supplied as
+       * a VS driver param.
+       * Placed at dword 5 (view_index) to avoid being overwritten by
+       * CP_DRAW_INDIRECT_MULTI which zeroes dwords 0-3 at DST_OFF.
+       */
+      if (key && key->sw_multiview &&
+          (shader->info.stage == MESA_SHADER_VERTEX ||
+           shader->info.stage == MESA_SHADER_TESS_EVAL)) {
+         param_info->offset = IR3_DP_VS(view_index);
+         break;
+      }
+      return false;
    default:
       return false;
    }
@@ -1825,6 +1846,7 @@ ir3_get_driver_param_info(const nir_shader *shader, nir_intrinsic_instr *intr,
 
 uint32_t
 ir3_nir_scan_driver_consts(struct ir3_compiler *compiler, nir_shader *shader,
+                           const struct ir3_shader_key *key,
                            struct ir3_const_image_dims *image_dims)
 {
    uint32_t num_driver_params = 0;
@@ -1865,7 +1887,7 @@ ir3_nir_scan_driver_consts(struct ir3_compiler *compiler, nir_shader *shader,
             }
 
             struct driver_param_info param_info;
-            if (ir3_get_driver_param_info(shader, intr, &param_info)) {
+            if (ir3_get_driver_param_info(shader, key, intr, &param_info)) {
                num_driver_params =
                   MAX2(num_driver_params,
                        param_info.offset + param_info.extra_size +
@@ -1993,7 +2015,8 @@ ir3_setup_const_state(nir_shader *nir, struct ir3_shader_variant *v,
    unsigned ptrsz = ir3_pointer_size(compiler);
 
    const_state->num_driver_params =
-      ir3_nir_scan_driver_consts(compiler, nir, &const_state->image_dims);
+      ir3_nir_scan_driver_consts(compiler, nir, &v->key,
+                                 &const_state->image_dims);
 
    if ((compiler->gen < 5) && (v->stream_output.num_outputs > 0)) {
       const_state->num_driver_params =

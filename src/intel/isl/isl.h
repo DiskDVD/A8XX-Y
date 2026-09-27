@@ -617,14 +617,22 @@ typedef uint32_t isl_tiling_flags_t;
                                            ISL_TILING_ICL_Ys_BIT)
 
 /** The Skylake BSpec refers to Yf and Ys as "standard tiling formats". */
-#define ISL_TILING_STD_Y_MASK             (ISL_TILING_SKL_Yf_BIT | \
-                                           ISL_TILING_SKL_Ys_BIT | \
-                                           ISL_TILING_ICL_Yf_BIT | \
-                                           ISL_TILING_ICL_Ys_BIT)
+#define ISL_TILING_STD_4KB_MASK           (ISL_TILING_SKL_Yf_BIT | \
+                                           ISL_TILING_ICL_Yf_BIT)
 
-/** Any Tiling 64 */
-#define ISL_TILING_STD_64_MASK            (ISL_TILING_64_BIT | \
+/** The Alchemist PRM states that Tile64 "support[s] standard-tiling". */
+#define ISL_TILING_STD_64KB_MASK          (ISL_TILING_SKL_Ys_BIT | \
+                                           ISL_TILING_ICL_Ys_BIT | \
+                                           ISL_TILING_64_BIT | \
                                            ISL_TILING_64_XE2_BIT)
+
+/**
+ * Standard tiling is the term used by the hardware documents to describe the
+ * set of tilings supporting tiled-resource / sparse features (e.g.,
+ * miptails), including their 4KB sub-tilings with share similar feature sets.
+ */
+#define ISL_TILING_STANDARD_MASK          (ISL_TILING_STD_4KB_MASK | \
+                                           ISL_TILING_STD_64KB_MASK)
 
 /** @} */
 
@@ -2398,15 +2406,9 @@ isl_tiling_is_any_y(enum isl_tiling tiling)
 }
 
 static inline bool
-isl_tiling_is_std_y(enum isl_tiling tiling)
+isl_tiling_is_standard(enum isl_tiling tiling)
 {
-   return (1u << tiling) & ISL_TILING_STD_Y_MASK;
-}
-
-static inline bool
-isl_tiling_is_64(enum isl_tiling tiling)
-{
-   return (1u << tiling) & ISL_TILING_STD_64_MASK;
+   return (1u << tiling) & ISL_TILING_STANDARD_MASK;
 }
 
 uint32_t

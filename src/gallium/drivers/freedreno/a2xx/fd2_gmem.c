@@ -227,7 +227,8 @@ emit_mem2gmem_surf(struct fd_batch *batch, uint32_t base,
    /* emit fb as a texture: */
    OUT_PKT3(ring, CP_SET_CONSTANT, 7);
    OUT_RING(ring, 0x00010000);
-   OUT_RING(ring, A2XX_SQ_TEX_0_CLAMP_X(SQ_TEX_WRAP) |
+   OUT_RING(ring, A2XX_SQ_TEX_0_TYPE(SQ_TEX_TYPE_VALID_TEXTURE) |
+                     A2XX_SQ_TEX_0_CLAMP_X(SQ_TEX_WRAP) |
                      A2XX_SQ_TEX_0_CLAMP_Y(SQ_TEX_WRAP) |
                      A2XX_SQ_TEX_0_CLAMP_Z(SQ_TEX_WRAP) |
                      A2XX_SQ_TEX_0_PITCH(

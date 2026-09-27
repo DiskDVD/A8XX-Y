@@ -19,8 +19,6 @@ glx@glx-swap-pixmap-bad,Fail
 glx@glx-visuals-depth -pixmap,Crash
 glx@glx-visuals-stencil -pixmap,Crash
 
-spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
-
 spec@!opengl 1.0@gl-1.0-swapbuffers-behavior,Fail
 
 spec@!opengl 1.1@depthstencil-default_fb-blit samples=2,Fail
@@ -54,11 +52,6 @@ spec@!opengl 1.0@rasterpos@glsl_vs_tes_linked,Fail
 spec@!opengl 1.1@polygon-mode,Fail
 
 spec@!opengl 2.0@vs-point_size-zero,Fail
-
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
-
-spec@!opengl 2.1@polygon-stipple-fs,Fail
 
 spec@!opengl 3.0@clearbuffer-depth-cs-probe,Fail
 

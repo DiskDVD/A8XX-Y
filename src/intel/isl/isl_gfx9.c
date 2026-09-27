@@ -96,7 +96,7 @@ isl_gfx9_choose_image_alignment_el(const struct isl_device *dev,
     *    - Valid Values: HALIGN_4, HALIGN_8, HALIGN_16
     */
 
-   if (isl_tiling_is_std_y(tiling)) {
+   if (isl_tiling_is_standard(tiling)) {
       /* Ys and Yf tiled images are aligned to the tile size */
       *image_align_el = (struct isl_extent3d) {
          .w = tile_info->logical_extent_el.w,

@@ -11,10 +11,12 @@ inc_imagination = include_directories([
   'include',
 ])
 
+subdir('csbgen')
+
 if with_imagination_vk or with_tools.contains('imagination')
   subdir('common')
-  subdir('csbgen')
   subdir('pco')
+  subdir('ds')
   subdir('pdsc')
 endif
 

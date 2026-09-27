@@ -292,8 +292,6 @@ spec@!opengl 1.5@depth-tex-compare,Fail
 
 spec@!opengl 2.0@max-samplers,Fail
 spec@!opengl 2.0@max-samplers border,Fail
-spec@!opengl 2.1@pbo,Fail
-spec@!opengl 2.1@pbo@test_polygon_stip,Fail
 spec@!opengl 2.1@polygon-stipple-fs,Fail
 spec@!opengl 2.0@vertex-program-two-side,Fail
 spec@!opengl 2.0@vertex-program-two-side enabled,Fail

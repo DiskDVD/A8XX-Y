@@ -33,16 +33,13 @@ a306-piglit:
     DEQP_SUITE: freedreno-a306-piglit
     HWCI_START_WESTON: 1
 
-# Something happened and now this hangchecks and doesn't recover.  Unkown when
-# it started.
-.a306-piglit-gl:
+a306-piglit-gl:
   extends:
     - .lava-arm64-test-gl
     - .lava-dragonboard-410c:arm64
     - .test-piglit
     - .collabora-freedreno-manual-rules
   variables:
-    BM_KERNEL_EXTRA_ARGS: "msm.num_hw_submissions=1"
     DEQP_SUITE: freedreno-a306-piglit-quick-gl
     FDO_CI_CONCURRENT: 3
     HWCI_START_WESTON: 1

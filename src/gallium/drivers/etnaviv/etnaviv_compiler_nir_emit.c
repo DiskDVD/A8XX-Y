@@ -188,8 +188,8 @@ etna_emit_alu(struct etna_compile *c, nir_alu_instr *alu, struct etna_inst_dst d
    case nir_op_fsqrt:
    case nir_op_imul:
       /* scalar instructions we want src to be in x component */
-      inst.src[0].swiz = inst_swiz_compose(src[0].swiz, swiz_scalar);
-      inst.src[1].swiz = inst_swiz_compose(src[1].swiz, swiz_scalar);
+      inst.src[0] = etna_src_swizzle(src[0], swiz_scalar);
+      inst.src[1] = etna_src_swizzle(src[1], swiz_scalar);
       break;
    /* deal with instructions which don't have 1:1 mapping */
    case nir_op_fmin:

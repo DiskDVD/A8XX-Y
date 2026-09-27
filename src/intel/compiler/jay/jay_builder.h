@@ -463,6 +463,8 @@ struct jayb_send_params {
    bool bindless;
    bool pure;
    bool skip_helpers;
+   /* if true, don't include mlen in ex_desc */
+   bool use_raw_ex_desc;
    uint8_t explicit_simd_width;
 };
 
@@ -612,7 +614,7 @@ _jay_SEND(jay_builder *b, const struct jayb_send_params p)
        * register, so we can just stuff it in a UGPR for now.
        */
       I->src[1] = jay_alloc_def(b, UGPR, 1);
-      if (info->bindless) {
+      if (info->bindless || p.use_raw_ex_desc) {
          jay_MOV(b, I->src[1], p.ex_desc);
       } else {
          jay_OR(b, JAY_TYPE_U32, I->src[1], p.ex_desc,

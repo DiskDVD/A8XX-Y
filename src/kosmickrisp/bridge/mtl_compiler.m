@@ -164,26 +164,6 @@ mtl_render_pipeline_descriptor_set_raster_sample_count(mtl_render_pipeline_descr
 }
 
 void
-mtl_render_pipeline_descriptor_set_alpha_to_coverage(mtl_render_pipeline_descriptor *descriptor,
-                                                     bool enabled)
-{
-   @autoreleasepool {
-      MTL4RenderPipelineDescriptor *desc = (MTL4RenderPipelineDescriptor *)descriptor;
-      desc.alphaToCoverageState = enabled ? MTL4AlphaToCoverageStateEnabled : MTL4AlphaToCoverageStateDisabled;
-   }
-}
-
-void
-mtl_render_pipeline_descriptor_set_alpha_to_one(mtl_render_pipeline_descriptor *descriptor,
-                                                bool enabled)
-{
-   @autoreleasepool {
-      MTL4RenderPipelineDescriptor *desc = (MTL4RenderPipelineDescriptor *)descriptor;
-      desc.alphaToOneState = enabled ? MTL4AlphaToOneStateEnabled : MTL4AlphaToOneStateDisabled;
-   }
-}
-
-void
 mtl_render_pipeline_descriptor_set_rasterization_enabled(mtl_render_pipeline_descriptor *descriptor,
                                                          bool enabled)
 {

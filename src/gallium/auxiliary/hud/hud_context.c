@@ -62,12 +62,11 @@
 #include "util/u_memory.h"
 #include "util/u_math.h"
 #include "util/u_sampler.h"
-#include "util/u_simple_shaders.h"
 #include "util/u_string.h"
 #include "util/u_surface.h"
 #include "util/u_upload_mgr.h"
-#include "tgsi/tgsi_text.h"
-#include "tgsi/tgsi_dump.h"
+#include "compiler/nir/nir_builder.h"
+#include "nir/pipe_nir.h"
 
 #define HUD_DEFAULT_VISIBILITY true
 #define HUD_DEFAULT_SCALE 1
@@ -1710,6 +1709,175 @@ print_help(struct pipe_screen *screen)
    fflush(stdout);
 }
 
+/* The vertex shaders read 4 vec4s of constant buffer 0, laid out to match
+ * struct hud_context::constants:
+ *    0 = color
+ *    1 = (2 / fb_width, 2 / fb_height, xoffset, yoffset)
+ *    2 = (xscale, yscale, 0, 0)
+ *    3 = rotation matrix, rows in .xy and .zw
+ */
+static nir_def *
+hud_load_const(nir_builder *b, unsigned slot)
+{
+   return nir_load_uniform(b, 4, 32, nir_imm_int(b, 0),
+                           .base = slot, .range = 1,
+                           .dest_type = nir_type_float32);
+}
+
+/* Declare the position input and output shared by both HUD vertex shaders and
+ * compute the clip-space position:
+ *    v   = in_pos * (xscale, yscale) + (xoffset, yoffset)
+ *    v   = v * (2 / fb_width, 2 / fb_height) - 1
+ *    pos = rotation_matrix * v
+ */
+static void
+hud_emit_position(nir_builder *b)
+{
+   b->shader->num_uniforms = 4;
+
+   nir_variable *in_pos =
+      nir_create_variable_with_location(b->shader, nir_var_shader_in,
+                                        VERT_ATTRIB_GENERIC0, glsl_vec2_type());
+   nir_variable *out_pos =
+      nir_create_variable_with_location(b->shader, nir_var_shader_out,
+                                        VARYING_SLOT_POS, glsl_vec4_type());
+
+   nir_def *fb_scale = hud_load_const(b, 1);
+   nir_def *scale = hud_load_const(b, 2);
+   nir_def *rotate = hud_load_const(b, 3);
+
+   nir_def *v = nir_ffma_weak(b, nir_load_var(b, in_pos),
+                              nir_channels(b, scale, 0x3),
+                              nir_channels(b, fb_scale, 0xc));
+   v = nir_ffma_weak_imm2(b, v, nir_channels(b, fb_scale, 0x3), -1.0);
+
+   nir_store_var(b, out_pos,
+                 nir_vec4(b, nir_fdot2(b, v, nir_channels(b, rotate, 0x3)),
+                             nir_fdot2(b, v, nir_channels(b, rotate, 0xc)),
+                             nir_imm_float(b, 0.0), nir_imm_float(b, 1.0)),
+                 0xf);
+}
+
+static void *
+hud_create_shader(struct pipe_context *pipe, nir_shader *nir)
+{
+   struct pipe_screen *screen = pipe->screen;
+
+   nir->info.separate_shader = true;
+
+   if (nir->options->lower_uniforms_to_ubo) {
+      NIR_PASS(_, nir, nir_lower_uniforms_to_ubo, false,
+               !screen->shader_caps[nir->info.stage].integers);
+   } else {
+      assert(!screen->caps.packed_uniforms);
+   }
+
+   if (!screen->caps.nir_samplers_as_deref)
+      NIR_PASS(_, nir, nir_lower_samplers);
+
+   if (screen->finalize_nir)
+      screen->finalize_nir(screen, nir, true);
+
+   nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
+
+   return pipe_shader_from_nir(pipe, nir);
+}
+
+static void *
+hud_create_fs_color(struct pipe_context *pipe)
+{
+   nir_builder b = nir_builder_init_simple_shader(
+      MESA_SHADER_FRAGMENT, pipe->screen->nir_options[MESA_SHADER_FRAGMENT],
+      "hud fs_color");
+
+   nir_variable *in =
+      nir_create_variable_with_location(b.shader, nir_var_shader_in,
+                                        VARYING_SLOT_COL0, glsl_vec4_type());
+   in->data.interpolation = INTERP_MODE_FLAT;
+
+   nir_variable *out =
+      nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                        FRAG_RESULT_COLOR, glsl_vec4_type());
+
+   nir_store_var(&b, out, nir_load_var(&b, in), 0xf);
+
+   return hud_create_shader(pipe, b.shader);
+}
+
+static void *
+hud_create_fs_text(struct pipe_context *pipe)
+{
+   nir_builder b = nir_builder_init_simple_shader(
+      MESA_SHADER_FRAGMENT, pipe->screen->nir_options[MESA_SHADER_FRAGMENT],
+      "hud fs_text");
+
+   nir_variable *in =
+      nir_create_variable_with_location(b.shader, nir_var_shader_in,
+                                        VARYING_SLOT_VAR0, glsl_vec2_type());
+   in->data.interpolation = INTERP_MODE_NOPERSPECTIVE;
+
+   nir_variable *out =
+      nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                        FRAG_RESULT_DATA0, glsl_vec4_type());
+
+   nir_variable *sampler = nir_variable_create(
+      b.shader, nir_var_uniform,
+      glsl_sampler_type(GLSL_SAMPLER_DIM_2D, false, false, GLSL_TYPE_FLOAT),
+      "font");
+   BITSET_SET(b.shader->info.textures_used, 0);
+   BITSET_SET(b.shader->info.samplers_used, 0);
+
+   nir_deref_instr *deref = nir_build_deref_var(&b, sampler);
+   nir_def *texel = nir_tex(&b, nir_load_var(&b, in),
+                            .texture_deref = deref,
+                            .sampler_deref = deref);
+
+   nir_store_var(&b, out, nir_replicate(&b, nir_channel(&b, texel, 0), 4), 0xf);
+
+   return hud_create_shader(pipe, b.shader);
+}
+
+static void *
+hud_create_vs_color(struct pipe_context *pipe)
+{
+   nir_builder b = nir_builder_init_simple_shader(
+      MESA_SHADER_VERTEX, pipe->screen->nir_options[MESA_SHADER_VERTEX],
+      "hud vs_color");
+
+   hud_emit_position(&b);
+
+   nir_variable *out_color =
+      nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                        VARYING_SLOT_COL0, glsl_vec4_type());
+   nir_store_var(&b, out_color, hud_load_const(&b, 0), 0xf);
+
+   return hud_create_shader(pipe, b.shader);
+}
+
+static void *
+hud_create_vs_text(struct pipe_context *pipe)
+{
+   nir_builder b = nir_builder_init_simple_shader(
+      MESA_SHADER_VERTEX, pipe->screen->nir_options[MESA_SHADER_VERTEX],
+      "hud vs_text");
+
+   hud_emit_position(&b);
+
+   nir_variable *in_tc =
+      nir_create_variable_with_location(b.shader, nir_var_shader_in,
+                                        VERT_ATTRIB_GENERIC1, glsl_vec2_type());
+   nir_variable *out_tc =
+      nir_create_variable_with_location(b.shader, nir_var_shader_out,
+                                        VARYING_SLOT_VAR0, glsl_vec2_type());
+
+   /* Font atlas is 128x256. */
+   nir_store_var(&b, out_tc,
+                 nir_fmul(&b, nir_load_var(&b, in_tc),
+                          nir_imm_vec2(&b, 1.0 / 128.0, 1.0 / 256.0)), 0x3);
+
+   return hud_create_shader(pipe, b.shader);
+}
+
 static void
 hud_unset_draw_context(struct hud_context *hud)
 {
@@ -1762,122 +1930,21 @@ hud_set_draw_context(struct hud_context *hud, struct cso_context *cso,
    if (!hud->font_sampler_view)
       goto fail;
 
-   /* color fragment shader */
-   hud->fs_color =
-         util_make_fragment_passthrough_shader(pipe,
-                                               TGSI_SEMANTIC_COLOR,
-                                               TGSI_INTERPOLATE_CONSTANT,
-                                               true);
+   hud->fs_color = hud_create_fs_color(pipe);
+   if (!hud->fs_color)
+      goto fail;
 
-   /* text fragment shader */
-   {
-      /* Read a texture and do .xxxx swizzling. */
-      static const char *fragment_shader_text = {
-         "FRAG\n"
-         "DCL IN[0], GENERIC[0], LINEAR\n"
-         "DCL SAMP[0]\n"
-         "DCL SVIEW[0], 2D, FLOAT\n"
-         "DCL OUT[0], COLOR[0]\n"
-         "DCL TEMP[0]\n"
+   hud->fs_text = hud_create_fs_text(pipe);
+   if (!hud->fs_text)
+      goto fail;
 
-         "TEX TEMP[0], IN[0], SAMP[0], 2D\n"
-         "MOV OUT[0], TEMP[0].xxxx\n"
-         "END\n"
-      };
+   hud->vs_color = hud_create_vs_color(pipe);
+   if (!hud->vs_color)
+      goto fail;
 
-      struct tgsi_token tokens[1000];
-      struct pipe_shader_state state = {0};
-
-      if (!tgsi_text_translate(fragment_shader_text, tokens, ARRAY_SIZE(tokens))) {
-         assert(0);
-         goto fail;
-      }
-      pipe_shader_state_from_tgsi(&state, tokens);
-      hud->fs_text = pipe->create_fs_state(pipe, &state);
-   }
-
-   /* color vertex shader */
-   {
-      static const char *vertex_shader_text = {
-         "VERT\n"
-         "DCL IN[0..1]\n"
-         "DCL OUT[0], POSITION\n"
-         "DCL OUT[1], COLOR[0]\n" /* color */
-         "DCL OUT[2], GENERIC[0]\n" /* texcoord */
-         /* [0] = color,
-          * [1] = (2/fb_width, 2/fb_height, xoffset, yoffset)
-          * [2] = (xscale, yscale, 0, 0)
-          * [3] = rotation_matrix */
-         "DCL CONST[0][0..3]\n"
-         "DCL TEMP[0..2]\n"
-         "IMM[0] FLT32 { -1, 0, 0, 1 }\n"
-
-         /* v = in * (xscale, yscale) + (xoffset, yoffset) */
-         "MAD TEMP[0].xy, IN[0], CONST[0][2].xyyy, CONST[0][1].zwww\n"
-         /* v = v * (2 / fb_width, 2 / fb_height) - (1, 1) */
-         "MAD TEMP[1].xy, TEMP[0], CONST[0][1].xyyy, IMM[0].xxxx\n"
-
-         /* pos = rotation_matrix * v */
-         "MUL TEMP[2].xyzw, TEMP[1].xyxy, CONST[0][3].xyzw\n"
-         "ADD OUT[0].xy, TEMP[2].xzzz, TEMP[2].ywww\n"
-         "MOV OUT[0].zw, IMM[0]\n"
-
-         "MOV OUT[1], CONST[0][0]\n"
-         "MOV OUT[2], IN[1]\n"
-         "END\n"
-      };
-
-      struct tgsi_token tokens[1000];
-      struct pipe_shader_state state = {0};
-      if (!tgsi_text_translate(vertex_shader_text, tokens, ARRAY_SIZE(tokens))) {
-         assert(0);
-         goto fail;
-      }
-      pipe_shader_state_from_tgsi(&state, tokens);
-      hud->vs_color = pipe->create_vs_state(pipe, &state);
-   }
-
-   /* text vertex shader */
-   {
-      /* similar to the above, without the color component
-       * to match the varyings in fs_text */
-      static const char *vertex_shader_text = {
-         "VERT\n"
-         "DCL IN[0..1]\n"
-         "DCL OUT[0], POSITION\n"
-         "DCL OUT[1], GENERIC[0]\n" /* texcoord */
-         /* [0] = color,
-          * [1] = (2/fb_width, 2/fb_height, xoffset, yoffset)
-          * [2] = (xscale, yscale, 0, 0)
-          * [3] = rotation_matrix */
-         "DCL CONST[0][0..3]\n"
-         "DCL TEMP[0..2]\n"
-         "IMM[0] FLT32 { -1, 0, 0, 1 }\n"
-         "IMM[1] FLT32 { 0.0078125, 0.00390625, 1, 1 }\n" // 1.0 / 128, 1.0 / 256, 1, 1
-
-         /* v = in * (xscale, yscale) + (xoffset, yoffset) */
-         "MAD TEMP[0].xy, IN[0], CONST[0][2].xyyy, CONST[0][1].zwww\n"
-         /* pos = v * (2 / fb_width, 2 / fb_height) - (1, 1) */
-         "MAD TEMP[1].xy, TEMP[0], CONST[0][1].xyyy, IMM[0].xxxx\n"
-
-         /* pos = rotation_matrix * v */
-         "MUL TEMP[2].xyzw, TEMP[1].xyxy, CONST[0][3].xyzw\n"
-         "ADD OUT[0].xy, TEMP[2].xzzz, TEMP[2].ywww\n"
-         "MOV OUT[0].zw, IMM[0]\n"
-
-         "MUL OUT[1], IN[1], IMM[1]\n"
-         "END\n"
-      };
-
-      struct tgsi_token tokens[1000];
-      struct pipe_shader_state state = {0};
-      if (!tgsi_text_translate(vertex_shader_text, tokens, ARRAY_SIZE(tokens))) {
-         assert(0);
-         goto fail;
-      }
-      pipe_shader_state_from_tgsi(&state, tokens);
-      hud->vs_text = pipe->create_vs_state(pipe, &state);
-   }
+   hud->vs_text = hud_create_vs_text(pipe);
+   if (!hud->vs_text)
+      goto fail;
 
    return true;
 
@@ -1917,10 +1984,11 @@ hud_set_record_context(struct hud_context *hud, struct pipe_context *pipe)
 }
 
 static void
-hud_init_velems(struct cso_velems_state *velems, unsigned stride)
+hud_init_velems(struct cso_velems_state *velems, unsigned count,
+                unsigned stride)
 {
-   velems->count = 2;
-   for (unsigned i = 0; i < 2; i++) {
+   velems->count = count;
+   for (unsigned i = 0; i < count; i++) {
       velems->velems[i].src_offset = i * 2 * sizeof(float);
       velems->velems[i].src_format = PIPE_FORMAT_R32G32_FLOAT;
       velems->velems[i].vertex_buffer_index = 0;
@@ -2061,8 +2129,8 @@ hud_create(struct cso_context *cso, struct hud_context *share,
    hud->rasterizer_aa_lines.line_smooth = 1;
 
    /* vertex elements */
-   hud_init_velems(&hud->velems, 2 * sizeof(float));
-   hud_init_velems(&hud->text_velems, 4 * sizeof(float));
+   hud_init_velems(&hud->velems, 1, 2 * sizeof(float));
+   hud_init_velems(&hud->text_velems, 2, 4 * sizeof(float));
 
    /* sampler state (for font drawing) */
    hud->font_sampler_state.wrap_s = PIPE_TEX_WRAP_CLAMP_TO_EDGE;

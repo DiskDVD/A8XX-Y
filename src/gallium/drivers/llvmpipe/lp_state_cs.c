@@ -1004,7 +1004,7 @@ llvmpipe_create_compute_state(struct pipe_context *pipe,
    if (!shader)
       return NULL;
 
-   shader->no = cs_no++;
+   shader->no = p_atomic_fetch_add(&cs_no, 1);
 
    shader->base.type = PIPE_SHADER_IR_NIR;
 
@@ -1910,7 +1910,7 @@ llvmpipe_create_ts_state(struct pipe_context *pipe,
 
    llvmpipe_register_shader(pipe, templ);
 
-   shader->no = task_no++;
+   shader->no = p_atomic_fetch_add(&task_no, 1);
    shader->base.type = templ->type;
 
    shader->base.ir.nir = templ->ir.nir;
@@ -1980,7 +1980,7 @@ llvmpipe_create_ms_state(struct pipe_context *pipe,
 
    llvmpipe_register_shader(pipe, templ);
 
-   shader->no = mesh_no++;
+   shader->no = p_atomic_fetch_add(&mesh_no, 1);
    shader->base.type = templ->type;
 
    shader->base.ir.nir = templ->ir.nir;

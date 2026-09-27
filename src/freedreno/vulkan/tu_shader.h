@@ -166,6 +166,12 @@ tu_nir_lower_multiview(nir_shader *nir, uint32_t mask, struct tu_device *dev,
                        bool last_stage);
 
 bool
+tu_nir_lower_multiview_sw_vs(nir_shader *nir);
+
+bool
+tu_nir_lower_multiview_sw_fs(nir_shader *nir);
+
+bool
 tu_nir_lower_ray_queries(nir_shader *nir);
 
 bool

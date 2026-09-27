@@ -14,26 +14,26 @@
 using gfxstream::guest::IOStream;
 
 class AddressSpaceStream : public IOStream {
-public:
- explicit AddressSpaceStream(address_space_handle_t handle, uint32_t version,
-                             struct asg_context context, uint64_t ringOffset,
-                             uint64_t writeBufferOffset, struct address_space_ops ops);
- ~AddressSpaceStream();
+   public:
+    explicit AddressSpaceStream(address_space_handle_t handle, uint32_t version,
+                                struct asg_context context, uint64_t ringOffset,
+                                uint64_t writeBufferOffset, struct address_space_ops ops);
+    ~AddressSpaceStream();
 
- virtual size_t idealAllocSize(size_t len);
- virtual void* allocBuffer(size_t minSize);
- virtual int commitBuffer(size_t size);
- virtual const unsigned char* readFully(void* buf, size_t len);
- virtual const unsigned char* read(void* buf, size_t* inout_len);
- virtual int writeFully(const void* buf, size_t len);
- virtual int writeFullyAsync(const void* buf, size_t len);
- virtual const unsigned char* commitBufferAndReadFully(size_t size, void* buf, size_t len);
+    virtual size_t idealAllocSize(size_t len);
+    virtual void* allocBuffer(size_t minSize);
+    virtual int commitBuffer(size_t size);
+    virtual const unsigned char* readFully(void* buf, size_t len);
+    virtual const unsigned char* read(void* buf, size_t* inout_len);
+    virtual int writeFully(const void* buf, size_t len);
+    virtual int writeFullyAsync(const void* buf, size_t len);
+    virtual const unsigned char* commitBufferAndReadFully(size_t size, void* buf, size_t len);
 
- void setMapping(VirtGpuResourceMappingPtr mapping) { m_mapping = mapping; }
+    void setMapping(VirtGpuResourceMappingPtr mapping) { m_mapping = mapping; }
 
- void setResourceId(uint32_t id) { m_resourceId = id; }
+    void setResourceId(uint32_t id) { m_resourceId = id; }
 
-private:
+   private:
     bool isInError() const;
     ssize_t speculativeRead(unsigned char* readBuffer, size_t trySize);
     void notifyAvailable();

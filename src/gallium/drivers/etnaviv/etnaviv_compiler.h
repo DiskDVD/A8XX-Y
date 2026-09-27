@@ -83,12 +83,14 @@ struct etna_shader_variant {
    struct etna_shader_key key;
 
    struct etna_bo *bo; /* cached code memory bo handle (for icache) */
+   struct etna_bo *constant_bo; /* uploaded copy of constant_data */
 
    /*
     * Below here is serialized when written to disk cache:
     */
    uint32_t *code;
    struct etna_shader_uniform_info uniforms;
+   void *constant_data;
 
    /*
     * The following macros are used by the shader disk cache save/
@@ -102,6 +104,7 @@ struct etna_shader_variant {
 
    mesa_shader_stage stage;
    uint32_t code_size; /* code size in uint32 words */
+   uint32_t constant_data_size; /* in bytes */
    unsigned num_temps;
 
    /* ETNA_DIRTY_* flags that, when set in context dirty, mean that the

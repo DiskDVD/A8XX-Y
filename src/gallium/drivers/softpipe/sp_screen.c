@@ -333,6 +333,7 @@ softpipe_init_screen_caps(struct softpipe_screen *sp_screen)
    caps->min_texture_gather_offset = -32;
    caps->max_texture_gather_offset = 31;
    caps->draw_indirect = true;
+   caps->multi_draw_indirect = true;
    caps->query_so_overflow = true;
    caps->nir_images_as_deref = false;
 

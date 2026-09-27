@@ -137,7 +137,14 @@ load_const(struct ir2_context *ctx, float *value_f, unsigned ncomp)
    unsigned idx, i, j;
    unsigned imm_ncomp = 0;
    unsigned swiz = 0;
-   uint32_t *value = (uint32_t *)value_f;
+   uint32_t value[4];
+
+   /* type-punned through memcpy: reading the caller's float array through
+    * a uint32_t pointer is undefined and gcc on arm reorders the read
+    * ahead of the store, turning the immediate into stack garbage
+    */
+   assert(ncomp <= ARRAY_SIZE(value));
+   memcpy(value, value_f, ncomp * sizeof(*value));
 
    /* try to merge with existing immediate (TODO: try with neg) */
    for (idx = 0; idx < so->num_immediates; idx++) {
@@ -430,16 +437,19 @@ emit_alu(struct ir2_context *ctx, nir_alu_instr *alu)
    for (int i = 0; i < info->num_inputs; i++) {
       nir_alu_src *src = &alu->src[i];
 
-      /* compress swizzle with writemask when applicable */
+      nir_legacy_alu_src legacy_src =
+         nir_legacy_chase_alu_src(src, true /* fuse_abs */);
+
+      /* compress swizzle with writemask when applicable.  Take it from the
+       * chased source: folding a neg or an abs skips over an instruction that
+       * carried a swizzle of its own, and only the chase composes the two.
+       */
       unsigned swiz = 0, j = 0;
       for (int i = 0; i < 4; i++) {
          if (!(legacy_dest.write_mask & 1 << i) && !info->output_size)
             continue;
-         swiz |= swiz_set(src->swizzle[i], j++);
+         swiz |= swiz_set(legacy_src.swizzle[i], j++);
       }
-
-      nir_legacy_alu_src legacy_src =
-         nir_legacy_chase_alu_src(src, true /* fuse_abs */);
 
       instr->src[i] = make_legacy_src(ctx, legacy_src.src);
       instr->src[i].swizzle = swiz_merge(instr->src[i].swizzle, swiz);
@@ -535,7 +545,8 @@ load_input(struct ir2_context *ctx, nir_intrinsic_instr *intr)
       break;
    default:
       instr = instr_create_alu_dest(ctx, nir_op_mov, def);
-      instr->src[0] = ir2_src(idx, 0, IR2_SRC_INPUT);
+      instr->src[0] =
+         ir2_src(idx, swiz_shift(nir_intrinsic_component(intr)), IR2_SRC_INPUT);
       break;
    }
 }
@@ -548,7 +559,7 @@ output_slot(struct ir2_context *ctx, nir_intrinsic_instr *intr)
 
 static void
 store_output(struct ir2_context *ctx, nir_src src, unsigned slot,
-             unsigned ncomp)
+             unsigned ncomp, unsigned wrmask, unsigned comp)
 {
    struct ir2_instr *instr;
    unsigned idx = 0;
@@ -576,8 +587,19 @@ store_output(struct ir2_context *ctx, nir_src src, unsigned slot,
       return;
    }
 
-   instr = instr_create_alu(ctx, nir_op_mov, ncomp);
+   /* the write mask is relative to the source and comp is the component
+    * of the varying the first source component lands in; compact the
+    * written lanes into consecutive source components and let the write
+    * mask place them at component + lane.
+    */
+   unsigned swiz = 0, i = 0;
+   u_foreach_bit (k, wrmask)
+      swiz |= swiz_set(k, i++);
+
+   instr = instr_create_alu(ctx, nir_op_mov, util_bitcount(wrmask));
    instr->src[0] = make_src(ctx, src);
+   swiz_merge_p(&instr->src[0].swizzle, swiz);
+   instr->alu.write_mask = wrmask << comp;
    instr->alu.export = idx;
 }
 
@@ -610,7 +632,8 @@ emit_intrinsic(struct ir2_context *ctx, nir_intrinsic_instr *intr)
       break;
    case nir_intrinsic_store_output:
       store_output(ctx, intr->src[0], output_slot(ctx, intr),
-                   intr->num_components);
+                   intr->num_components, nir_intrinsic_write_mask(intr),
+                   nir_intrinsic_component(intr));
       break;
    case nir_intrinsic_load_uniform:
       const_offset = nir_src_as_const_value(intr->src[0]);
@@ -1146,6 +1169,13 @@ ir2_nir_compile(struct ir2_context *ctx, bool binning)
    memset(ctx->ssa_map, 0xff, sizeof(ctx->ssa_map));
 
    ctx->nir = nir_shader_clone(NULL, so->nir);
+
+   if (ctx->tex_mag_switchover) {
+      OPT_V(ctx->nir, nir_lower_tex,
+            &(struct nir_lower_tex_options){
+               .lower_txl_mag_switchover = ctx->tex_mag_switchover,
+            });
+   }
 
    if (binning)
       cleanup_binning(ctx);

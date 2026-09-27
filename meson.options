@@ -196,13 +196,6 @@ option(
 )
 
 option(
-  'd3d-drivers-path',
-  type : 'string',
-  value : '',
-  description : 'Location of D3D drivers. Default: $libdir/d3d',
-)
-
-option(
   'vulkan-drivers',
   type : 'array',
   value : ['auto'],
@@ -664,6 +657,13 @@ option(
   type : 'boolean',
   value : false,
   description : 'Enable TensorFlow Lite delegate. Default: false'
+)
+
+option(
+  'torx',
+  type : 'boolean',
+  value : false,
+  description : 'Enable Torx (PyTorch backend). Default: false'
 )
 
 option(

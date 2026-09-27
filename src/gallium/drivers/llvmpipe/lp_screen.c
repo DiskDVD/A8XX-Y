@@ -1013,6 +1013,16 @@ out:
    return ret;
 }
 
+uint64_t
+llvmpipe_get_mem_file_size(struct pipe_screen *_screen)
+{
+#if DETECT_OS_LINUX
+   struct llvmpipe_screen *screen = llvmpipe_screen(_screen);
+   return screen->mem_file_size;
+#else
+   return 0;
+#endif
+}
 
 /**
  * Create a new pipe_screen object

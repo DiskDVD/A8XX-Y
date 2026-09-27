@@ -39,6 +39,7 @@
 #include "st_atom.h"
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
+#include "util/u_pstipple.h"
 
 
 /**
@@ -68,7 +69,7 @@ st_update_polygon_stipple( struct st_context *st )
    const GLuint sz = sizeof(st->state.poly_stipple);
    assert(sz == sizeof(ctx->PolygonStipple));
 
-   if (memcmp(st->state.poly_stipple, ctx->PolygonStipple, sz)) {
+   if (memcmp(st->state.poly_stipple, ctx->PolygonStipple, sz) || (st->emulate_polygon_stipple && !st->pstipple.texture)) {
       /* state has changed */
       struct pipe_poly_stipple newStipple;
 
@@ -81,6 +82,26 @@ st_update_polygon_stipple( struct st_context *st )
                         ctx->DrawBuffer->Height);
       }
 
-      st->pipe->set_polygon_stipple(st->pipe, &newStipple);
+      if (!st->emulate_polygon_stipple) {
+         st->pipe->set_polygon_stipple(st->pipe, &newStipple);
+      } else {
+         /* The driver doesn't support polygon stipple, so we emulate it by
+          * sampling a stipple texture in the fragment shader (see
+          * nir_lower_pstipple_fs).  Keep that texture's contents up to date;
+          * st_atom_texture.c / st_atom_sampler.c bind it for stippled draws.
+          */
+         if (!st->pstipple.texture) {
+            st->pstipple.texture =
+               util_pstipple_create_stipple_texture(st->pipe, newStipple.stipple);
+         } else {
+            util_pstipple_update_stipple_texture(st->pipe, st->pstipple.texture,
+                                                 newStipple.stipple);
+         }
+
+         if (!st->pstipple.sampler_view) {
+            st->pstipple.sampler_view =
+               util_pstipple_create_sampler_view(st->pipe, st->pstipple.texture);
+         }
+      }
    }
 }

@@ -1641,10 +1641,14 @@ tu_GetImageOpaqueCaptureDescriptorDataEXT(VkDevice device,
 {
    VK_FROM_HANDLE(tu_image, image, pInfo->image);
 
-   /* Save the image iova so that when replaying sparse images have a
-    * consistent iova and therefore consistent descriptor contents.
-    */
-   memcpy(pData, &image->iova, sizeof(image->iova));
+   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_BINDING_BIT) {
+      /* Save the image iova so that when replaying sparse images have a
+       * consistent iova and therefore consistent descriptor contents.
+       */
+      memcpy(pData, &image->iova, sizeof(image->iova));
+   } else {
+      memset(pData, 0, sizeof(image->iova));
+   }
    return VK_SUCCESS;
 }
 

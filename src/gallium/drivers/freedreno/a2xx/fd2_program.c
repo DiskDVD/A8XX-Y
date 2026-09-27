@@ -18,6 +18,7 @@
 #include "freedreno_program.h"
 
 #include "ir2/instr-a2xx.h"
+#include "fd2_context.h"
 #include "fd2_program.h"
 #include "fd2_texture.h"
 #include "fd2_util.h"
@@ -96,6 +97,19 @@ fd2_shader_state_create(struct pipe_context *pctx,
 
    so->first_immediate = so->nir->num_uniforms;
 
+   nir_foreach_function_impl (impl, so->nir) {
+      nir_foreach_block (block, impl) {
+         nir_foreach_instr (instr, block) {
+            if (instr->type != nir_instr_type_tex)
+               continue;
+
+            nir_tex_instr *tex = nir_instr_as_tex(instr);
+            if (tex->op == nir_texop_txl)
+               so->tex_lod_samplers |= BITFIELD_BIT(tex->sampler_index);
+         }
+      }
+   }
+
    ir2_compile(so, 0, NULL);
 
    /* Free FS NIR now.  VS NIR will need to stick around for the draw variant
@@ -150,6 +164,32 @@ patch_fetches(struct fd_context *ctx, struct ir2_shader_info *info,
    }
 }
 
+static uint16_t
+tex_mag_switchover(struct fd_context *ctx, struct fd2_shader_stateobj *so)
+   assert_dt
+{
+   struct fd_texture_stateobj *tex = &ctx->tex[so->type];
+   uint16_t mask = 0;
+
+   if (!fd2_context(ctx)->mag_switchover_half)
+      return 0;
+
+   u_foreach_bit (i, so->tex_lod_samplers & tex->valid_samplers) {
+      const struct pipe_sampler_state *ss = tex->samplers[i];
+
+      /* the switch-over is decided on the biased and clamped lod */
+      if (ss->lod_bias != 0.0f || ss->min_lod > 0.0f)
+         continue;
+
+      if (ss->min_img_filter == PIPE_TEX_FILTER_NEAREST &&
+          ss->mag_img_filter == PIPE_TEX_FILTER_LINEAR &&
+          ss->min_mip_filter != PIPE_TEX_MIPFILTER_NONE)
+         mask |= BITFIELD_BIT(i);
+   }
+
+   return mask;
+}
+
 void
 fd2_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
                  struct fd_program_stateobj *prog)
@@ -160,26 +200,45 @@ fd2_program_emit(struct fd_context *ctx, struct fd_ringbuffer *ring,
    uint8_t vs_gprs, fs_gprs = 0, vs_export = 0;
    enum a2xx_sq_ps_vtx_mode mode = POSITION_1_VECTOR;
    bool binning = (ctx->batch && ring == ctx->batch->binning);
-   unsigned variant = 0;
+   unsigned variant;
+   uint16_t switchover;
 
    vp = prog->vs;
+   if (!binning)
+      fp = prog->fs;
+
+   switchover = tex_mag_switchover(ctx, vp);
 
    /* find variant matching the linked fragment shader */
-   if (!binning) {
-      fp = prog->fs;
-      for (variant = 1; variant < ARRAY_SIZE(vp->variant); variant++) {
-         /* if checked all variants, compile a new variant */
-         if (!vp->variant[variant].info.sizedwords) {
-            ir2_compile(vp, variant, fp);
-            break;
-         }
+   for (variant = 0; variant < ARRAY_SIZE(vp->variant); variant++) {
+      struct ir2_shader_variant *v = &vp->variant[variant];
 
-         /* check if fragment shader linkage matches */
-         if (!memcmp(&vp->variant[variant].f, &fp->variant[0].f,
-                     sizeof(struct ir2_frag_linkage)))
-            break;
+      /* if checked all variants, compile a new variant */
+      if (!v->info.sizedwords) {
+         v->tex_mag_switchover = switchover;
+         ir2_compile(vp, variant, fp);
+         break;
       }
-      assert(variant < ARRAY_SIZE(vp->variant));
+
+      if (v->binning != binning || v->tex_mag_switchover != switchover)
+         continue;
+
+      /* check if fragment shader linkage matches */
+      if (binning ||
+          !memcmp(&v->f, &fp->variant[0].f, sizeof(struct ir2_frag_linkage)))
+         break;
+   }
+
+   /* keying on the sampler filters as well as the fragment linkage means the
+    * variants can run out, so recompile over the last one rather than walk
+    * off the end of the array
+    */
+   if (variant == ARRAY_SIZE(vp->variant)) {
+      variant--;
+      free(vp->variant[variant].info.dwords);
+      memset(&vp->variant[variant], 0, sizeof(vp->variant[variant]));
+      vp->variant[variant].tex_mag_switchover = switchover;
+      ir2_compile(vp, variant, fp);
    }
 
    vpi = &vp->variant[variant].info;

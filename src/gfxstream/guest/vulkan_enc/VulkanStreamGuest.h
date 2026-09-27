@@ -9,9 +9,8 @@
 #include <memory>
 #include <vector>
 
-#include "ResourceTracker.h"
-#include "VulkanHandleMapping.h"
 #include "BumpPool.h"
+#include "ResourceTracker.h"
 #include "Stream.h"
 #include "gfxstream/guest/IOStream.h"
 #include "goldfish_vk_private_defs.h"
@@ -47,10 +46,6 @@ class VulkanStreamGuest : public gfxstream::aemu::Stream {
     // Frees everything that got alloc'ed.
     void clearPool();
 
-    void setHandleMapping(VulkanHandleMapping* mapping);
-    void unsetHandleMapping();
-    VulkanHandleMapping* handleMapping() const;
-
     void flush();
 
     uint32_t getFeatureBits() const;
@@ -64,8 +59,6 @@ class VulkanStreamGuest : public gfxstream::aemu::Stream {
     gfxstream::aemu::BumpPool mPool;
     std::vector<uint8_t> mWriteBuffer;
     gfxstream::guest::IOStream* mStream = nullptr;
-    DefaultHandleMapping mDefaultHandleMapping;
-    VulkanHandleMapping* mCurrentHandleMapping;
     uint32_t mFeatureBits = 0;
 };
 

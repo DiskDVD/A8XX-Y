@@ -219,14 +219,14 @@ isl_gfx6_filter_tiling(const struct isl_device *dev,
        * 3DSTATE_(DEPTH|STENCIL)_BUFFER.
        */
       if (info->dim == ISL_SURF_DIM_3D)
-         *flags &= ~ISL_TILING_STD_Y_MASK;
+         *flags &= ~ISL_TILING_STANDARD_MASK;
    }
 
    /* Again, Yf and Ys tilings for 3D have a different swizzling than a 2D
     * surface. So filter them out if the usage wants 2D/3D compatibility.
     */
    if (info->usage & ISL_SURF_USAGE_2D_3D_COMPATIBLE_BIT)
-      *flags &= ~ISL_TILING_STD_Y_MASK;
+      *flags &= ~ISL_TILING_STANDARD_MASK;
 
    /* For 3D storage images, we appear to have an undocumented dataport issue,
     * where the RENDER_SURFACE_STATE::MinimumArrayElement is ignored with
@@ -244,7 +244,7 @@ isl_gfx6_filter_tiling(const struct isl_device *dev,
    if (ISL_GFX_VER(dev) <= 11 &&
        info->dim == ISL_SURF_DIM_3D &&
        (info->usage & ISL_SURF_USAGE_STORAGE_BIT))
-      *flags &= ~ISL_TILING_STD_Y_MASK;
+      *flags &= ~ISL_TILING_STANDARD_MASK;
 
    if (isl_surf_usage_is_stencil(info->usage)) {
       if (ISL_GFX_VER(dev) >= 12) {
@@ -269,7 +269,7 @@ isl_gfx6_filter_tiling(const struct isl_device *dev,
     * really have a use-case for it anyway, so we choose to match the later docs.
     */
    if (info->dim == ISL_SURF_DIM_1D)
-      *flags &= ~ISL_TILING_STD_Y_MASK;
+      *flags &= ~ISL_TILING_STANDARD_MASK;
 
    /* MCS buffers are always Y-tiled */
    if (isl_format_get_layout(info->format)->txc == ISL_TXC_MCS)

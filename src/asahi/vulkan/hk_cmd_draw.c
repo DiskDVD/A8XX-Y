@@ -235,6 +235,7 @@ hk_attachment_init(struct hk_attachment *att,
 
    VK_FROM_HANDLE(hk_image_view, iview, info->imageView);
    *att = (struct hk_attachment){
+      .flags = vk_get_rendering_attachment_flags(info),
       .vk_format = iview->vk.format,
       .iview = iview,
    };
@@ -902,7 +903,8 @@ hk_CmdBeginRendering(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR void VKAPI_CALL
-hk_CmdEndRendering(VkCommandBuffer commandBuffer)
+hk_CmdEndRendering2KHR(VkCommandBuffer commandBuffer,
+                       const VkRenderingEndInfoKHR *pRenderingEndInfo)
 {
    VK_FROM_HANDLE(hk_cmd_buffer, cmd, commandBuffer);
    struct hk_rendering_state *render = &cmd->state.gfx.render;
@@ -922,12 +924,18 @@ hk_CmdEndRendering(VkCommandBuffer commandBuffer)
 
    /* Translate render state back to VK for meta */
    VkRenderingAttachmentInfo vk_color_att[HK_MAX_RTS];
+   VkRenderingAttachmentFlagsInfoKHR vk_color_att_flags[HK_MAX_RTS];
    for (uint32_t i = 0; i < render->color_att_count; i++) {
       if (render->color_att[i].resolve_mode != VK_RESOLVE_MODE_NONE)
          need_resolve = true;
 
+      vk_color_att_flags[i] = (VkRenderingAttachmentFlagsInfoKHR) {
+         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_FLAGS_INFO_KHR,
+         .flags = render->color_att[i].flags,
+      };
       vk_color_att[i] = (VkRenderingAttachmentInfo){
          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+         .pNext = &vk_color_att_flags[i],
          .imageView = hk_image_view_to_handle(render->color_att[i].iview),
          .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
          .resolveMode = render->color_att[i].resolve_mode,
@@ -937,8 +945,14 @@ hk_CmdEndRendering(VkCommandBuffer commandBuffer)
       };
    }
 
+
+   const VkRenderingAttachmentFlagsInfoKHR vk_depth_att_flags = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_FLAGS_INFO_KHR,
+      .flags = render->depth_att.flags,
+   };
    const VkRenderingAttachmentInfo vk_depth_att = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      .pNext = &vk_depth_att_flags,
       .imageView = hk_image_view_to_handle(render->depth_att.iview),
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
       .resolveMode = render->depth_att.resolve_mode,
@@ -949,8 +963,13 @@ hk_CmdEndRendering(VkCommandBuffer commandBuffer)
    if (render->depth_att.resolve_mode != VK_RESOLVE_MODE_NONE)
       need_resolve = true;
 
+   const VkRenderingAttachmentFlagsInfoKHR vk_stencil_att_flags = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_FLAGS_INFO_KHR,
+      .flags = render->stencil_att.flags,
+   };
    const VkRenderingAttachmentInfo vk_stencil_att = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      .pNext = &vk_stencil_att_flags,
       .imageView = hk_image_view_to_handle(render->stencil_att.iview),
       .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
       .resolveMode = render->stencil_att.resolve_mode,
@@ -1411,7 +1430,6 @@ hk_draw_without_restart(struct hk_cmd_buffer *cmd, struct agx_draw draw,
                         uint32_t draw_count)
 {
    struct hk_device *dev = hk_cmd_buffer_device(cmd);
-   struct hk_graphics_state *gfx = &cmd->state.gfx;
    struct vk_dynamic_graphics_state *dyn = &cmd->vk.dynamic_graphics_state;
 
    perf_debug(cmd, "Unrolling primitive restart due to GS/XFB");
@@ -1430,7 +1448,7 @@ hk_draw_without_restart(struct hk_cmd_buffer *cmd, struct agx_draw draw,
       .in_draw = draw.b.ptr,
       .out_draw = hk_pool_alloc(cmd, 5 * sizeof(uint32_t) * draw_count, 4).gpu,
       .max_draws = 1 /* TODO: MDI */,
-      .restart_index = gfx->index.restart,
+      .restart_index = dyn->ia.primitive_restart_index,
       .index_buffer_size_el = agx_draw_index_range_el(draw),
       .index_size_log2 = draw.index_size,
       .flatshade_first =
@@ -2217,7 +2235,7 @@ static void
 hk_flush_index(struct hk_cmd_buffer *cmd, struct hk_cs *cs)
 {
    struct hk_api_shader *gs = cmd->state.gfx.shaders[MESA_SHADER_GEOMETRY];
-   uint32_t index = cmd->state.gfx.index.restart;
+   uint32_t index = cmd->vk.dynamic_graphics_state.ia.primitive_restart_index;
 
    if (gs) {
       enum poly_gs_shape shape =
@@ -3382,10 +3400,11 @@ hk_CmdBindIndexBuffer2KHR(VkCommandBuffer commandBuffer, VkBuffer _buffer,
    VK_FROM_HANDLE(hk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(hk_buffer, buffer, _buffer);
 
+   vk_cmd_set_index_buffer_type(&cmd->vk, indexType);
+
    cmd->state.gfx.index = (struct hk_index_buffer_state){
       .buffer = hk_buffer_addr_range(buffer, offset, size, true),
       .size = agx_translate_index_size(vk_index_type_to_bytes(indexType)),
-      .restart = vk_index_to_restart(indexType),
    };
 
    /* TODO: check if necessary, blob does this */
@@ -3485,7 +3504,7 @@ hk_ia_update(struct hk_cmd_buffer *cmd, struct agx_draw draw,
       libagx_increment_ia_restart(
          cmd, agx_1d(1024), AGX_BARRIER_ALL | AGX_PREGFX, ia_vertices, ia_prims,
          vs_invocations, c_prims, c_inv, draw_ptr, draw.index_buffer,
-         agx_draw_index_range_el(draw), cmd->state.gfx.index.restart,
+         agx_draw_index_range_el(draw), dyn->ia.primitive_restart_index,
          index_size_B, prim, patch_size);
    } else {
       libagx_increment_ia(cmd, agx_1d(1), AGX_BARRIER_ALL | AGX_PREGFX,

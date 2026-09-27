@@ -10,7 +10,7 @@
 #include "util/helpers.h"
 
 static void
-store_buffer(nir_builder *b, const union ac_cs_clear_copy_buffer_key *const key,
+store_buffer(nir_builder *b, const ac_cs_clear_copy_buffer_key *const key,
              nir_def *store_val, nir_def *buf, nir_def *offset,
              const enum gl_access_qualifier access)
 {
@@ -19,7 +19,7 @@ store_buffer(nir_builder *b, const union ac_cs_clear_copy_buffer_key *const key,
 }
 
 static nir_def *
-load_buffer(nir_builder *b, const union ac_cs_clear_copy_buffer_key *const key,
+load_buffer(nir_builder *b, const ac_cs_clear_copy_buffer_key *const key,
             const unsigned num_components, const unsigned bit_size, nir_def *buf,
             nir_def *offset, const enum gl_access_qualifier access, const unsigned align_mul,
             const unsigned align_offset)
@@ -37,7 +37,7 @@ load_buffer(nir_builder *b, const union ac_cs_clear_copy_buffer_key *const key,
  * resident. The workaround is to scalarize such loads and disallow vectorization.
  */
 static nir_def *
-load_buffer_sparse(nir_builder *b, const union ac_cs_clear_copy_buffer_key *const key,
+load_buffer_sparse(nir_builder *b, const ac_cs_clear_copy_buffer_key *const key,
                    const unsigned num_components, const unsigned bit_size, nir_def *buf,
                    nir_def *offset, const enum gl_access_qualifier access, const unsigned align_mul,
                    const unsigned align_offset, const bool sparse)
@@ -63,8 +63,8 @@ load_buffer_sparse(nir_builder *b, const union ac_cs_clear_copy_buffer_key *cons
 
 /* Create a compute shader implementing clear_buffer or copy_buffer. */
 nir_shader *
-ac_create_clear_copy_buffer_cs(const struct ac_cs_clear_copy_buffer_options *const options,
-                               const union ac_cs_clear_copy_buffer_key *const key)
+ac_create_clear_copy_buffer_cs(const ac_cs_clear_copy_buffer_options *const options,
+                               const ac_cs_clear_copy_buffer_key *const key)
 {
    if (options->print_key) {
       fprintf(stderr, "Internal shader: dma\n");
@@ -355,9 +355,9 @@ ac_create_clear_copy_buffer_cs(const struct ac_cs_clear_copy_buffer_options *con
 }
 
 bool
-ac_prepare_cs_clear_copy_buffer(const struct ac_cs_clear_copy_buffer_options *options,
-                                const struct ac_cs_clear_copy_buffer_info *info,
-                                struct ac_cs_clear_copy_buffer_dispatch *out)
+ac_prepare_cs_clear_copy_buffer(const ac_cs_clear_copy_buffer_options *options,
+                                const ac_cs_clear_copy_buffer_info *info,
+                                ac_cs_clear_copy_buffer_dispatch *out)
 {
    bool is_copy = info->clear_value_size == 0;
 

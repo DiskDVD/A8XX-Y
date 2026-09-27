@@ -336,38 +336,12 @@ update_sampler_resources(struct svga_context *svga, uint64_t dirty)
       }
    }
 
-   /* Handle polygon stipple sampler view */
-   if (svga->curr.rast->templ.poly_stipple_enable) {
-      const unsigned unit =
-         svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_unit;
-      struct svga_pipe_sampler_view *sv = svga->polygon_stipple.sampler_view;
-      struct svga_winsys_surface *surface;
-
-      assert(sv);
-      if (!sv) {
-         return PIPE_OK;  /* probably out of memory */
-      }
-
-      ret = svga_validate_pipe_sampler_view(svga, sv);
-      if (ret != PIPE_OK)
-         return ret;
-
-      surface = svga_resource_handle(sv->base.texture);
-      ret = SVGA3D_vgpu10_SetShaderResources(
-               svga->swc,
-               svga_shader_type(MESA_SHADER_FRAGMENT),
-               unit, /* startView */
-               1,
-               &sv->id,
-               &surface);
-   }
    return ret;
 }
 
 
 struct svga_tracked_state svga_hw_sampler_bindings = {
    "shader resources emit",
-   SVGA_NEW_STIPPLE |
    SVGA_NEW_TEXTURE_BINDING,
    update_sampler_resources
 };
@@ -482,34 +456,6 @@ update_samplers(struct svga_context *svga, uint64_t dirty )
       }
    }
 
-   /* Handle polygon stipple sampler texture */
-   if (svga->curr.rast->templ.poly_stipple_enable) {
-      const unsigned unit =
-         svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_state_index;
-      struct svga_sampler_state *sampler = svga->polygon_stipple.sampler;
-
-      assert(sampler);
-      if (!sampler) {
-         return PIPE_OK; /* probably out of memory */
-      }
-
-      if (svga->state.hw_draw.samplers[MESA_SHADER_FRAGMENT][unit]
-          != sampler->id[0]) {
-         ret = SVGA3D_vgpu10_SetSamplers(svga->swc,
-                                         1, /* count */
-                                         unit, /* start */
-                                         SVGA3D_SHADERTYPE_PS,
-                                         &sampler->id[0]);
-         if (ret != PIPE_OK)
-            return ret;
-
-         /* save the polygon stipple sampler in the hw draw state */
-         svga->state.hw_draw.samplers[MESA_SHADER_FRAGMENT][unit] =
-            sampler->id[0];
-      }
-      svga->state.hw_draw.num_samplers[MESA_SHADER_FRAGMENT]++;
-   }
-
    return ret;
 }
 
@@ -517,8 +463,7 @@ update_samplers(struct svga_context *svga, uint64_t dirty )
 struct svga_tracked_state svga_hw_sampler = {
    "texture sampler emit",
    (SVGA_NEW_FS |
-    SVGA_NEW_SAMPLER |
-    SVGA_NEW_STIPPLE),
+    SVGA_NEW_SAMPLER),
    update_samplers
 };
 

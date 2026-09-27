@@ -7,7 +7,6 @@
 
 #include "GfxStreamVulkanMapper.h"
 #include "VirtGpu.h"
-
 #include "virtgpu_kumquat_ffi.h"
 
 class VirtGpuKumquatResource : public std::enable_shared_from_this<VirtGpuKumquatResource>,

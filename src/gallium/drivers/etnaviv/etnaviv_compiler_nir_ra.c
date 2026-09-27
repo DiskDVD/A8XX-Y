@@ -166,8 +166,9 @@ etna_ra_assign(struct etna_compile *c, nir_shader *shader)
 
       if (instr->type == nir_instr_type_intrinsic) {
          nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-         /* can't have dst swizzle or sparse writemask on UBO loads */
-         if (intr->intrinsic == nir_intrinsic_load_ubo) {
+         /* can't have dst swizzle or sparse writemask on UBO and constant loads */
+         if (intr->intrinsic == nir_intrinsic_load_ubo ||
+             intr->intrinsic == nir_intrinsic_load_constant) {
             assert(def == &intr->def);
             if (def->num_components == 2)
                comp = REG_CLASS_VIRT_VEC2C;

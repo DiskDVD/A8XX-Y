@@ -11,6 +11,7 @@
 #ifndef RADV_CMD_BUFFER_H
 #define RADV_CMD_BUFFER_H
 
+#include "ac_barrier.h"
 #include "ac_cmdbuf.h"
 #include "ac_vcn.h"
 
@@ -129,57 +130,6 @@ enum radv_cmd_dirty_bits {
    RADV_CMD_DIRTY_ALL = (1ull << 41) - 1,
 
    RADV_CMD_DIRTY_SHADER_QUERY = RADV_CMD_DIRTY_NGG_STATE | RADV_CMD_DIRTY_TASK_STATE,
-};
-
-enum radv_cmd_flush_bits {
-   /* Instruction cache. */
-   RADV_CMD_FLAG_INV_ICACHE = 1 << 0,
-   /* Scalar L1 cache. */
-   RADV_CMD_FLAG_INV_SCACHE = 1 << 1,
-   /* Vector L1 cache. */
-   RADV_CMD_FLAG_INV_VCACHE = 1 << 2,
-   /* L2 cache + L2 metadata cache writeback & invalidate.
-    * GFX6-8: Used by shaders only. GFX9-10: Used by everything. */
-   RADV_CMD_FLAG_INV_L2 = 1 << 3,
-   /* L2 writeback (write dirty L2 lines to memory for non-L2 clients).
-    * Only used for coherency with non-L2 clients like CB, DB, CP on GFX6-8.
-    * GFX6-7 will do complete invalidation, because the writeback is unsupported. */
-   RADV_CMD_FLAG_WB_L2 = 1 << 4,
-   /* Invalidate the metadata cache. To be used when the DCC/HTILE metadata
-    * changed and we want to read an image from shaders. */
-   RADV_CMD_FLAG_INV_L2_METADATA = 1 << 5,
-   /* Framebuffer caches */
-   RADV_CMD_FLAG_FLUSH_AND_INV_CB_META = 1 << 6,
-   RADV_CMD_FLAG_FLUSH_AND_INV_DB_META = 1 << 7,
-   RADV_CMD_FLAG_FLUSH_AND_INV_DB = 1 << 8,
-   RADV_CMD_FLAG_FLUSH_AND_INV_CB = 1 << 9,
-   /* Engine synchronization. */
-   RADV_CMD_FLAG_VS_PARTIAL_FLUSH = 1 << 10,
-   RADV_CMD_FLAG_PS_PARTIAL_FLUSH = 1 << 11,
-   RADV_CMD_FLAG_CS_PARTIAL_FLUSH = 1 << 12,
-   RADV_CMD_FLAG_VGT_FLUSH = 1 << 13,
-   /* Pipeline query controls. */
-   RADV_CMD_FLAG_START_PIPELINE_STATS = 1 << 14,
-   RADV_CMD_FLAG_STOP_PIPELINE_STATS = 1 << 15,
-   RADV_CMD_FLAG_VGT_STREAMOUT_SYNC = 1 << 16,
-   RADV_CMD_FLAG_PFP_SYNC_ME = 1 << 17,
-
-   RADV_CMD_FLUSH_AND_INV_FRAMEBUFFER = (RADV_CMD_FLAG_FLUSH_AND_INV_CB | RADV_CMD_FLAG_FLUSH_AND_INV_CB_META |
-                                         RADV_CMD_FLAG_FLUSH_AND_INV_DB | RADV_CMD_FLAG_FLUSH_AND_INV_DB_META),
-
-   RADV_CMD_FLUSH_ALL_COMPUTE = (RADV_CMD_FLAG_INV_ICACHE | RADV_CMD_FLAG_INV_SCACHE | RADV_CMD_FLAG_INV_VCACHE |
-                                 RADV_CMD_FLAG_INV_L2 | RADV_CMD_FLAG_WB_L2 | RADV_CMD_FLAG_CS_PARTIAL_FLUSH),
-};
-
-/* PWS (Pixel Wait Sync) acquire point, i.e. the pipeline stage at which a GFX11+ PWS ACQUIRE
- * waits for a preceding RELEASE. The acquire point is derived from the barrier destination stage
- * so the wait can be deferred to the latest legal pipeline stage.
- */
-enum radv_pws_acquire_point {
-   RADV_PWS_ACQUIRE_POINT_NONE = 0,
-   RADV_PWS_ACQUIRE_POINT_PRE_DEPTH, /* Wait just before depth/fragment work. */
-   RADV_PWS_ACQUIRE_POINT_ME,        /* Wait at the CP micro-engine. */
-   RADV_PWS_ACQUIRE_POINT_PFP,       /* Wait at the CP prefetch parser (frontend). */
 };
 
 struct radv_streamout_binding {
@@ -375,9 +325,9 @@ struct radv_cmd_state {
    struct radv_rendering_state render;
    struct radv_meta_saved_state meta;
 
-   enum radv_cmd_flush_bits flush_bits;
+   enum ac_barrier_flags flush_bits;
    /* Earliest PWS acquire point required by the currently pending flush_bits*/
-   enum radv_pws_acquire_point pws_acquire_point;
+   enum ac_pws_acquire_point pws_acquire_point;
    unsigned active_occlusion_queries;
    bool perfect_occlusion_queries_enabled;
    unsigned active_pipeline_queries;
@@ -566,7 +516,7 @@ struct radv_cmd_buffer {
       struct radv_cmd_stream *cs;
 
       /** Flush bits for the follower cmdbuf. */
-      enum radv_cmd_flush_bits flush_bits;
+      enum ac_barrier_flags flush_bits;
 
       /**
        * For synchronization between the follower and leader.
@@ -596,7 +546,7 @@ struct radv_cmd_buffer {
    /**
     * Bitmask of pending active query flushes.
     */
-   enum radv_cmd_flush_bits active_query_flush_bits;
+   enum ac_barrier_flags active_query_flush_bits;
 
    struct {
       struct radv_video_session *vid;
@@ -725,11 +675,11 @@ void radv_update_hiz_metadata(struct radv_cmd_buffer *cmd_buffer, struct radv_im
 
 unsigned radv_instance_rate_prolog_index(unsigned num_attributes, uint32_t instance_rate_inputs);
 
-enum radv_cmd_flush_bits radv_src_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 src_stages,
+enum ac_barrier_flags radv_src_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 src_stages,
                                                VkAccessFlags2 src_flags, VkAccessFlags3KHR src3_flags,
                                                const struct radv_image *image, const VkImageSubresourceRange *range);
 
-enum radv_cmd_flush_bits radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 dst_stages,
+enum ac_barrier_flags radv_dst_access_flush(struct radv_cmd_buffer *cmd_buffer, VkPipelineStageFlags2 dst_stages,
                                                VkAccessFlags2 dst_flags, VkAccessFlags3KHR dst3_flags,
                                                const struct radv_image *image, const VkImageSubresourceRange *range);
 

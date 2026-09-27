@@ -440,7 +440,7 @@ bool
 brw_nir_lower_divergent_barriers(nir_shader *nir,
                                  const struct intel_device_info *devinfo)
 {
-   assert(!intel_use_jay(devinfo, nir->info.stage));
+   assert(!intel_use_jay(devinfo, nir));
    assert(exec_list_length(&nir->functions) == 1);
 
    struct divergent_lowering_state state = {

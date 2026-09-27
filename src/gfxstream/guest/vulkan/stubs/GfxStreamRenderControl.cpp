@@ -4,6 +4,7 @@
  */
 
 #include "GfxStreamRenderControl.h"
+
 #include <cerrno>
 
 GfxStreamTransportType renderControlGetTransport() {

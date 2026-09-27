@@ -61,6 +61,7 @@ struct etna_shader_key
          /* color varyings should be flat shaded */
          unsigned flatshade : 1;
          unsigned has_128bit_rt : 1;
+         unsigned use_xfb_emu : 1;
       };
       uint32_t global;
    };

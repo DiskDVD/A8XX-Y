@@ -791,7 +791,7 @@ radv_amdgpu_cs_chain_dgc_ib(struct ac_cmdbuf *_cs, uint64_t va, uint32_t cdw, ui
       /* Writeback L2 because CP isn't coherent with L2 on GFX6-8. */
       if (cs->ws->info.gfx_level == GFX8) {
          ac_emit_cp_acquire_mem(&cs->base, GFX8, AMD_IP_COMPUTE, V_581A_MICRO_ENGINE,
-                                S_0301F0_TC_WB_ACTION_ENA(1) | S_0301F0_TC_NC_ACTION_ENA(1));
+                                S_0301F0_TC_WB_ACTION_ENA(1) | S_0301F0_TC_NC_ACTION_ENA(1), NULL, NULL);
       }
 
       /* Finalize the current CS. */

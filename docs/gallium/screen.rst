@@ -592,6 +592,10 @@ Capability about the features and limits of the driver/GPU.
     fragment shader.
 * ``pipe_caps.point_size_fixed``: Driver supports point-sizes that are fixed,
   as opposed to writing gl_PointSize for every point.
+* ``pipe_caps.polygon_stipple``: Driver supports polygon stipple. If unset,
+  mesa/st emulates polygon stipple by sampling a stipple texture and doing
+  discard_if in the fragment shader, and set_polygon_stipple() will not be
+  called.
 * ``pipe_caps.two_sided_color``: Driver supports two-sided coloring.  Must be 1
     for non-NIR drivers.  If set, pipe_rasterizer_state may be set to indicate
     that back-facing primitives should use the back-side color as the FS input

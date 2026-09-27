@@ -13,7 +13,6 @@
 #include "util/u_debug.h"
 
 const struct nir_shader_compiler_options brw_scalar_nir_options = {
-   .avoid_ternary_with_two_constants = true,
    .compact_arrays = true,
    .discard_is_demote = true,
    .divergence_analysis_options =
@@ -60,6 +59,7 @@ const struct nir_shader_compiler_options brw_scalar_nir_options = {
    .lower_to_scalar = true,
    .lower_uadd_carry = true,
    .lower_ufind_msb = true,
+   .lower_ifind_msb = true,
    .lower_uniforms_to_ubo = true,
    .lower_unpack_half_2x16 = true,
    .lower_unpack_snorm_2x16 = true,
@@ -79,6 +79,7 @@ const struct nir_shader_compiler_options brw_scalar_nir_options = {
    .per_view_unique_driver_locations = true,
    .compact_view_index = true,
    .io_options = nir_io_use_frag_result_dual_src_blend,
+   .has_find_msb_rev = true,
 };
 
 struct brw_compiler *
@@ -193,6 +194,9 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 
    nir_options->has_bitfield_select = devinfo->verx10 >= 125;
 
+   /* jay (>=xe2) shouldn't have this; brw (<=xe1) should */
+   nir_options->avoid_ternary_with_two_constants = devinfo->ver < 20;
+
    nir_options->lower_int64_options = int64_options;
    nir_options->lower_doubles_options = fp64_options;
    if (!(fp64_options & nir_lower_fp64_full_software))
@@ -212,7 +216,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
    nir_options->has_tanh = devinfo->ver >= 35;
 
    for (int i = 0; i < MESA_ALL_SHADER_STAGES; i++) {
-      bool jay = intel_use_jay(compiler->devinfo, i);
       struct nir_shader_compiler_options *stage_options =
          &compiler->nir_options[i];
       *stage_options = compiler->nir_options[0];
@@ -220,9 +223,6 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       stage_options->unify_interfaces = i < MESA_SHADER_FRAGMENT;
 
       stage_options->force_indirect_unrolling |= brw_nir_no_indirect_mask(i);
-      stage_options->has_find_msb_rev = jay;
-      stage_options->lower_ifind_msb = jay;
-      stage_options->avoid_ternary_with_two_constants = !jay;
    }
 
    /* Build a list of storage format compatible in component bit size &
@@ -296,8 +296,8 @@ brw_get_compiler_config_value(const struct brw_compiler *compiler)
    for (unsigned i = 0; i < MESA_VULKAN_SHADER_STAGES; i++) {
       insert_u64_bit(&config, (intel_simd_overridden & (1 << i)) != 0);
       bits++;
-
-      insert_u64_bit(&config, intel_use_jay(compiler->devinfo, i) != 0);
+      insert_u64_bit(&config,
+                     intel_use_jay_for_stage(compiler->devinfo, i) != 0);
       bits++;
    }
 

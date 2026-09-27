@@ -40,6 +40,7 @@ etna_query_feature_db(struct etna_core_info *info)
       etna_core_enable_feature(info, ETNA_FEATURE_CORE_NPU);
 
    /* Features: */
+   ETNA_FEATURE(REG_TessellationShaders, TESSELLATION_SHADERS);
    ETNA_FEATURE(REG_FastClear, FAST_CLEAR);
    ETNA_FEATURE(REG_Pipe3D, PIPE_3D);
    ETNA_FEATURE(REG_FE20BitIndex, 32_BIT_INDICES);
@@ -117,6 +118,7 @@ etna_query_feature_db(struct etna_core_info *info)
    ETNA_FEATURE(WIDELINE_TRIANGLE_EMU, WIDELINE_TRIANGLE_EMU);
    ETNA_FEATURE(REG_UnifiedSamplers, UNIFIED_SAMPLERS);
    ETNA_FEATURE(PE_A8B8G8R8, PE_A8B8G8R8);
+   ETNA_FEATURE(TX_INTEGER_COORDINATE_V2, TX_INTEGER_COORDINATE_V2);
 
    /* Limits: */
    if (etna_core_has_feature(info, ETNA_FEATURE_CORE_GPU)) {
@@ -129,6 +131,9 @@ etna_query_feature_db(struct etna_core_info *info)
       info->gpu.pixel_pipes = db->NumPixelPipes;
       info->gpu.max_varyings = db->VaryingCount;
       info->gpu.num_constants = db->NumberOfConstants;
+      info->gpu.result_window_max_size = db->RESULT_WINDOW_MAX_SIZE;
+      info->gpu.usc_size = db->USC_MAX_PAGES;
+      info->gpu.l1_cache_size = db->L1CacheSize;
    }
 
    if (etna_core_has_feature(info, ETNA_FEATURE_CORE_NPU)) {

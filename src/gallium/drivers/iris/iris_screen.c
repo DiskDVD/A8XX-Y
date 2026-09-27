@@ -365,6 +365,7 @@ iris_init_screen_caps(struct iris_screen *screen)
    caps->alpha_to_coverage_dither_control = true;
    caps->map_unsynchronized_thread_safe = true;
    caps->has_const_bw = true;
+   caps->polygon_stipple = true;
    caps->cl_gl_sharing = true;
    caps->uma = iris_bufmgr_vram_size(screen->bufmgr) == 0;
    caps->query_memory_info = iris_bufmgr_vram_size(screen->bufmgr) != 0;

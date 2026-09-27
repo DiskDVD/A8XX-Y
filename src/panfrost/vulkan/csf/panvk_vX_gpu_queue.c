@@ -62,8 +62,7 @@ finish_render_desc_ringbuf(struct panvk_gpu_queue *queue)
          pan_kmod_vm_bind(dev->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
       assert(!ret);
 
-      panvk_as_free(dev, dev->as.priv_heap, ringbuf->addr.dev,
-                    ringbuf->size * 2);
+      panvk_as_free(dev, ringbuf->addr.dev, ringbuf->size * 2);
    }
 
    if (ringbuf->addr.host) {
@@ -112,7 +111,7 @@ init_render_desc_ringbuf(struct panvk_gpu_queue *queue)
    /* We choose the alignment to guarantee that we won't ever cross a 4G
     * boundary when accessing the mapping. This way we can encode the wraparound
     * using 32-bit operations. */
-   dev_addr = panvk_as_alloc(dev, dev->as.priv_heap, ringbuf->size * 2,
+   dev_addr = panvk_as_alloc(dev, PANVK_NO_EXEC_VA_HEAP, ringbuf->size * 2,
                              ringbuf->size * 2);
 
    if (!dev_addr)
@@ -149,7 +148,7 @@ init_render_desc_ringbuf(struct panvk_gpu_queue *queue)
    ret = pan_kmod_vm_bind(dev->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, vm_ops,
                           tracing_enabled ? 1 : ARRAY_SIZE(vm_ops));
    if (ret) {
-      panvk_as_free(dev, dev->as.priv_heap, dev_addr, ringbuf->size * 2);
+      panvk_as_free(dev, dev_addr, ringbuf->size * 2);
       return panvk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
                           "Failed to GPU map ringbuf BO");
    }
@@ -216,8 +215,7 @@ finish_subqueue_tracing(struct panvk_gpu_queue *queue,
          pan_kmod_vm_bind(dev->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &op, 1);
       assert(!ret);
 
-      panvk_as_free(dev, dev->as.priv_heap, subq->tracebuf.addr.dev,
-                    subq->tracebuf.size + pgsize);
+      panvk_as_free(dev, subq->tracebuf.addr.dev, subq->tracebuf.size + pgsize);
    }
 
    if (subq->tracebuf.addr.host) {
@@ -271,7 +269,7 @@ init_subqueue_tracing(struct panvk_gpu_queue *queue,
 
    /* Add a guard page. */
    uint64_t pgsize = panvk_get_gpu_page_size(dev);
-   dev_addr = panvk_as_alloc(dev, dev->as.priv_heap,
+   dev_addr = panvk_as_alloc(dev, PANVK_NO_EXEC_VA_HEAP,
                              subq->tracebuf.size + pgsize, pgsize);
 
    if (!dev_addr)
@@ -295,8 +293,7 @@ init_subqueue_tracing(struct panvk_gpu_queue *queue,
    int ret =
       pan_kmod_vm_bind(dev->kmod.vm, PAN_KMOD_VM_OP_MODE_IMMEDIATE, &vm_op, 1);
    if (ret) {
-      panvk_as_free(dev, dev->as.priv_heap, dev_addr,
-                    subq->tracebuf.size + pgsize);
+      panvk_as_free(dev, dev_addr, subq->tracebuf.size + pgsize);
       return panvk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
                           "Failed to GPU map ringbuf BO");
    }
@@ -850,7 +847,7 @@ panvk_queue_submit_init(struct panvk_queue_submit *submit,
    submit->force_sync = PANVK_DEBUG(TRACE) || PANVK_DEBUG(SYNC);
 }
 
-static void
+static VkResult
 panvk_queue_submit_init_storage(
    struct panvk_queue_submit *submit, const struct vk_queue_submit *vk_submit,
    struct panvk_queue_submit_stack_storage *stack_storage)
@@ -954,10 +951,15 @@ panvk_queue_submit_init_storage(
       submit->qsubmit_count <= ARRAY_SIZE(stack_storage->qsubmits)
          ? stack_storage->qsubmits
          : malloc(sizeof(*submit->qsubmits) * submit->qsubmit_count);
+   if (!submit->qsubmits)
+      return panvk_error(submit->dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    submit->wait_ops = syncop_count <= ARRAY_SIZE(stack_storage->syncops)
                          ? stack_storage->syncops
                          : malloc(sizeof(*submit->wait_ops) * syncop_count);
+   if (!submit->wait_ops)
+      return panvk_error(submit->dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+
    submit->signal_ops = submit->wait_ops + vk_submit->wait_count;
 
    /* reset so that we can initialize submit->qsubmits incrementally */
@@ -967,7 +969,11 @@ panvk_queue_submit_init_storage(
       submit->utrace.data_storage =
          malloc(sizeof(*submit->utrace.data_storage) *
                 util_bitcount(submit->utrace.queue_mask));
+      if (!submit->utrace.data_storage)
+         return panvk_error(submit->dev, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
+
+   return VK_SUCCESS;
 }
 
 static void
@@ -1361,7 +1367,9 @@ panvk_per_arch(gpu_queue_submit)(struct vk_queue *vk_queue, struct vk_queue_subm
    }
 
    panvk_queue_submit_init(&submit, vk_queue);
-   panvk_queue_submit_init_storage(&submit, vk_submit, &stack_storage);
+   result = panvk_queue_submit_init_storage(&submit, vk_submit, &stack_storage);
+   if (result != VK_SUCCESS)
+      goto out;
    panvk_queue_submit_init_utrace(&submit, vk_submit);
    panvk_queue_submit_init_req_resource(&submit);
    panvk_queue_submit_init_waits(&submit, vk_submit);

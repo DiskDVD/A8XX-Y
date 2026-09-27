@@ -1801,10 +1801,10 @@ xsi:schemaLocation="https://gitlab.freedesktop.org/freedreno/ rules-fd.xsd">
 		<value name="SQ_TEX_NUM_FORMAT_INT" value="1"/>
 	</enum>
 	<enum name="sq_tex_type">
-		<value name="SQ_TEX_TYPE_0" value="0"/>
-		<value name="SQ_TEX_TYPE_1" value="1"/>
-		<value name="SQ_TEX_TYPE_2" value="2"/>
-		<value name="SQ_TEX_TYPE_3" value="3"/>
+		<value name="SQ_TEX_TYPE_INVALID_TEXTURE" value="0"/>
+		<value name="SQ_TEX_TYPE_INVALID_BUFFER" value="1"/>
+		<value name="SQ_TEX_TYPE_VALID_TEXTURE" value="2"/>
+		<value name="SQ_TEX_TYPE_VALID_BUFFER" value="3"/>
 	</enum>
 	<reg32 offset="0" name="0">
 		<bitfield name="TYPE" low="0" high="1" type="sq_tex_type"/>

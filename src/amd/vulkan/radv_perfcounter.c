@@ -650,13 +650,12 @@ radv_pc_wait_idle(struct radv_cmd_buffer *cmd_buffer)
    const struct radv_physical_device *pdev = radv_device_physical(device);
    struct radv_cmd_stream *cs = cmd_buffer->cs;
 
-   enum radv_cmd_flush_bits flush_bits = RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_VS_PARTIAL_FLUSH |
-                                         RADV_CMD_FLAG_PS_PARTIAL_FLUSH | RADV_CMD_FLAG_FLUSH_AND_INV_CB |
-                                         RADV_CMD_FLAG_FLUSH_AND_INV_DB | RADV_CMD_FLAG_PFP_SYNC_ME;
+   enum ac_barrier_flags flush_bits = AC_BARRIER_SYNC_CS | AC_BARRIER_SYNC_VS | AC_BARRIER_SYNC_PS |
+                                      AC_BARRIER_SYNC_AND_INV_CB | AC_BARRIER_SYNC_AND_INV_DB | AC_BARRIER_PFP_SYNC_ME;
    enum ac_rgp_flush_bits sqtt_flush_bits = 0;
 
    radv_cs_emit_cache_flush(device->ws, cs, pdev->info.gfx_level, &cmd_buffer->gfx9_fence_idx,
-                            cmd_buffer->gfx9_fence_va, flush_bits, &sqtt_flush_bits, RADV_PWS_ACQUIRE_POINT_PFP, 0);
+                            cmd_buffer->gfx9_fence_va, flush_bits, &sqtt_flush_bits, AC_PWS_ACQUIRE_POINT_PFP, 0);
 }
 
 /**

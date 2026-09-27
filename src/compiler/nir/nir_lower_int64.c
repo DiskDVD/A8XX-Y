@@ -49,24 +49,6 @@ lower_b2i64(nir_builder *b, nir_def *x)
 }
 
 static nir_def *
-lower_i2i8(nir_builder *b, nir_def *x)
-{
-   return nir_i2i8(b, nir_unpack_64_2x32_split_x(b, x));
-}
-
-static nir_def *
-lower_i2i16(nir_builder *b, nir_def *x)
-{
-   return nir_i2i16(b, nir_unpack_64_2x32_split_x(b, x));
-}
-
-static nir_def *
-lower_i2i32(nir_builder *b, nir_def *x)
-{
-   return nir_unpack_64_2x32_split_x(b, x);
-}
-
-static nir_def *
 lower_i2i64(nir_builder *b, nir_def *x)
 {
    nir_def *x32 = x->bit_size == 32 ? x : nir_i2i32(b, x);
@@ -924,9 +906,6 @@ nir_lower_int64_op_to_options_mask(nir_op opcode)
    case nir_op_irem:
       return nir_lower_divmod64;
    case nir_op_b2i64:
-   case nir_op_i2i8:
-   case nir_op_i2i16:
-   case nir_op_i2i32:
    case nir_op_i2i64:
    case nir_op_u2u8:
    case nir_op_u2u16:
@@ -1026,12 +1005,6 @@ lower_int64_alu_instr(nir_builder *b, nir_alu_instr *alu)
       return lower_irem64(b, src[0], src[1]);
    case nir_op_b2i64:
       return lower_b2i64(b, src[0]);
-   case nir_op_i2i8:
-      return lower_i2i8(b, src[0]);
-   case nir_op_i2i16:
-      return lower_i2i16(b, src[0]);
-   case nir_op_i2i32:
-      return lower_i2i32(b, src[0]);
    case nir_op_i2i64:
       return lower_i2i64(b, src[0]);
    case nir_op_u2u8:
@@ -1120,9 +1093,6 @@ should_lower_int64_alu_instr(const nir_alu_instr *alu,
                              const nir_shader_compiler_options *options)
 {
    switch (alu->op) {
-   case nir_op_i2i8:
-   case nir_op_i2i16:
-   case nir_op_i2i32:
    case nir_op_u2u8:
    case nir_op_u2u16:
    case nir_op_u2u32:

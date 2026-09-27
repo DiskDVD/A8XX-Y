@@ -50,6 +50,9 @@ enum global_shader {
    GLOBAL_SH_FS_BLIT,
    GLOBAL_SH_FS_BLIT_ZSCALE,
    GLOBAL_SH_FS_COPY_MS,
+   GLOBAL_SH_FS_RESOLVE_MS2,
+   GLOBAL_SH_FS_RESOLVE_MS4,
+   GLOBAL_SH_FS_RESOLVE_MS8,
    GLOBAL_SH_FS_CLEAR0,
    GLOBAL_SH_FS_CLEAR_MAX = GLOBAL_SH_FS_CLEAR0 + MAX_RTS,
    GLOBAL_SH_COUNT,
@@ -433,7 +436,7 @@ struct tu_device
    /* Command streams to set pass index to a scratch reg */
    struct tu_cs_entry *perfcntrs_pass_cs_entries;
 
-   struct tu_cs_entry cmdbuf_start_a725_quirk_entry;
+   struct tu_cs_entry cmdbuf_QCTDD09112208_cmdbuf_start_cs_entry;
 
    struct tu_cs_entry bin_preamble_entry, bin_preamble_bv_entry;
 

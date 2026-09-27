@@ -318,7 +318,7 @@ pub trait SSABuilder: Builder + AllocSSA {
         //
         //  sign_bit = XOR(sign_bit, axis_bit(lane_id)).
         let lane = self.model().fau().special(SpecialFAU::LaneId).unwrap();
-        let mut lane = Src::from(lane);
+        let mut lane = Src::from(lane).word(0);
         if bits == 16 {
             lane = lane.half(0);
         }
@@ -389,6 +389,7 @@ pub trait SSABuilder: Builder + AllocSSA {
         let frexp = self.alloc_ssa(32);
         self.push_op(OpFrexpE {
             dst: frexp.into(),
+            src_type: DataType::F32,
             src: arg.clone(),
             mode: FrexpMode::Log,
             neg_result: false,

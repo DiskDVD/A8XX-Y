@@ -281,6 +281,7 @@ pthread_setaffinity_np = true
 qsort_s = true
 reallocarray = true
 thrd_create = true
+mallinfo2 = true
 
 [platform.c.supported_arguments.fails]
 args = [
@@ -337,6 +338,7 @@ memfd_create = true
 pthread_setaffinity_np = true
 qsort_s = true
 thrd_create = true
+mallinfo2 = true
 
 [platform.c.supported_arguments.fails]
 args = [
@@ -393,6 +395,7 @@ memfd_create = true
 pthread_setaffinity_np = true
 qsort_s = true
 thrd_create = true
+mallinfo2 = true
 
 [platform.c.supported_arguments.fails]
 args = [

@@ -393,6 +393,7 @@ debian-android:
       -D valgrind=disabled
       -D android-libbacktrace=disabled
       -D mesa-clc=system
+      -D panfrost-rust=true
       -D precomp-compiler=system
       -D perfetto=true
       -D freedreno-kmds=msm,virtio
@@ -471,6 +472,7 @@ debian-arm32:
       -D gallium-rusticl=false
       -D mesa-clc=system
       -D precomp-compiler=system
+      -D panfrost-rust=true
       -D tools=drm-shim
     HOST_BUILD_OPTIONS: >
       -D build-tests=false
@@ -761,6 +763,7 @@ debian-x86_32:
       -D glvnd=disabled
     EXTRA_OPTION: >
       -D vulkan-layers=device-select,overlay
+      -D panfrost-rust=true
       -D mesa-clc=system
     CPP_ARGS: >
       -Wno-error=deprecated-declarations
@@ -778,7 +781,6 @@ debian-x86_32:
       -D platforms=
       -D mesa-clc=enabled
       -D install-mesa-clc=true
-      -D panfrost-rust=true
 
 # In case of issues with this job, contact @frankbinns
 .debian-riscv64:

@@ -2,6 +2,11 @@
 ST_STATE(ST_NEW_DSA, st_update_depth_stencil_alpha)
 ST_STATE(ST_NEW_CLIP_STATE, st_update_clip)
 
+/* Must run before the fragment shader atom: it turns the input primitive into
+ * the reduced primitive the FS sees, for emulated polygon stipple.
+ */
+ST_STATE(ST_NEW_STIPPLE_EMULATE, st_update_stipple_emulate)
+
 ST_STATE(ST_NEW_FS_STATE, st_update_fp)
 ST_STATE(ST_NEW_GS_STATE, st_update_gp)
 ST_STATE(ST_NEW_TES_STATE, st_update_tep)

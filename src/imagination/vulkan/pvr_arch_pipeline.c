@@ -2793,6 +2793,9 @@ static void pvr_early_init_shader_data(pco_data *data,
    data->common.image_2d_view_of_3d =
       device->vk.enabled_features.image2DViewOf3D;
 
+   data->common.image_sliced_view_of_3d =
+      device->vk.enabled_features.imageSlicedViewOf3D;
+
    switch (nir->info.stage) {
    case MESA_SHADER_VERTEX:
    case MESA_SHADER_FRAGMENT: {

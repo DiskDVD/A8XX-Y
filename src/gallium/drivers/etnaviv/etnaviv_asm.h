@@ -45,6 +45,15 @@ static inline uint32_t inst_swiz_compose(uint32_t swz1, uint32_t swz2)
           SWIZ_W((swz1 >> (((swz2 >> 6)&3)*2))&3);
 };
 
+static inline struct etna_inst_src
+etna_src_swizzle(struct etna_inst_src src, uint32_t swizzle)
+{
+   if (src.rgroup != ISA_REG_GROUP_IMMED)
+      src.swiz = inst_swiz_compose(src.swiz, swizzle);
+
+   return src;
+}
+
 /* Compose two write_masks (computes wm1.wm2) */
 static inline uint32_t inst_write_mask_compose(uint32_t wm1, uint32_t wm2)
 {

@@ -89,6 +89,8 @@ pass(jay_function *f)
             vec[n++] = I;
          }
       }
+
+      vectorize(f, vec, n);
    }
 }
 

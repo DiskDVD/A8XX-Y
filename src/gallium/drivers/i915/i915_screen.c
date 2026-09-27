@@ -313,6 +313,7 @@ i915_init_screen_caps(struct i915_screen *is)
    caps->user_vertex_buffers = true;
    caps->mixed_color_depth_bits = true;
    caps->tgsi_texcoord = true;
+   caps->polygon_stipple = true;
 
    caps->texture_transfer_modes =
    caps->pci_group =

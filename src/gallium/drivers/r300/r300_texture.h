@@ -18,12 +18,17 @@ struct r300_texture_format_state;
 struct r300_texture_desc;
 struct r300_resource;
 struct r300_screen;
+struct util_format_description;
 
 unsigned r300_get_swizzle_combined(const unsigned char *swizzle_format,
                                    const unsigned char *swizzle_view,
                                    bool dxtc_swizzle);
 
 enum pipe_format r300_unbyteswap_array_format(enum pipe_format format);
+
+const struct util_format_description *
+r300_get_sampler_format_desc(enum pipe_format format,
+                             struct util_format_description *storage);
 
 uint32_t r300_translate_texformat(enum pipe_format format,
                                   const unsigned char *swizzle_view,

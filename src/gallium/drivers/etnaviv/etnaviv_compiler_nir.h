@@ -292,6 +292,7 @@ def_for_instr(nir_instr *instr)
       nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
       if (intr->intrinsic == nir_intrinsic_load_uniform ||
           intr->intrinsic == nir_intrinsic_load_ubo ||
+          intr->intrinsic == nir_intrinsic_load_constant ||
           intr->intrinsic == nir_intrinsic_load_input ||
           intr->intrinsic == nir_intrinsic_load_instance_id ||
           intr->intrinsic == nir_intrinsic_load_vertex_id ||

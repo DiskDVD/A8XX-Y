@@ -7,8 +7,8 @@ use crate::legalize::{
     LegalizeBuildHelpers, LegalizeBuilder,
 };
 use crate::sm70::ShaderModel70;
-use bitview::*;
 
+use mesa_util::bitview::*;
 use rustc_hash::FxHashMap;
 use std::mem;
 use std::ops::Range;

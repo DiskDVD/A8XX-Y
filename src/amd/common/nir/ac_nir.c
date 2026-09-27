@@ -383,20 +383,56 @@ ac_optimization_barrier_vgpr_array(const struct radeon_info *info, nir_builder *
 nir_def *
 ac_get_global_ids(nir_builder *b, unsigned num_components, unsigned bit_size)
 {
-   unsigned mask = BITFIELD_MASK(num_components);
+   assert(!b->shader->info.workgroup_size_variable);
+   assert(util_is_power_of_two_nonzero(b->shader->info.workgroup_size[0]));
+   assert(util_is_power_of_two_nonzero(b->shader->info.workgroup_size[1]));
+   assert(util_is_power_of_two_nonzero(b->shader->info.workgroup_size[2]));
 
-   nir_def *local_ids = nir_channels(b, nir_load_local_invocation_id(b), mask);
-   nir_def *block_ids = nir_channels(b, nir_load_workgroup_id(b), mask);
-   nir_def *block_size = nir_channels(b, nir_load_workgroup_size(b), mask);
+   unsigned log_block_size_x = util_logbase2(b->shader->info.workgroup_size[0]);
+   unsigned log_block_size_y = util_logbase2(b->shader->info.workgroup_size[1]);
+   unsigned log_block_size_z = util_logbase2(b->shader->info.workgroup_size[2]);
 
-   assert(bit_size == 32 || bit_size == 16);
-   if (bit_size == 16) {
-      local_ids = nir_i2iN(b, local_ids, bit_size);
-      block_ids = nir_i2iN(b, block_ids, bit_size);
-      block_size = nir_i2iN(b, block_size, bit_size);
+   /* Doing it in 32 bits results in smaller code size because each component becomes v_lshl_add_u32. */
+   if (bit_size != 16 || log_block_size_x != log_block_size_y || num_components == 1) {
+      return nir_u2uN(b, nir_trim_vector(b, nir_load_global_invocation_id(b, MAX2(32, bit_size)),
+                                         num_components), bit_size);
    }
 
-   return nir_iadd(b, nir_imul(b, block_ids, block_size), local_ids);
+   /* The following 16x2 ishl and iadd for XY is reduced to single v_lshl_add_u32 computing both
+    * components simultaneously because workgroup_size.xy is a square and there is no 16-bit
+    * integer wraparound. This is correct to do in general if all global IDs are representable
+    * in 16 bits.
+    *
+    * Z is computed in 32 bits to get v_lshl_add_u32.
+    */
+   nir_def *local_ids = nir_load_local_invocation_id(b);
+   nir_def *block_ids = nir_load_workgroup_id(b);
+
+   nir_def *xy = nir_i2i16(b, nir_trim_vector(b, block_ids, 2));
+   nir_def *z = nir_channel(b, block_ids, 2);
+
+   /* Promote a 16-bit vec2 ishl (imul) to a 32-bit scalar ishl (imul).
+    *    16x2 a.xy * k.xx = bitcast_u32(a) * k if (a.x * k) doesn't wrap around.
+    *
+    * TODO: nir_opt_algebraic could do this in the future. For that:
+    * - We need NUW to apply to ishl (meaning no bits shifted out).
+    * - We need nir_opt_algebraic to preserve NUW when replacing imul with ishl.
+    * - If the load_global_invocation_id lowering replaces this helper, it should set NUW
+    *   and the intrinsic should allow bit_size=16. (implying that all global IDs are
+    *   representable in 16 bits)
+    */
+   xy = nir_ishl_imm(b, nir_pack_32_2x16(b, xy), log_block_size_x);
+   z = nir_ishl_imm(b, z, log_block_size_z);
+
+   /* Promote 16-bit vec2 iadd to a 32-bit scalar iadd.
+    *    16x2 a.xy + b.xy = bitcast_u32(a) + bitcast_u32(b) if (a.x + b.x) doesn't wrap around.
+    */
+   xy = nir_iadd_nuw(b, xy, nir_pack_32_2x16(b, nir_i2i16(b, nir_trim_vector(b, local_ids, 2))));
+   z = nir_iadd_nuw(b, z, nir_channel(b, local_ids, 2));
+
+   nir_def *xyz = nir_vector_insert_imm(b, nir_pad_vector(b, nir_unpack_32_2x16(b, xy), 3),
+                                        nir_i2i16(b, z), 2);
+   return nir_trim_vector(b, xyz, num_components);
 }
 
 nir_def *

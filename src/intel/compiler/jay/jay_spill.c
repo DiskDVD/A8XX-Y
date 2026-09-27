@@ -791,7 +791,7 @@ lower_ugpr_spill(jay_function *func)
             }
 
             b.cursor = jay_before_inst(I);
-            jay_SHUFFLE(&b, I->dst, I->src[0], active_lane_x4);
+            jay_SHUFFLE(&b, JAY_TYPE_U32, I->dst, I->src[0], active_lane_x4);
             jay_remove_instruction(I);
          }
       }

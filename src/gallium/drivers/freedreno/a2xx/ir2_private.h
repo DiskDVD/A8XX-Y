@@ -146,6 +146,7 @@ struct ir2_context {
 
    struct ir2_shader_info *info;
    struct ir2_frag_linkage *f;
+   uint16_t tex_mag_switchover;
 
    int prev_export;
 

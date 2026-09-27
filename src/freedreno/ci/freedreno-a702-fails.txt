@@ -78,26 +78,16 @@ program@execute@sampler@read from image using linear filtering and unnormalized 
 # because of the two failures above
 program@execute@sampler,Fail
 
-# Required core version for xVK_KHR_surface_protected_capabilities not met (1.1)
-# https://github.com/KhronosGroup/VK-GL-CTS/issues/620
-dEQP-VK.api.info.extension_core_versions.extension_core_versions,Fail
-
-# Enabling unsupported features didn't return VK_ERROR_FEATURE_NOT_PRESENT.
-dEQP-VK.api.device_init.create_device_unsupported_features.protected_memory_features,Fail
-
-# missing deps for VK_KHR_create_renderpass2
-dEQP-VK.info.device_extension_dependencies,Fail
-
-# missing deps for VK_KHR_surface_protected_capabilities
-dEQP-VK.info.instance_extension_dependencies,Fail
-
 dEQP-VK.conditional_rendering.draw_clear.draw.update_with_rendering_discard_host_memory,Crash
 dEQP-VK.conditional_rendering.draw_clear.draw.update_with_rendering_discard_local_memory,Crash
 dEQP-VK.conditional_rendering.draw_clear.draw.update_with_rendering_no_discard_host_memory,Crash
 dEQP-VK.conditional_rendering.draw_clear.draw.update_with_rendering_no_discard_local_memory,Crash
 
 # Early-fragment multisample autotune regression
+# https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/43899
+dEQP-VK.fragment_operations.early_fragment.sample_count_early_fragment_tests_depth_alpha_to_coverage_samples_2_maintenance5,Fail
 dEQP-VK.fragment_operations.early_fragment.sample_count_early_fragment_tests_depth_samples_2,Fail
+dEQP-VK.fragment_operations.early_fragment.sample_count_early_fragment_tests_depth_samples_2_maintenance5,Fail
 
 dEQP-VK.glsl.logical_copy.initialized_struct,Crash
 dEQP-VK.glsl.logical_copy.undefined_memory,Crash
@@ -113,43 +103,9 @@ dEQP-VK.glsl.shader_clock.vertex.clockARB,Crash
 dEQP-VK.glsl.shader_clock.vertex.clockRealtimeEXT,Crash
 gmem-dEQP-VK.glsl.shader_clock.vertex.clockARB,Crash
 
-dEQP-VK.pipeline.monolithic.push_descriptor.compute.incremental_updates,Crash
-dEQP-VK.pipeline.monolithic.push_descriptor.compute.incremental_updates_template,Crash
-
 dEQP-VK.shader_object.misc.state.pipeline.vert.depth.bias,Fail
 dEQP-VK.shader_object.misc.state.pipeline.vert_frag.depth.bias,Fail
 gmem-dEQP-VK.shader_object.misc.state.pipeline.vert.depth.bias,Fail
-
-# A702 has no multiview.  The CTS only checks for multiview support in one of
-# its three multiview test types, so the other two run here regardless and fail.
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_16,Fail
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_244,Fail
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_508,Fail
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_offset_16,Fail
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_offset_244,Fail
-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_offset_508,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_buffer_offset_508,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_16,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_244,Fail
-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_508,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_508,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_16,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_244,Fail
-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
-gmem-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_16,Fail
-gmem-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_16,Fail
-gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
-gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
-gmem-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
-nobin-dEQP-VK.transform_feedback.simple.draw_indirect_multiview_counter_buffer_offset_16,Fail
-nobin-dEQP-VK.transform_feedback.simple_fast_gpl.draw_indirect_multiview_counter_offset_16,Fail
-nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_offset_508,Fail
-nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_16,Fail
-nobin-dEQP-VK.transform_feedback.simple_optimized_gpl.draw_indirect_multiview_counter_buffer_offset_244,Fail
 
 dEQP-VK.ycbcr.copy.a1b5g5r5_unorm_pack16.g8_b8r8_2plane_420_unorm.optimal_optimal,Fail
 dEQP-VK.ycbcr.copy.a4b4g4r4_unorm_pack16.g8_b8r8_2plane_420_unorm.optimal_optimal,Fail

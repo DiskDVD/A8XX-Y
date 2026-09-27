@@ -6,6 +6,7 @@
 from mako.template import Template
 import sys
 import argparse
+import yaml
 from enum import Enum
 
 def max_bitfield_val(high, low, shift):
@@ -14,6 +15,8 @@ def max_bitfield_val(high, low, shift):
 parser = argparse.ArgumentParser()
 parser.add_argument('-p', '--import-path', required=True)
 parser.add_argument('--nvtop', action='store_true')
+parser.add_argument('-q', '--quirks', action='store_true',
+                    help='List quirks applied to specified GPU (chip-id or name)')
 args = parser.parse_args()
 sys.path.insert(0, args.import_path)
 
@@ -36,6 +39,19 @@ class CCUColorCacheFraction(Enum):
     EIGHTH = 3
     THREE_QUARTER = 3  # a8xx_gen2 and later
 
+quirk_names = {
+    "QCTDD06363318": "movs_half",
+    "QCTDD08407086": "cs_lock_unlock",
+    "QCTDD08517960": "fs_constlen",
+    "QCTDD08901551": "stsc_ss",
+    "QCTDD09112208": "cmdbuf_start_cs",
+    "QCTDD10204462": "flat_ei",
+    "QCTDD10789828": "no_a0_ep",
+    "QCTDD11147232": "alias_mova",
+    "QCTDD11183148": "alias_pred",
+    "QCTDD12766770": "r8g8_fc_alignment",
+    "QCTDD13523866": "dummy_alu",
+}
 
 class State(object):
     def __init__(self):
@@ -198,13 +214,19 @@ class A6xxGPUInfo(GPUInfo):
         self.num_slices = num_slices
 
         self.props = Struct()
-
+        self.quirks = Struct()
         self.magic = Struct()
 
         for name, val in magic_regs.items():
             setattr(self.magic, name, val)
 
+        raw_magic_regs_set = set()
         if raw_magic_regs:
+            for r in raw_magic_regs:
+                offset = int(r[0])
+                if offset in raw_magic_regs_set:
+                    raise ValueError("duplicate raw magic reg")
+                raw_magic_regs_set.add(offset)
             self.magic_raw = [[int(r[0]), r[1]] for r in raw_magic_regs]
 
         templates = template if isinstance(template, list) else [template]
@@ -219,8 +241,15 @@ class GPUProps(dict):
     unique_props = dict()
     def apply_props(self, gpu_info):
         for name, val in self.items():
-            setattr(getattr(gpu_info, "props"), name, val)
-            GPUProps.unique_props[(name, "props")] = val
+            structname = "props"
+            if name.startswith("QCTDD"):
+                if "_" in name:
+                    raise ValueError("invalid quirk name")
+                if name in quirk_names:
+                    name = name + "_" + quirk_names[name]
+                structname = "quirks"
+            setattr(getattr(gpu_info, structname), name, val)
+            GPUProps.unique_props[(name, structname)] = val
 
 template = """\
 /* Copyright © 2021 Google, Inc.
@@ -300,8 +329,36 @@ static const struct msm_id_struct msm_ids[] = {
 };
 """
 
+def get_quirks(id, info):
+    quirks = set()
+    for q, val in vars(info.quirks).items():
+        q = q.split("_")[0]
+        if val:
+            quirks.add(q)
+    magic = {}
+    for r in info.magic_raw:
+        offset = hex(r[0])
+        val = hex(r[1])
+        magic[offset] = val
+    return {
+        'name':    id.name,
+        'chip_id': hex(id.chip_id),
+        'quirks':  list(quirks),
+        'magic':   magic,
+    }
+
+def print_quirk_report():
+    quirk_report = []
+    for id, info in s.gpus.items():
+        if info.chip < 6:
+            continue
+        quirk_report.append(get_quirks(id, info))
+    print(yaml.dump(quirk_report))
+
 def main():
     if args.nvtop:
         print(Template(nvtop_template).render(s=s, unique_props=GPUProps.unique_props))
+    elif args.quirks:
+        print_quirk_report()
     else:
         print(Template(template).render(s=s, unique_props=GPUProps.unique_props))

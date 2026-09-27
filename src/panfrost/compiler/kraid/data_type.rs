@@ -84,6 +84,7 @@ pub enum PartialDataType {
     V4U8,
     VNIN,
     VNI8,
+    VNF16,
     V3A16,
     V3F16,
     V3I16,

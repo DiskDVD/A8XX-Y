@@ -4103,7 +4103,7 @@ llvmpipe_create_fs_state(struct pipe_context *pipe,
       return NULL;
 
    pipe_reference_init(&shader->reference, 1);
-   shader->no = fs_no++;
+   shader->no = p_atomic_fetch_add(&fs_no, 1);
    util_shader_variant_list_init(&shader->variants);
 
    shader->base.type = PIPE_SHADER_IR_NIR;

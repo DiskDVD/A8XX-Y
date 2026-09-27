@@ -908,9 +908,6 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
       key->invert_depth = sel_ctx->ctx->reverse_depth_range;
       key->halfz = sel_ctx->ctx->gfx_pipeline_state.rast ?
          sel_ctx->ctx->gfx_pipeline_state.rast->base.clip_halfz : false;
-      if (sel_ctx->ctx->pstipple.enabled &&
-         sel_ctx->ctx->gfx_pipeline_state.rast->base.poly_stipple_enable)
-         key->next_varying_inputs |= VARYING_BIT_POS;
    }
 
    if (stage == MESA_SHADER_GEOMETRY && sel_ctx->ctx->gfx_pipeline_state.rast) {
@@ -940,8 +937,6 @@ d3d12_fill_shader_key(struct d3d12_selection_context *sel_ctx,
       key->fs.missing_dual_src_outputs = sel_ctx->missing_dual_src_outputs;
       key->fs.frag_result_color_lowering = sel_ctx->frag_result_color_lowering;
       key->fs.manual_depth_range = sel_ctx->manual_depth_range;
-      key->fs.polygon_stipple = sel_ctx->ctx->pstipple.enabled &&
-         sel_ctx->ctx->gfx_pipeline_state.rast->base.poly_stipple_enable;
       key->fs.multisample_disabled = sel_ctx->ctx->gfx_pipeline_state.rast &&
          !sel_ctx->ctx->gfx_pipeline_state.rast->desc.MultisampleEnable;
       if (sel_ctx->ctx->gfx_pipeline_state.blend &&
@@ -1056,7 +1051,6 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
    struct d3d12_context *ctx = sel_ctx->ctx;
    d3d12_shader_key key;
    nir_shader *new_nir_variant;
-   unsigned pstipple_binding = UINT32_MAX;
 
    d3d12_fill_shader_key(sel_ctx, &key, sel, prev, next);
 
@@ -1091,11 +1085,6 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
    }
    else if (key.stage == MESA_SHADER_FRAGMENT)
    {
-      if (key.fs.polygon_stipple) {
-         NIR_PASS(_, new_nir_variant, nir_lower_pstipple_fs,
-                    &pstipple_binding, 0, false, nir_type_bool1);
-      }
-
       if (key.fs.remap_front_facing)
          dxil_nir_forward_front_face(new_nir_variant);
 
@@ -1198,9 +1187,6 @@ select_shader_variant(struct d3d12_selection_context *sel_ctx, d3d12_shader_sele
    nir_shader_gather_info(new_nir_variant, nir_shader_get_entrypoint(new_nir_variant));
    d3d12_shader *new_variant = compile_nir(ctx, sel, &key, new_nir_variant);
    assert(new_variant);
-
-   /* keep track of polygon stipple texture binding */
-   new_variant->pstipple_binding = pstipple_binding;
 
    /* prepend the new shader in the selector chain and pick it */
    new_variant->next_variant = sel->first;

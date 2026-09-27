@@ -4686,185 +4686,32 @@ bi_find_loop_blocks(const bi_context *ctx, bi_block *header, BITSET_WORD *out)
    ralloc_free(dominators);
 }
 
-/*
- * verbose stat printing
- * enable with BIFROST_MESA_DEBUG=statsfull
- */
-static unsigned
-percent_used(unsigned cur, unsigned max)
-{
-   return (unsigned)(0.5 + 100 * cur / (double)max);
-}
-
-static void
-report_regs(FILE *f, unsigned registers_used, unsigned uniforms_used)
-{
-   fprintf(f, "Work registers:    %u ", registers_used);
-   if (registers_used <= 32) {
-      fprintf(f, "(%u%% used at 100%% occupancy)\n",
-              percent_used(registers_used, 32));
-   } else {
-      fprintf(f, "(%u%% used at 50%% occupancy)\n",
-              percent_used(registers_used, 64));
-   }
-   fprintf(f, "Uniform registers: %u (%u%% used)\n",
-           uniforms_used,
-           percent_used(uniforms_used, 128));
-}
-
-/*
- * This function prints the pipe statistics in statval[], with `prefix` as
- * a leading message (e.g. prefix can indicate total stats, max path, etc.).
- * As a special case, if prefix is empty, only the column headings are
- * printed.
- */
-static void
-do_report_pipes(FILE *f, const char *prefix, unsigned n, const char *statname[], float statval[])
-{
-   unsigned limit_idx = 0;
-   float limit_val = statval[0];
-
-   fprintf(f, "%-25s", prefix);
-   if (*prefix == 0) {
-      /* just print column headings, no stats */
-      for (unsigned i = 0; i < n; i++) {
-         fprintf(f, " %6s", statname[i]);
-      }
-      fprintf(f, " %6s\n", "Bound");
-      return;
-   }
-   for (unsigned i = 0; i < n; i++) {
-      fprintf(f, " %6.3f", statval[i]);
-      if (statval[i] > limit_val) {
-         limit_idx = i;
-         limit_val = statval[i];
-      }
-   }
-   /* print the first thing that matches the bound */
-   char bound_str[256];
-   unsigned max_str = sizeof(bound_str) - 1; /* leave room for trailing 0 */
-   strncpy(bound_str, statname[limit_idx], max_str);
-   /* now print any others that match */
-   for (unsigned i = limit_idx + 1; i < n; i++) {
-      if (statval[i] == limit_val) {
-         strncat(bound_str, ", ", max_str);
-         strncat(bound_str, statname[i], max_str);
-      }
-   }
-   fprintf(f, " %6s\n", bound_str);
-}
-static void
-bifrost_stats_verbose(FILE *f, bi_context *ctx, const struct bifrost_stats *stats,
-                      const struct pan_shader_info *info)
-{
-   report_regs(f, stats->registers_used, stats->uniforms_used);
-   fprintf(f, "Code size:         %u bytes\n", stats->code_size);
-   fprintf(f, "Loops:             %u\n", stats->loops);
-   fprintf(f, "Spills/fills:      %u/%u\n", stats->spills, stats->fills);
-   fprintf(f, "Stack size:        %u bytes\n", ctx->info.tls_size);
-
-   /* now print instruction statistics */
-   static const char *statname[] = {
-      "A", "LS", "V", "T"
-   };
-   float statval[] = {
-      stats->arith, stats->ldst, stats->v, stats->t,
-   };
-   unsigned n = ARRAY_SIZE(statname);
-   assert(n == ARRAY_SIZE(statval));
-
-   /* special case, empty prefix prints column headings */
-   do_report_pipes(f, "", n, statname, statval);
-   do_report_pipes(f, "Total instruction cycles:", n, statname, statval);
-   fprintf(f, "\nA = Arithmetic, LS = Load/Store, V = Varying, T = Texture\n");
-}
-
-static void
-valhall_stats_verbose(FILE *f, bi_context *ctx, const struct valhall_stats *stats,
-                      const struct pan_shader_info *info)
-{
-   struct valhall_stats min_stats = { 0 };
-   struct valhall_stats max_stats = { 0 };
-
-   report_regs(f, stats->registers_used, stats->uniforms_used);
-   fprintf(f, "Code size:         %u bytes\n", stats->code_size);
-   fprintf(f, "Loops:             %u\n", stats->loops);
-   fprintf(f, "Spills/fills:      %u/%u\n", stats->spills, stats->fills);
-   fprintf(f, "Stack size:        %u bytes\n", ctx->info.tls_size);
-
-   va_gather_stats(ctx, stats->code_size, &min_stats, GATHER_STATS_MIN);
-   va_gather_stats(ctx, stats->code_size, &max_stats, GATHER_STATS_MAX);
-
-   /* now print instruction statistics */
-   static const char *statname[] = {
-      "A", "FMA", "CVT", "SFU", "LS", "V", "T"
-   };
-   float statval[] = {
-      stats->alu, stats->fma, stats->cvt, stats->sfu, stats->ls, stats->v, stats->t,
-   };
-   float min_statval[] = {
-      min_stats.alu, min_stats.fma, min_stats.cvt, min_stats.sfu,
-      min_stats.ls, min_stats.v, min_stats.t,
-   };
-   float max_statval[] = {
-      max_stats.alu, max_stats.fma, max_stats.cvt, max_stats.sfu,
-      max_stats.ls, max_stats.v, max_stats.t,
-   };
-   unsigned n = ARRAY_SIZE(statval);
-   assert(n == ARRAY_SIZE(statname));
-   do_report_pipes(f, "", n, statname, statval);
-   do_report_pipes(f, "Total instruction cycles:", n, statname, statval);
-   do_report_pipes(f, "Shortest path cycles:", n, statname, min_statval);
-   do_report_pipes(f, "Longest path cycles:", n, statname, max_statval);
-   fprintf(f, "\nA = Arithmetic, FMA = Arith FMA, CVT = Arith CVT, SFU = Arith SFU\n");
-   fprintf(f, "LS = Load/Store, V = Varying, T = Texture\n");
-}
-
-static const char *bool_str(bool x) {
-   return x ? "true" : "false";
-}
-
 static void
 pan_stats_verbose(FILE *f, const char *prefix, bi_context *ctx, const struct pan_stats *stats,
                   const struct pan_shader_info *info)
 {
-   const struct pan_model *model = pan_get_model(ctx->inputs->gpu_id, ctx->inputs->gpu_variant);
-   unsigned arch = (ctx->arch > 14) ? 0 : ctx->arch;
-   const char *archname[] = {
-      "Unknown",              /* 0 must always be "Unknown" */
-      "Lima", "Lima", "Lima", /* 1-3 */
-      "Utgard", "Midgard", "Bifrost", "Bifrost", /* 4-7 */
-      "Valhall", "Valhall", "Valhall", "Valhall", /* 8-11 */
-      "Arm 5th Gen", "Arm 5th Gen", "Arm 5th Gen" /* 12-14 */
-   };
+   pan_stats_verbose_prologue(f, prefix, ctx->inputs->gpu_id,
+                              ctx->inputs->gpu_variant, ctx->arch);
 
-   fprintf(f, "\n");
-   fprintf(f, "Model: %s\n", model->name);
-   fprintf(f, "Shader type: %s\n", prefix);
-      fprintf(f, "Architecture: %s\n", archname[arch]);
    switch (stats->isa) {
-   case PAN_STAT_VALHALL:
-      valhall_stats_verbose(f, ctx, &stats->valhall, info);
+   case PAN_STAT_VALHALL: {
+      unsigned code_size = stats->valhall.code_size;
+      struct valhall_stats min_stats = { 0 };
+      struct valhall_stats max_stats = { 0 };
+      va_gather_stats(ctx, code_size, &min_stats, GATHER_STATS_MIN);
+      va_gather_stats(ctx, code_size, &max_stats, GATHER_STATS_MAX);
+
+      pan_valhall_stats_verbose(f, &stats->valhall, &min_stats, &max_stats,
+                                ctx->info.tls_size);
       break;
+   }
    case PAN_STAT_BIFROST:
-      bifrost_stats_verbose(f, ctx, &stats->bifrost, info);
+      pan_bifrost_stats_verbose(f, &stats->bifrost, ctx->info.tls_size);
       break;
    default:
       pan_stats_fprintf(f, prefix, stats);
       break;
    }
-   fprintf(f, "\n");
-   fprintf(f, "Shader properties\n");
-   fprintf(f, "=================\n");
-   fprintf(f, "Contains barrier: %s\n", bool_str(info->contains_barrier));
-   switch (info->stage) {
-   case MESA_SHADER_FRAGMENT:
-      fprintf(f, "Has side-effects: %s\n", bool_str(info->fs.sidefx));
-      fprintf(f, "Modifies coverage: %s\n", bool_str(info->fs.writes_coverage));
-      fprintf(f, "Reads color buffer: %s\n", bool_str(info->fs.outputs_read != 0));
-      break;
-   default:
-      break;
-   }
-   fprintf(f, "\n");
+
+   pan_stats_verbose_epilogue(f, info);
 }

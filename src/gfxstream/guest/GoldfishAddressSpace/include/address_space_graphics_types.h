@@ -4,10 +4,10 @@
  */
 #pragma once
 
-#include "ring_buffer.h"
-
-#include <functional>
 #include <cstddef>
+#include <functional>
+
+#include "ring_buffer.h"
 
 // This file defines common types for address space graphics and provides
 // documentation.
@@ -61,8 +61,8 @@ namespace guest {
 
 class Stream;
 
-} // namespace base
-} // namespace android
+}  // namespace guest
+}  // namespace gfxstream
 
 #define ADDRESS_SPACE_GRAPHICS_DEVICE_ID 0
 #define ADDRESS_SPACE_GRAPHICS_PAGE_SIZE 4096
@@ -72,7 +72,7 @@ class Stream;
 // the guest via the following layout:
 extern "C" {
 
-struct asg_ring_storage { // directly shared with guest
+struct asg_ring_storage {  // directly shared with guest
     char to_host[ADDRESS_SPACE_GRAPHICS_PAGE_SIZE];
     char to_host_large_xfer[ADDRESS_SPACE_GRAPHICS_PAGE_SIZE];
     char from_host_large_xfer[ADDRESS_SPACE_GRAPHICS_PAGE_SIZE];
@@ -107,7 +107,7 @@ struct asg_ring_config;
 //
 // Each context also comes with _one_ auxiliary buffer to hold both its own
 // commands and to perform private DMA transfers.
-struct asg_context { // ptrs into RingStorage
+struct asg_context {  // ptrs into RingStorage
     struct ring_buffer* to_host;
     char* buffer;
     asg_host_state* host_state;
@@ -119,45 +119,28 @@ struct asg_context { // ptrs into RingStorage
 // Helper function that will be common between guest and host:
 // Given ring storage and a write buffer, returns asg_context that
 // is the correct view into it.
-static inline struct asg_context asg_context_create(
-    char* ring_storage,
-    char* buffer,
-    uint32_t buffer_size) {
-
+static inline struct asg_context asg_context_create(char* ring_storage, char* buffer,
+                                                    uint32_t buffer_size) {
     struct asg_context res;
 
-    res.to_host =
-        reinterpret_cast<struct ring_buffer*>(
-            ring_storage +
-            offsetof(struct asg_ring_storage, to_host));
-    res.to_host_large_xfer.ring =
-        reinterpret_cast<struct ring_buffer*>(
-            ring_storage +
-            offsetof(struct asg_ring_storage, to_host_large_xfer));
-    res.from_host_large_xfer.ring =
-        reinterpret_cast<struct ring_buffer*>(
-            ring_storage +
-            offsetof(struct asg_ring_storage, from_host_large_xfer));
+    res.to_host = reinterpret_cast<struct ring_buffer*>(ring_storage +
+                                                        offsetof(struct asg_ring_storage, to_host));
+    res.to_host_large_xfer.ring = reinterpret_cast<struct ring_buffer*>(
+        ring_storage + offsetof(struct asg_ring_storage, to_host_large_xfer));
+    res.from_host_large_xfer.ring = reinterpret_cast<struct ring_buffer*>(
+        ring_storage + offsetof(struct asg_ring_storage, from_host_large_xfer));
 
     ring_buffer_init(res.to_host);
 
     res.buffer = buffer;
-    res.host_state =
-        reinterpret_cast<asg_host_state*>(
-            &res.to_host->state);
-    res.ring_config =
-        reinterpret_cast<asg_ring_config*>(
-            res.to_host->config);
+    res.host_state = reinterpret_cast<asg_host_state*>(&res.to_host->state);
+    res.ring_config = reinterpret_cast<asg_ring_config*>(res.to_host->config);
 
-    ring_buffer_view_init(
-        res.to_host_large_xfer.ring,
-        &res.to_host_large_xfer.view,
-        (uint8_t*)res.buffer, buffer_size);
+    ring_buffer_view_init(res.to_host_large_xfer.ring, &res.to_host_large_xfer.view,
+                          (uint8_t*)res.buffer, buffer_size);
 
-    ring_buffer_view_init(
-        res.from_host_large_xfer.ring,
-        &res.from_host_large_xfer.view,
-        (uint8_t*)res.buffer, buffer_size);
+    ring_buffer_view_init(res.from_host_large_xfer.ring, &res.from_host_large_xfer.view,
+                          (uint8_t*)res.buffer, buffer_size);
 
     return res;
 }
@@ -258,7 +241,7 @@ struct asg_ring_config {
 // talks to the code that actually does something with the commands
 // and sends data back.
 
-} // extern "C"
+}  // extern "C"
 
 namespace android {
 namespace emulation {
@@ -279,26 +262,20 @@ namespace asg {
 // Called when the consumer doesn't find anything to
 // read in to_host. Will make the consumer sleep
 // until another Ping(NotifyAvailable).
-using OnUnavailableReadCallback =
-    std::function<int()>;
+using OnUnavailableReadCallback = std::function<int()>;
 
 // Unpacks a type 2 transfer into host pointer and size.
-using GetPtrCallback =
-    std::function<char*(uint64_t)>;
+using GetPtrCallback = std::function<char*(uint64_t)>;
 
 struct ConsumerCallbacks {
     OnUnavailableReadCallback onUnavailableRead;
     GetPtrCallback getPtr;
 };
 
-using ConsumerCreateCallback =
-    std::function<void* (struct asg_context, ConsumerCallbacks)>;
-using ConsumerDestroyCallback =
-    std::function<void(void*)>;
-using ConsumerSaveCallback =
-    std::function<void(void*, gfxstream::guest::Stream*)>;
-using ConsumerLoadCallback =
-    std::function<void(void*, gfxstream::guest::Stream*)>;
+using ConsumerCreateCallback = std::function<void*(struct asg_context, ConsumerCallbacks)>;
+using ConsumerDestroyCallback = std::function<void(void*)>;
+using ConsumerSaveCallback = std::function<void(void*, gfxstream::guest::Stream*)>;
+using ConsumerLoadCallback = std::function<void(void*, gfxstream::guest::Stream*)>;
 
 struct ConsumerInterface {
     ConsumerCreateCallback create;
@@ -307,9 +284,9 @@ struct ConsumerInterface {
     ConsumerLoadCallback load;
 };
 
-} // namespace asg
-} // namespace emulation
-} // namespace android
+}  // namespace asg
+}  // namespace emulation
+}  // namespace android
 
 // The interface for the guest:
 
@@ -350,4 +327,4 @@ enum asg_command {
     ASG_GET_CONFIG = 4,
 };
 
-} // extern "C"
+}  // extern "C"

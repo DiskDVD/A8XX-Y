@@ -773,7 +773,7 @@ static void handle_indirect_resource(struct si_context *sctx, struct si_resource
 
    /* Indirect buffers are read through L2 on GFX9-GFX11, but not other hw. */
    if (sscreen->info.cp_sdma_ge_use_system_memory_scope && res->L2_cache_dirty) {
-      si_set_barrier_flags(sctx, SI_BARRIER_WB_L2 | SI_BARRIER_PFP_SYNC_ME);
+      si_set_barrier_flags(sctx, AC_BARRIER_WB_L2 | AC_BARRIER_PFP_SYNC_ME);
       res->L2_cache_dirty = false;
    }
 

@@ -119,6 +119,7 @@ panvk_per_arch(get_physical_device_extensions)(
       .KHR_spirv_1_4 = true,
       .KHR_storage_buffer_storage_class = true,
 #ifdef PANVK_USE_WSI_PLATFORM
+      .KHR_incremental_present = true,
       .KHR_present_id = true,
       .KHR_present_id2 = true,
       .KHR_present_wait = true,
@@ -172,6 +173,7 @@ panvk_per_arch(get_physical_device_extensions)(
       .EXT_host_image_copy = true,
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
+      .EXT_image_compression_control = true,
       /* EXT_image_drm_format_modifier depends on KHR_sampler_ycbcr_conversion */
       .EXT_image_drm_format_modifier = true,
       .EXT_image_robustness = true,
@@ -589,6 +591,9 @@ panvk_per_arch(get_physical_device_features)(
       /* VK_EXT_image_2d_view_of_3d */
       .image2DViewOf3D = true,
       .sampler2DViewOf3D = true,
+
+      /* VK_EXT_image_compression_control */
+      .imageCompressionControl = true,
 
       /* VK_EXT_image_sliced_view_of_3d */
       .imageSlicedViewOf3D = true,

@@ -197,7 +197,7 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
    assert(cmd_buffer->qf == RADV_QUEUE_GENERAL || cmd_buffer->qf == RADV_QUEUE_COMPUTE ||
           (cmd_buffer->qf == RADV_QUEUE_TRANSFER && cmd_buffer->gang.cs->hw_ip == AMD_IP_COMPUTE));
 
-   const enum radv_cmd_flush_bits dst_flush = radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+   const enum ac_barrier_flags dst_flush = radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                                                     VK_ACCESS_2_SHADER_READ_BIT, 0, image, NULL);
    if (use_gang)
       cmd_buffer->gang.flush_bits |= dst_flush;
@@ -206,8 +206,8 @@ radv_retile_dcc(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image)
 
    radv_compute_retile_dcc(cmd_buffer, image);
 
-   const enum radv_cmd_flush_bits src_flush =
-      RADV_CMD_FLAG_CS_PARTIAL_FLUSH | radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+   const enum ac_barrier_flags src_flush =
+      AC_BARRIER_SYNC_CS | radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                                                              VK_ACCESS_2_SHADER_WRITE_BIT, 0, image, NULL);
    if (use_gang)
       cmd_buffer->gang.flush_bits |= src_flush;

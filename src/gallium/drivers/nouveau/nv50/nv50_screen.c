@@ -278,6 +278,7 @@ nv50_init_screen_caps(struct nv50_screen *screen)
    caps->framebuffer_no_attachment = true;
    caps->compute = true;
    caps->query_memory_info = true;
+   caps->polygon_stipple = true;
 
    /* nvc0 has fixed function alpha test support, but nv50 doesn't.  If we
     * don't have it, then the frontend will lower it for us.

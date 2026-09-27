@@ -319,7 +319,7 @@
     VK_DRIVER: panfrost
     LAVA_FIRMWARE: arm
     # Mainline kernel support for MT8196 is still incomplete
-    KERNEL_TAG: "v6.18-pan-mesa-5358"
+    KERNEL_TAG: "v6.18-pan-mesa-ce6c"
 
 # Status: https://lava.collabora.dev/scheduler/device_type/sun50i-h6-pine-h64
 .lava-sun50i-h6-pine-h64:arm64:

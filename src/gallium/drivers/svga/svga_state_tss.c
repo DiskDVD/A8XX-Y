@@ -146,18 +146,6 @@ update_tss_binding(struct svga_context *svga, uint64_t dirty )
 
    svga->state.hw_draw.num_views = svga->curr.num_sampler_views[shader];
 
-   /* Polygon stipple */
-   if (svga->curr.rast->templ.poly_stipple_enable) {
-      const unsigned unit =
-         svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_unit;
-      emit_tex_binding_unit(svga, unit,
-                            svga->polygon_stipple.sampler,
-                            &svga->polygon_stipple.sampler_view->base,
-                            &svga->state.hw_draw.views[unit],
-                            reemit,
-                            &queue);
-   }
-
    svga->state.hw_draw.num_backed_views = 0;
 
    if (queue.bind_count) {
@@ -237,19 +225,6 @@ svga_reemit_tss_bindings(struct svga_context *svga)
       }
    }
 
-   /* Polygon stipple */
-   if (svga->curr.rast && svga->curr.rast->templ.poly_stipple_enable) {
-      const unsigned unit =
-         svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_unit;
-      struct svga_hw_view_state *view = &svga->state.hw_draw.views[unit];
-
-      if (view->v) {
-         queue.bind[queue.bind_count].unit = unit;
-         queue.bind[queue.bind_count].view = view;
-         queue.bind_count++;
-      }
-   }
-
    if (queue.bind_count) {
       SVGA3dTextureState *ts;
 
@@ -286,7 +261,6 @@ struct svga_tracked_state svga_hw_tss_binding = {
    "texture binding emit",
    SVGA_NEW_FRAME_BUFFER |
    SVGA_NEW_TEXTURE_BINDING |
-   SVGA_NEW_STIPPLE |
    SVGA_NEW_SAMPLER,
    update_tss_binding
 };
@@ -379,14 +353,6 @@ update_tss(struct svga_context *svga, uint64_t dirty )
       }
    }
 
-   /* polygon stipple sampler */
-   if (svga->curr.rast->templ.poly_stipple_enable) {
-      emit_tss_unit(svga,
-                    svga_fs_variant(svga->state.hw_draw.fs)->pstipple_sampler_unit,
-                    svga->polygon_stipple.sampler,
-                    &queue);
-   }
-
    if (queue.ts_count) {
       SVGA3dTextureState *ts;
 
@@ -415,7 +381,6 @@ fail:
 struct svga_tracked_state svga_hw_tss = {
    "texture state emit",
    (SVGA_NEW_SAMPLER |
-    SVGA_NEW_STIPPLE |
     SVGA_NEW_TEXTURE_FLAGS),
    update_tss
 };

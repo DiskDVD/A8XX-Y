@@ -55,7 +55,7 @@ hw_runner_fill_cmd_stream(struct pan_kmod_dev *dev,
    struct cs_builder_conf conf = {
       .nr_registers = csif_info->cs_reg_count,
       .nr_kernel_registers = MAX2(csif_info->unpreserved_cs_reg_count, 4),
-      .compute_ep_limit = dev->props.max_tasks_per_core,
+      .compute_ep_limit = PAN_ARCH >= 12 ? dev->props.max_tasks_per_core : 0,
       .alloc_buffer = NULL,
       .cookie = NULL,
       .ls_sb_slot = 0,

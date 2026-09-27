@@ -370,6 +370,7 @@ propagate_backwards(jay_function *f)
           use->op == JAY_OPCODE_MOV &&
           use->dst.file != J_ADDRESS &&
           jay_num_values(use->dst) == jay_num_values(use->src[0]) &&
+          !(I->op == JAY_OPCODE_SEND && I->dst.file != use->dst.file) &&
           (!jay_is_flag(use->dst) || jay_num_isa_srcs(I) < 3)) {
 
          *(flag ? &I->cond_flag : &I->dst) = use->dst;

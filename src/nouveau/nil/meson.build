@@ -34,7 +34,7 @@ _libnil_format_table = static_library(
 
 _libnil_deps = [
   dep_paste,
-  idep_bitview_rs,
+  idep_mesa_util_rs,
   idep_nvidia_headers_rs,
 ]
 

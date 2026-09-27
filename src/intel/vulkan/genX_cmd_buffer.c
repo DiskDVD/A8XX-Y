@@ -7578,7 +7578,8 @@ VkResult genX(CmdSetPerformanceStreamMarkerINTEL)(
    if (intel_perf_metrics_library_get_stream_marker_cmds(
           cmd_buffer->device->physical->perf, pMarkerInfo->marker,
           NULL, &cmds_size)) {
-      void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size);
+      assert(cmds_size % 4 == 0);
+      void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size / 4);
 
       success = cmds && intel_perf_metrics_library_get_stream_marker_cmds(
          cmd_buffer->device->physical->perf, pMarkerInfo->marker,

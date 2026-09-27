@@ -92,7 +92,7 @@ isl_gfx4_choose_image_alignment_el(const struct isl_device *dev,
 {
    assert(info->samples == 1);
    assert(msaa_layout == ISL_MSAA_LAYOUT_NONE);
-   assert(!isl_tiling_is_std_y(tiling));
+   assert(!isl_tiling_is_standard(tiling));
 
    /* Note that neither the surface's horizontal nor vertical image alignment
     * is programmable on gfx4 nor gfx5.

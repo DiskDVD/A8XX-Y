@@ -2,10 +2,6 @@
 # non-zero-length and not starting with '#', will regex match to
 # delete lines from the test list.  Be careful.
 
-# It causes GPU resets that can affect tests that are running
-# simultaneously.
-spec@arb_map_buffer_alignment.*
-
 # VK tests have been disabled in 32-bit piglit builds, but it doesn't
 # matter because we never could run them anyway.
 # Piglit still complains that the tests are `Missing` though, so
@@ -36,3 +32,4 @@ spec@!opengl 1.1@copypixels-draw-sync
 spec@!opengl 1.1@draw-copypixels-sync
 spec@!opengl 1.1@draw-sync
 spec@arb_vertex_buffer_object@vbo-subdata-many drawrangeelements
+spec@ext_texture_env_combine@texture-env-combine

@@ -18,8 +18,9 @@ VirtGpuKumquatResource::VirtGpuKumquatResource(struct virtgpu_kumquat* virtGpu, 
     : mVirtGpu(virtGpu), mBlobHandle(blobHandle), mResourceHandle(resourceHandle), mSize(size) {}
 
 VirtGpuKumquatResource::~VirtGpuKumquatResource() {
-    struct drm_kumquat_resource_unref unref {
-        .bo_handle = mBlobHandle, .pad = 0,
+    struct drm_kumquat_resource_unref unref{
+        .bo_handle = mBlobHandle,
+        .pad = 0,
     };
 
     int ret = virtgpu_kumquat_resource_unref(mVirtGpu, &unref);
@@ -39,8 +40,10 @@ VirtGpuResourceMappingPtr VirtGpuKumquatResource::createMapping() {
     int ret;
     struct drm_kumquat_resource_info info = {};
 
-    struct drm_kumquat_map map {
-        .bo_handle = mBlobHandle, .ptr = NULL, .size = mSize,
+    struct drm_kumquat_map map{
+        .bo_handle = mBlobHandle,
+        .ptr = NULL,
+        .size = mSize,
     };
 
     info.bo_handle = mBlobHandle;

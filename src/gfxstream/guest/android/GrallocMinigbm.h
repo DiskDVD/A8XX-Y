@@ -15,7 +15,7 @@ namespace gfxstream {
 class MinigbmGralloc : public Gralloc {
    public:
     MinigbmGralloc(int32_t descriptor);
-    ~MinigbmGralloc(){};
+    ~MinigbmGralloc() {};
 
     GrallocType getGrallocType() override;
 

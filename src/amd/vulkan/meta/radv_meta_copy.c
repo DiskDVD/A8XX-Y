@@ -110,13 +110,13 @@ transfer_copy_memory_image(struct radv_cmd_buffer *cmd_buffer, VkAddressCopyFlag
    const struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_cmd_stream *cs = cmd_buffer->cs;
 
-   if (!radv_sdma_supports_image(device, image, to_image)) {
+   if (!radv_sdma_supports_image(cmd_buffer, image, region->imageLayout, &region->imageSubresource, to_image)) {
       if (!radv_gang_init(cmd_buffer))
          return;
 
       if (radv_flush_gang_leader_semaphore(cmd_buffer)) {
          radv_wait_gang_leader(cmd_buffer);
-         cmd_buffer->gang.flush_bits |= RADV_CMD_FLAG_INV_L2;
+         cmd_buffer->gang.flush_bits |= AC_BARRIER_INV_L2;
       }
 
       radv_gang_cache_flush(cmd_buffer);
@@ -375,7 +375,7 @@ radv_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer, const VkCopyBufferToIm
    }
 
    if (radv_is_format_emulated(pdev, dst_image->vk.format) && cmd_buffer->qf != RADV_QUEUE_TRANSFER) {
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
+      cmd_buffer->state.flush_bits |= AC_BARRIER_SYNC_CS | AC_BARRIER_SYNC_PS |
                                       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                                             VK_ACCESS_2_TRANSFER_WRITE_BIT, 0, dst_image, NULL) |
                                       radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -434,7 +434,7 @@ radv_CmdCopyMemoryToImageKHR(VkCommandBuffer commandBuffer, const VkCopyDeviceMe
    }
 
    if (radv_is_format_emulated(pdev, dst_image->vk.format) && cmd_buffer->qf != RADV_QUEUE_TRANSFER) {
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
+      cmd_buffer->state.flush_bits |= AC_BARRIER_SYNC_CS | AC_BARRIER_SYNC_PS |
                                       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                                             VK_ACCESS_TRANSFER_WRITE_BIT, 0, dst_image, NULL) |
                                       radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -636,14 +636,17 @@ transfer_copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_i
    struct radv_device *device = radv_cmd_buffer_device(cmd_buffer);
    struct radv_cmd_stream *cs = cmd_buffer->cs;
    unsigned int dst_aspect_mask_remaining = region->dstSubresource.aspectMask;
+   VkImageSubresourceLayers src_subresource = region->srcSubresource;
+   VkImageSubresourceLayers dst_subresource = region->dstSubresource;
 
-   if (!radv_sdma_supports_image(device, src_image, false) || !radv_sdma_supports_image(device, dst_image, true)) {
+   if (!radv_sdma_supports_image(cmd_buffer, src_image, src_image_layout, &src_subresource, false) ||
+       !radv_sdma_supports_image(cmd_buffer, dst_image, dst_image_layout, &dst_subresource, true)) {
       if (!radv_gang_init(cmd_buffer))
          return;
 
       if (radv_flush_gang_leader_semaphore(cmd_buffer)) {
          radv_wait_gang_leader(cmd_buffer);
-         cmd_buffer->gang.flush_bits |= RADV_CMD_FLAG_INV_L2;
+         cmd_buffer->gang.flush_bits |= AC_BARRIER_INV_L2;
       }
 
       radv_gang_cache_flush(cmd_buffer);
@@ -655,9 +658,6 @@ transfer_copy_image(struct radv_cmd_buffer *cmd_buffer, struct radv_image *src_i
 
    if (cmd_buffer->gang.cs && radv_flush_gang_follower_semaphore(cmd_buffer))
       radv_wait_gang_follower(cmd_buffer);
-
-   VkImageSubresourceLayers src_subresource = region->srcSubresource;
-   VkImageSubresourceLayers dst_subresource = region->dstSubresource;
 
    const VkOffset3D dst_offset_el = vk_image_offset_to_elements(&dst_image->vk, region->dstOffset);
    const VkOffset3D src_offset_el = vk_image_offset_to_elements(&src_image->vk, region->srcOffset);
@@ -877,7 +877,7 @@ radv_CmdCopyImage2(VkCommandBuffer commandBuffer, const VkCopyImageInfo2 *pCopyI
    }
 
    if (radv_is_format_emulated(pdev, dst_image->vk.format) && cmd_buffer->qf != RADV_QUEUE_TRANSFER) {
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
+      cmd_buffer->state.flush_bits |= AC_BARRIER_SYNC_CS | AC_BARRIER_SYNC_PS |
                                       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                                             VK_ACCESS_2_TRANSFER_WRITE_BIT, 0, dst_image, NULL) |
                                       radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -967,7 +967,7 @@ radv_CmdCopyMemoryToImageIndirectKHR(VkCommandBuffer commandBuffer,
    }
 
    if (radv_is_format_emulated(pdev, dst_image->vk.format)) {
-      cmd_buffer->state.flush_bits |= (use_compute ? RADV_CMD_FLAG_CS_PARTIAL_FLUSH : RADV_CMD_FLAG_PS_PARTIAL_FLUSH) |
+      cmd_buffer->state.flush_bits |= (use_compute ? AC_BARRIER_SYNC_CS : AC_BARRIER_SYNC_PS) |
                                       radv_src_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                                                             VK_ACCESS_TRANSFER_WRITE_BIT, 0, dst_image, NULL) |
                                       radv_dst_access_flush(cmd_buffer, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,

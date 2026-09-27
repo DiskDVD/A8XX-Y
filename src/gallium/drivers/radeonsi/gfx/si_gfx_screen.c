@@ -653,6 +653,7 @@ static void si_init_gfx_caps(struct si_screen *sscreen)
    caps->cl_gl_sharing = true;
    caps->call_finalize_nir_in_linker = true;
    caps->blit_3d = true;
+   caps->polygon_stipple = true;
    caps->glsl_bindless_handles_are_32bit = true;
    caps->fbfetch = 1;
 

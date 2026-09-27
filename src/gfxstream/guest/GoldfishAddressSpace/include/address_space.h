@@ -34,25 +34,23 @@ struct address_space_ping {
 typedef address_space_handle_t (*address_space_open_t)(void);
 typedef void (*address_space_close_t)(address_space_handle_t);
 
-typedef bool (*address_space_allocate_t)(
-    address_space_handle_t, size_t size, uint64_t* phys_addr, uint64_t* offset);
-typedef bool (*address_space_free_t)(
-    address_space_handle_t, uint64_t offset);
+typedef bool (*address_space_allocate_t)(address_space_handle_t, size_t size, uint64_t* phys_addr,
+                                         uint64_t* offset);
+typedef bool (*address_space_free_t)(address_space_handle_t, uint64_t offset);
 
-typedef bool (*address_space_claim_shared_t)(
-    address_space_handle_t, uint64_t offset, uint64_t size);
-typedef bool (*address_space_unclaim_shared_t)(
-    address_space_handle_t, uint64_t offset);
+typedef bool (*address_space_claim_shared_t)(address_space_handle_t, uint64_t offset,
+                                             uint64_t size);
+typedef bool (*address_space_unclaim_shared_t)(address_space_handle_t, uint64_t offset);
 
 // pgoff is the offset into the page to return in the result
-typedef void* (*address_space_map_t)(
-    address_space_handle_t, uint64_t offset, uint64_t size, uint64_t pgoff);
+typedef void* (*address_space_map_t)(address_space_handle_t, uint64_t offset, uint64_t size,
+                                     uint64_t pgoff);
 typedef void (*address_space_unmap_t)(void* ptr, uint64_t size);
 
-typedef bool (*address_space_set_subdevice_type_t)(
-    address_space_handle_t, AddressSpaceSubdeviceType type, address_space_handle_t*);
-typedef bool (*address_space_ping_t)(
-    address_space_handle_t, struct address_space_ping*);
+typedef bool (*address_space_set_subdevice_type_t)(address_space_handle_t,
+                                                   AddressSpaceSubdeviceType type,
+                                                   address_space_handle_t*);
+typedef bool (*address_space_ping_t)(address_space_handle_t, struct address_space_ping*);
 
 struct address_space_ops {
     address_space_open_t open;

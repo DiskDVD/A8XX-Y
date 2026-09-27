@@ -1301,28 +1301,34 @@ void genX(CmdBeginQueryIndexedEXT)(
    }
 
    case VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL: {
+      bool success = false;
       uint32_t cmds_size = 0;
+      const uint64_t query_pool_gpu_addr = anv_address_physical(anv_query_address(pool, 0));
+      void* query_pool_cpu_addr = query_slot(pool, 0);
       if (intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
                                                          pool->metrics_library_query_pool,
-                                                         anv_address_physical(query_addr),
-                                                         query_slot(pool, query),
+                                                         query_pool_gpu_addr,
+                                                         query_pool_cpu_addr,
                                                          query,
                                                          cmd_buffer->intel_perf_marker,
                                                          true,
                                                          NULL,
                                                          &cmds_size)) {
-         void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size);
+         assert(cmds_size % 4 == 0);
+         void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size / 4);
 
-         if (cmds)
-            intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
-                                                           pool->metrics_library_query_pool,
-                                                           anv_address_physical(query_addr),
-                                                           query_slot(pool, query),
-                                                           query,
-                                                           cmd_buffer->intel_perf_marker,
-                                                           true,
-                                                           cmds,
-                                                           &cmds_size);
+         success = cmds && intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
+                                                                          pool->metrics_library_query_pool,
+                                                                          query_pool_gpu_addr,
+                                                                          query_pool_cpu_addr,
+                                                                          query,
+                                                                          cmd_buffer->intel_perf_marker,
+                                                                          true,
+                                                                          cmds,
+                                                                          &cmds_size);
+
+         if (!success)
+            anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
       break;
    }
@@ -1519,28 +1525,34 @@ void genX(CmdEndQueryIndexedEXT)(
    }
 
    case VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL: {
+      bool success = false;
       uint32_t cmds_size = 0;
+      const uint64_t query_pool_gpu_addr = anv_address_physical(anv_query_address(pool, 0));
+      void* query_pool_cpu_addr = query_slot(pool, 0);
       if (intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
                                                          pool->metrics_library_query_pool,
-                                                         anv_address_physical(query_addr),
-                                                         query_slot(pool, query),
+                                                         query_pool_gpu_addr,
+                                                         query_pool_cpu_addr,
                                                          query,
                                                          cmd_buffer->intel_perf_marker,
                                                          false,
                                                          NULL,
                                                          &cmds_size)) {
-         void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size);
+         assert(cmds_size % 4 == 0);
+         void* cmds = anv_batch_emit_dwords(&cmd_buffer->batch, cmds_size / 4);
 
-         if (cmds)
-            intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
-                                                           pool->metrics_library_query_pool,
-                                                           anv_address_physical(query_addr),
-                                                           query_slot(pool, query),
-                                                           query,
-                                                           cmd_buffer->intel_perf_marker,
-                                                           false,
-                                                           cmds,
-                                                           &cmds_size);
+         success = cmds && intel_perf_metrics_library_get_perf_query_cmds(cmd_buffer->device->physical->perf,
+                                                                          pool->metrics_library_query_pool,
+                                                                          query_pool_gpu_addr,
+                                                                          query_pool_cpu_addr,
+                                                                          query,
+                                                                          cmd_buffer->intel_perf_marker,
+                                                                          false,
+                                                                          cmds,
+                                                                          &cmds_size);
+
+         if (!success)
+            anv_batch_set_error(&cmd_buffer->batch, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
       break;
    }
@@ -1913,11 +1925,17 @@ copy_query_results_with_shader(struct anv_cmd_buffer *cmd_buffer,
     * consistent pipeline mode.
     */
    if (cmd_buffer->state.current_pipeline == UINT32_MAX) {
-      if (anv_cmd_buffer_is_render_queue(cmd_buffer))
-         genX(flush_pipeline_select_3d)(cmd_buffer);
-      else
+      if (anv_cmd_buffer_blorp_uses_compute(cmd_buffer))
          genX(flush_pipeline_select_gpgpu)(cmd_buffer, false);
+      else
+         genX(flush_pipeline_select_3d)(cmd_buffer);
    }
+
+#if GFX_VER >= 20
+   /* On Gfx20+ there is no pipeline switching cost and we run everything on the 3D engine */
+   if (anv_cmd_buffer_is_render_queue(cmd_buffer))
+      genX(flush_pipeline_select_3d)(cmd_buffer);
+#endif
 
    if ((cmd_buffer->state.queries.buffer_write_bits |
         cmd_buffer->state.queries.clear_bits) & ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT)

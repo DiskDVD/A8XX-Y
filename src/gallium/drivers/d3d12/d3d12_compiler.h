@@ -167,7 +167,6 @@ struct d3d12_shader_key {
             unsigned cast_to_int : 1;
             unsigned provoking_vertex : 2;
             unsigned manual_depth_range : 1;
-            unsigned polygon_stipple : 1;
             unsigned remap_front_facing : 1;
             unsigned multisample_disabled : 1;
          };
@@ -217,8 +216,6 @@ struct d3d12_shader {
    struct {
       uint32_t dimension;
    } uav_bindings[PIPE_MAX_SHADER_IMAGES];
-
-   unsigned pstipple_binding;
 
    struct d3d12_shader_key key;
    struct d3d12_shader *next_variant;

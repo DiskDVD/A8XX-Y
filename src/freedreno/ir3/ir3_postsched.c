@@ -814,8 +814,7 @@ is_self_mov(struct ir3_instruction *instr)
       return false;
 
    if (instr->srcs[0]->flags &
-       (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_RELATIV | IR3_REG_FNEG |
-        IR3_REG_FABS | IR3_REG_SNEG | IR3_REG_SABS | IR3_REG_BNOT))
+       (IR3_REG_CONST | IR3_REG_IMMED | IR3_REG_RELATIV | IR3_REG_SRC_MODS))
       return false;
 
    return true;

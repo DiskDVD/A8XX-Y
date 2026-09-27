@@ -3887,14 +3887,16 @@ anv_av1_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *enc
        * bitstream itself (anv_GetEncodedVideoSessionParametersKHR). The frame and
        * tile-group headers are inserted only on the first tile. */
       if (tile_idx == 0) {
-         uint32_t frame_hdr[32] = { 0 };
+         uint32_t frame_hdr[128] = { 0 };
          size_t hdr_size = 0;
          ASSERTED VkResult result =
             vk_video_encode_av1_frame_hdr(params, pic_info, base_q_idx,
                                           reference_select, false /* restoration_support */,
+                                          frame_info->generateObuExtensionHeader,
                                           frame_width, frame_height,
                                           sizeof(frame_hdr), &hdr_size, frame_hdr);
          assert(result == VK_SUCCESS);
+         assert(hdr_size <= sizeof(frame_hdr));
          uint32_t num_dw = DIV_ROUND_UP(hdr_size, 4);
          uint32_t last_bits = (hdr_size & 3) ? (hdr_size & 3) * 8 : 32;
          uint32_t *dw = anv_batch_emitn(&cmd->batch, num_dw + 2,

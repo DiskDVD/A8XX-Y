@@ -108,7 +108,6 @@ endif
 
 rusticl_bindgen_args = [
   bindgen_output_args,
-  '--raw-line', '#![allow(warnings)]',
   '--no-convert-floats',
   '--default-enum-style', 'rust',
   '--with-derive-partialeq',

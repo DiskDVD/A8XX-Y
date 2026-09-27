@@ -63,6 +63,8 @@ struct ir2_frag_linkage {
 struct ir2_shader_variant {
    struct ir2_shader_info info;
    struct ir2_frag_linkage f;
+   bool binning;
+   uint16_t tex_mag_switchover;
 };
 
 struct fd2_shader_stateobj;

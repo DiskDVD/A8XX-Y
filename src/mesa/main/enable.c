@@ -48,6 +48,7 @@
 
 #include "state_tracker/st_cb_bitmap.h"
 #include "state_tracker/st_context.h"
+#include "state_tracker/st_draw.h"
 
 void
 _mesa_update_derived_primitive_restart_state(struct gl_context *ctx)
@@ -916,6 +917,14 @@ _mesa_set_enable(struct gl_context *ctx, GLenum cap, GLboolean state)
                         GL_POLYGON_BIT | GL_ENABLE_BIT);
          ST_SET_STATE(ctx->NewDriverState, ST_NEW_RASTERIZER);
          ctx->Polygon.StippleFlag = state;
+
+         /* Invalidate the current primitive for polygon stipple emulation
+          * purposes -- this will trigger the entire stipple emulation
+          * re-validation at the next draw, whether we're going from enable to
+          * disable or vice versa.
+          */
+         st_prepare_stipple_input_prim(ctx->st, MESA_PRIM_COUNT);
+         st_update_draw_functions(ctx);
          break;
       case GL_POLYGON_OFFSET_POINT:
          if (!_mesa_is_desktop_gl(ctx))

@@ -2511,13 +2511,13 @@ tu_init_hw(struct tu_cmd_buffer *cmd, struct tu_cs *cs)
 
    tu_disable_draw_states(cmd, cs);
 
-   if (phys_dev->info->props.cmdbuf_start_a725_quirk) {
+   if (FD_QUIRK(phys_dev->info, QCTDD09112208_cmdbuf_start_cs)) {
       tu_cs_reserve(cs, 3 + 4);
       tu_cs_emit_pkt7(cs, CP_COND_REG_EXEC, 2);
       tu_cs_emit(cs, CP_COND_REG_EXEC_0_MODE(THREAD_MODE) |
                      CP_COND_REG_EXEC_0_BR | CP_COND_REG_EXEC_0_LPAC);
       tu_cs_emit(cs, RENDER_MODE_CP_COND_REG_EXEC_1_DWORDS(4));
-      tu_cs_emit_ib(cs, &dev->cmdbuf_start_a725_quirk_entry);
+      tu_cs_emit_ib(cs, &dev->cmdbuf_QCTDD09112208_cmdbuf_start_cs_entry);
    }
 
    if (CHIP >= A7XX) {
@@ -8969,6 +8969,13 @@ vs_params_offset(struct tu_cmd_buffer *cmd)
    STATIC_ASSERT(IR3_DP_VS(draw_id) == 0);
    STATIC_ASSERT(IR3_DP_VS(vtxid_base) == 1);
    STATIC_ASSERT(IR3_DP_VS(instid_base) == 2);
+   STATIC_ASSERT(sizeof(struct ir3_driver_params_vs) % 16 == 0);
+   STATIC_ASSERT(sizeof(struct ir3_driver_params_vs) == 40 * sizeof(uint32_t));
+   /* SW multiview relies on view_index living in the second vec4 (dword 5)
+    * so that it survives the zeroing of dwords 0-3 that
+    * CP_DRAW_INDIRECT_MULTI does at DST_OFF for indirect draws.
+    */
+   STATIC_ASSERT(IR3_DP_VS(view_index) == 5);
 
    /* 0 means disabled for CP_DRAW_INDIRECT_MULTI */
    assert(param_offset != 0);
@@ -8976,10 +8983,119 @@ vs_params_offset(struct tu_cmd_buffer *cmd)
    return param_offset;
 }
 
+static void
+tu6_emit_vs_params(struct tu_cmd_buffer *cmd,
+                   uint32_t draw_id,
+                   uint32_t vertex_offset,
+                   uint32_t first_instance,
+                   bool skip_vfd = false)
+{
+   uint32_t offset = vs_params_offset(cmd);
+
+   /* When emulating multiview in software the current view index is passed to
+    * the VS as a driver param, see tu_sw_multiview_draw(). It lives in the
+    * second vec4 so that CP_DRAW_INDIRECT_MULTI, which overwrites the first
+    * vec4 at DST_OFF, cannot clobber it.
+    */
+   const bool sw_multiview = cmd->state.sw_multiview;
+   const uint32_t view_index = sw_multiview ? cmd->state.sw_view_index : 0;
+   const unsigned num_vec4 = sw_multiview ? 2 : 1;
+
+   /* Beside re-emitting params when they are changed, we should re-emit
+    * them after constants are invalidated via SP_UPDATE_CNTL or after we
+    * emit an empty vs params.
+    */
+   if (!(cmd->state.dirty & (TU_CMD_DIRTY_DRAW_STATE | TU_CMD_DIRTY_VS_PARAMS |
+                             TU_CMD_DIRTY_PROGRAM)) &&
+       !cmd->state.last_vs_params.empty &&
+       (offset == 0 || draw_id == cmd->state.last_vs_params.draw_id) &&
+       vertex_offset == cmd->state.last_vs_params.vertex_offset &&
+       first_instance == cmd->state.last_vs_params.first_instance &&
+       sw_multiview == cmd->state.last_vs_params.sw_multiview &&
+       view_index == cmd->state.last_vs_params.view_index &&
+       skip_vfd == cmd->state.last_vs_params.skip_vfd) {
+      return;
+   }
+
+   uint64_t consts_iova = 0;
+   if (offset) {
+      struct tu_cs_memory consts;
+      VkResult result = tu_cs_alloc(&cmd->sub_cs, num_vec4, 4, &consts);
+      if (result != VK_SUCCESS) {
+         vk_command_buffer_set_error(&cmd->vk, result);
+         return;
+      }
+      consts.map[0] = draw_id;
+      consts.map[1] = vertex_offset;
+      consts.map[2] = first_instance;
+      consts.map[3] = 0;
+      if (sw_multiview) {
+         consts.map[4] = 0;
+         consts.map[5] = view_index;
+         consts.map[6] = 0;
+         consts.map[7] = 0;
+      }
+
+      consts_iova = consts.iova;
+   }
+
+   struct tu_cs cs;
+   VkResult result = tu_cs_begin_sub_stream(&cmd->sub_cs,
+      (skip_vfd ? 0 : 3) + (offset ? 4 : 0), &cs);
+   if (result != VK_SUCCESS) {
+      vk_command_buffer_set_error(&cmd->vk, result);
+      return;
+   }
+
+   if (!skip_vfd) {
+      tu_cs_emit_regs(&cs,
+                      A6XX_VFD_INDEX_OFFSET(vertex_offset),
+                      A6XX_VFD_INSTANCE_START_OFFSET(first_instance));
+   }
+
+   /* It is implemented as INDIRECT load even on a750+ because with UBO
+    * lowering it would be tricky to get const offset for to use in multidraw,
+    * also we would need to ensure the offset is not 0.
+    * TODO/A7XX: Rework vs params to use UBO lowering.
+    */
+   if (offset) {
+      tu_cs_emit_pkt7(&cs, CP_LOAD_STATE6_GEOM, 3);
+      tu_cs_emit(&cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
+            CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
+            CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
+            CP_LOAD_STATE6_0_STATE_BLOCK(SB6_VS_SHADER) |
+            CP_LOAD_STATE6_0_NUM_UNIT(num_vec4));
+      tu_cs_emit_qw(&cs, consts_iova);
+   }
+
+   cmd->state.last_vs_params.vertex_offset = vertex_offset;
+   cmd->state.last_vs_params.first_instance = first_instance;
+   cmd->state.last_vs_params.draw_id = draw_id;
+   cmd->state.last_vs_params.view_index = view_index;
+   cmd->state.last_vs_params.sw_multiview = sw_multiview;
+   cmd->state.last_vs_params.skip_vfd = skip_vfd;
+   cmd->state.last_vs_params.empty = false;
+
+   struct tu_cs_entry entry = tu_cs_end_sub_stream(&cmd->sub_cs, &cs);
+   cmd->state.vs_params = (struct tu_draw_state) {entry.bo->iova + entry.offset, entry.size / 4};
+
+   cmd->state.dirty |= TU_CMD_DIRTY_VS_PARAMS;
+}
+
 template <chip CHIP>
 static void
 tu6_emit_empty_vs_params(struct tu_cmd_buffer *cmd)
 {
+   if (cmd->state.sw_multiview && vs_params_offset(cmd)) {
+      /* We still have to upload the view index of the current replay. Skip the
+       * VFD registers though: CP_DRAW_INDIRECT_MULTI sources VFD_INDEX_OFFSET
+       * and VFD_INSTANCE_START_OFFSET from the indirect buffer, and a draw
+       * state writing them would clobber those values.
+       */
+      tu6_emit_vs_params(cmd, 0, 0, 0, /* skip_vfd = */ true);
+      return;
+   }
+
    if (cmd->state.last_vs_params.empty)
       return;
 
@@ -9000,80 +9116,6 @@ tu6_emit_empty_vs_params(struct tu_cmd_buffer *cmd)
    cmd->state.dirty |= TU_CMD_DIRTY_VS_PARAMS;
 
    cmd->state.last_vs_params.empty = true;
-}
-
-static void
-tu6_emit_vs_params(struct tu_cmd_buffer *cmd,
-                   uint32_t draw_id,
-                   uint32_t vertex_offset,
-                   uint32_t first_instance)
-{
-   uint32_t offset = vs_params_offset(cmd);
-
-   /* Beside re-emitting params when they are changed, we should re-emit
-    * them after constants are invalidated via SP_UPDATE_CNTL or after we
-    * emit an empty vs params.
-    */
-   if (!(cmd->state.dirty & (TU_CMD_DIRTY_DRAW_STATE | TU_CMD_DIRTY_VS_PARAMS |
-                             TU_CMD_DIRTY_PROGRAM)) &&
-       !cmd->state.last_vs_params.empty &&
-       (offset == 0 || draw_id == cmd->state.last_vs_params.draw_id) &&
-       vertex_offset == cmd->state.last_vs_params.vertex_offset &&
-       first_instance == cmd->state.last_vs_params.first_instance) {
-      return;
-   }
-
-   uint64_t consts_iova = 0;
-   if (offset) {
-      struct tu_cs_memory consts;
-      VkResult result = tu_cs_alloc(&cmd->sub_cs, 1, 4, &consts);
-      if (result != VK_SUCCESS) {
-         vk_command_buffer_set_error(&cmd->vk, result);
-         return;
-      }
-      consts.map[0] = draw_id;
-      consts.map[1] = vertex_offset;
-      consts.map[2] = first_instance;
-      consts.map[3] = 0;
-
-      consts_iova = consts.iova;
-   }
-
-   struct tu_cs cs;
-   VkResult result = tu_cs_begin_sub_stream(&cmd->sub_cs, 3 + (offset ? 4 : 0), &cs);
-   if (result != VK_SUCCESS) {
-      vk_command_buffer_set_error(&cmd->vk, result);
-      return;
-   }
-
-   tu_cs_emit_regs(&cs,
-                   A6XX_VFD_INDEX_OFFSET(vertex_offset),
-                   A6XX_VFD_INSTANCE_START_OFFSET(first_instance));
-
-   /* It is implemented as INDIRECT load even on a750+ because with UBO
-    * lowering it would be tricky to get const offset for to use in multidraw,
-    * also we would need to ensure the offset is not 0.
-    * TODO/A7XX: Rework vs params to use UBO lowering.
-    */
-   if (offset) {
-      tu_cs_emit_pkt7(&cs, CP_LOAD_STATE6_GEOM, 3);
-      tu_cs_emit(&cs, CP_LOAD_STATE6_0_DST_OFF(offset) |
-            CP_LOAD_STATE6_0_STATE_TYPE(ST6_CONSTANTS) |
-            CP_LOAD_STATE6_0_STATE_SRC(SS6_INDIRECT) |
-            CP_LOAD_STATE6_0_STATE_BLOCK(SB6_VS_SHADER) |
-            CP_LOAD_STATE6_0_NUM_UNIT(1));
-      tu_cs_emit_qw(&cs, consts_iova);
-   }
-
-   cmd->state.last_vs_params.vertex_offset = vertex_offset;
-   cmd->state.last_vs_params.first_instance = first_instance;
-   cmd->state.last_vs_params.draw_id = draw_id;
-   cmd->state.last_vs_params.empty = false;
-
-   struct tu_cs_entry entry = tu_cs_end_sub_stream(&cmd->sub_cs, &cs);
-   cmd->state.vs_params = (struct tu_draw_state) {entry.bo->iova + entry.offset, entry.size / 4};
-
-   cmd->state.dirty |= TU_CMD_DIRTY_VS_PARAMS;
 }
 
 template <chip CHIP>
@@ -9430,6 +9472,69 @@ tu_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer,
    trace_end_draw(&cmd->rp_trace, cs);
 }
 TU_GENX(tu_CmdDrawIndirectByteCountEXT);
+
+/* Devices without HW multiview emulate it by replaying every draw once per
+ * view, with the view index handed to the VS through a driver param which the
+ * shader forwards to gl_Layer (see tu_nir_lower_multiview()).
+ *
+ * Instead of open-coding that loop in every draw entrypoint, the normal
+ * entrypoints are wrapped in the dispatch table, so that rendering outside of
+ * a multiview render pass - which is the vast majority of it - keeps taking
+ * the exact same path as on devices with HW multiview.
+ */
+template <auto DRAW, typename... Args>
+static VKAPI_ATTR void VKAPI_CALL
+tu_sw_multiview_draw(VkCommandBuffer commandBuffer, Args... args)
+{
+   VK_FROM_HANDLE(tu_cmd_buffer, cmd, commandBuffer);
+
+   uint32_t view_mask = cmd->state.vk_mv.view_mask;
+   if (!view_mask) {
+      DRAW(commandBuffer, args...);
+      return;
+   }
+
+   assert(!cmd->state.sw_multiview);
+   cmd->state.sw_multiview = true;
+   u_foreach_bit(view, view_mask) {
+      cmd->state.sw_view_index = view;
+      DRAW(commandBuffer, args...);
+   }
+   cmd->state.sw_multiview = false;
+}
+
+template <chip CHIP>
+static void
+tu_install_sw_multiview_draws(struct vk_device_dispatch_table *dispatch_table)
+{
+   dispatch_table->CmdDraw =
+      tu_sw_multiview_draw<tu_CmdDraw<CHIP>>;
+   dispatch_table->CmdDrawMultiEXT =
+      tu_sw_multiview_draw<tu_CmdDrawMultiEXT<CHIP>>;
+   dispatch_table->CmdDrawIndexed =
+      tu_sw_multiview_draw<tu_CmdDrawIndexed<CHIP>>;
+   dispatch_table->CmdDrawMultiIndexedEXT =
+      tu_sw_multiview_draw<tu_CmdDrawMultiIndexedEXT<CHIP>>;
+   dispatch_table->CmdDrawIndirect =
+      tu_sw_multiview_draw<tu_CmdDrawIndirect<CHIP>>;
+   dispatch_table->CmdDrawIndexedIndirect =
+      tu_sw_multiview_draw<tu_CmdDrawIndexedIndirect<CHIP>>;
+   dispatch_table->CmdDrawIndirectCount =
+      tu_sw_multiview_draw<tu_CmdDrawIndirectCount<CHIP>>;
+   dispatch_table->CmdDrawIndexedIndirectCount =
+      tu_sw_multiview_draw<tu_CmdDrawIndexedIndirectCount<CHIP>>;
+   dispatch_table->CmdDrawIndirectByteCountEXT =
+      tu_sw_multiview_draw<tu_CmdDrawIndirectByteCountEXT<CHIP>>;
+}
+
+void
+tu_install_sw_multiview_draw_entrypoints(
+   struct vk_device_dispatch_table *dispatch_table,
+   const struct fd_dev_info *info)
+{
+   assert(!info->props.has_hw_multiview);
+   FD_CALLX(info, tu_install_sw_multiview_draws)(dispatch_table);
+}
 
 struct tu_dispatch_info
 {

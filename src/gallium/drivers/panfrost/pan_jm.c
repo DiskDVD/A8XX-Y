@@ -1138,10 +1138,22 @@ GENX(jm_cleanup_context)(struct panfrost_context *ctx)
 {
    PAN_TRACE_FUNC(PAN_TRACE_GL_JM);
 
-   if (!ctx->jm.handle)
-      return;
-
    struct panfrost_device *dev = pan_device(ctx->base.screen);
+
+   if (!ctx->jm.handle) {
+      /* Without an explicit JM context, nothing kills the jobs this context
+       * still has in flight, and they point at memory that is in no job's BO
+       * list -- the screen-wide shader and descriptor pools -- so nothing in
+       * the kernel keeps it alive either. An application that tears down
+       * without a glFinish() would have it released under the GPU, and every
+       * job still queued would fault and hit the scheduler timeout. The
+       * context syncobj is the out-fence of the last job submitted.
+       */
+      drmSyncobjWait(panfrost_device_fd(dev), &ctx->syncobj, 1, INT64_MAX, 0,
+                     NULL);
+      return;
+   }
+
    struct drm_panfrost_jm_ctx_destroy args = {
       .handle = ctx->jm.handle,
    };

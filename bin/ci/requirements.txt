@@ -2,6 +2,7 @@ PyYAML==6.*
 filecache==0.81
 flake8==7.*
 gql==3.*
+anyio<4.15
 kaleido==0.2.*
 pandas==2.*
 plotly==5.*

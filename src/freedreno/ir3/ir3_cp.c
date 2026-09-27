@@ -63,8 +63,7 @@ is_eligible_mov(struct ir3_instruction *instr,
          return false;
 
       if (!allow_flags)
-         if (src->flags & (IR3_REG_FABS | IR3_REG_FNEG | IR3_REG_SABS |
-                           IR3_REG_SNEG | IR3_REG_BNOT))
+         if (src->flags & IR3_REG_SRC_MODS)
             return false;
 
       return true;
@@ -134,7 +133,7 @@ lower_immed(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr, unsigned n,
    new_flags &= ~IR3_REG_IMMED;
    new_flags |= IR3_REG_CONST;
 
-   if (!ir3_valid_flags(instr, n, new_flags))
+   if (!ir3_valid_flags(instr, n, new_flags & ~IR3_REG_SRC_MODS))
       return false;
 
    reg = ir3_reg_clone(ctx->shader, reg);
@@ -147,30 +146,13 @@ lower_immed(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr, unsigned n,
    if (f_opcode && (new_flags & IR3_REG_HALF))
       reg->uim_val = fui(_mesa_half_to_float(reg->uim_val));
 
-   /* in some cases, there are restrictions on (abs)/(neg) plus const..
-    * so just evaluate those and clear the flags:
+   /* Strip off the src mods before we check if these flags are valid -- we'll
+    * re-add src mods as necessary to find an immediate.
     */
-   if (new_flags & IR3_REG_SABS) {
-      reg->iim_val = abs(reg->iim_val);
-      new_flags &= ~IR3_REG_SABS;
-   }
+   reg->iim_val = ir3_evaluate_src_mods(reg->iim_val, new_flags);
+   new_flags &= ~IR3_REG_SRC_MODS;
 
-   if (new_flags & IR3_REG_FABS) {
-      reg->fim_val = fabs(reg->fim_val);
-      new_flags &= ~IR3_REG_FABS;
-   }
-
-   if (new_flags & IR3_REG_SNEG) {
-      reg->iim_val = -reg->iim_val;
-      new_flags &= ~IR3_REG_SNEG;
-   }
-
-   if (new_flags & IR3_REG_FNEG) {
-      reg->fim_val = -reg->fim_val;
-      new_flags &= ~IR3_REG_FNEG;
-   }
-
-   reg->num = ir3_const_find_imm(ctx->so, reg->uim_val);
+   reg->num = ir3_const_find_imm(ctx->so, instr, n, reg->iim_val, &new_flags);
 
    if (reg->num == INVALID_CONST_REG) {
       reg->num = ir3_const_add_imm(ctx->so, reg->uim_val);
@@ -493,14 +475,8 @@ reg_cp(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr,
             }
          }
 
-         if (new_flags & IR3_REG_SABS)
-            iim_val = abs(iim_val);
-
-         if (new_flags & IR3_REG_SNEG)
-            iim_val = -iim_val;
-
-         if (new_flags & IR3_REG_BNOT)
-            iim_val = ~iim_val;
+         iim_val = ir3_evaluate_src_mods(
+            iim_val, new_flags & (IR3_REG_SABS | IR3_REG_SNEG | IR3_REG_BNOT));
 
          if (ir3_valid_flags(instr, n, new_flags) &&
              ir3_valid_immediate(instr, iim_val)) {
@@ -570,11 +546,6 @@ instr_cp(struct ir3_cp_ctx *ctx, struct ir3_instruction *instr)
           * we actually want and allow cp..
           */
          if ((reg->flags & IR3_REG_ARRAY) && src->opc != OPC_META_PHI)
-            continue;
-
-         /* Don't CP absneg into meta instructions, that won't end well: */
-         if (is_meta(instr) &&
-             (src->opc == OPC_ABSNEG_F || src->opc == OPC_ABSNEG_S))
             continue;
 
          /* Don't CP mova and mova1 into their users */

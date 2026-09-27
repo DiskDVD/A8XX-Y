@@ -50,6 +50,10 @@ nir_${name}(nir_builder *build, ${src_decl_list(opcode.num_inputs)})
      type_base_type(opcode.output_type) == opcode.input_types[0]:
    if (src0->bit_size == ${type_size(opcode.output_type)})
       return src0;
+% if opcode.input_types[0] == "int":
+   if (src0->bit_size > ${type_size(opcode.output_type)})
+      return nir_build_alu1(build, nir_op_u2u${type_size(opcode.output_type)}, src0);
+%endif
 %endif
 % if opcode.num_inputs <= 4:
    return nir_build_alu${opcode.num_inputs}(build, nir_op_${name}, ${src_list(opcode.num_inputs)});

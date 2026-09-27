@@ -7,9 +7,9 @@
 
 #include <string>
 
+#include "VirtGpu.h"
 #include "util/detect_os.h"
 #include "util/u_process.h"
-#include "VirtGpu.h"
 
 #if DETECT_OS_LINUX
 #include <sys/prctl.h>

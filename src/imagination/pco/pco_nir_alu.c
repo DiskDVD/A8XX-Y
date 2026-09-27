@@ -28,12 +28,8 @@
 static bool
 pco_nir_lower_alu_instr(nir_builder *b, nir_alu_instr *alu, void *cb_data)
 {
-   pco_ctx *ctx = cb_data;
-
-   if (!nir_alu_instr_is_signed_zero_inf_nan_preserve(alu) &&
-       alu->op != nir_op_ftanh) {
+   if (!nir_alu_instr_is_signed_zero_inf_nan_preserve(alu))
       return false;
-   }
 
    uint32_t old_fp_math_ctrl = b->fp_math_ctrl;
    switch (alu->op) {
@@ -83,37 +79,6 @@ pco_nir_lower_alu_instr(nir_builder *b, nir_alu_instr *alu, void *cb_data)
       b->fp_math_ctrl = old_fp_math_ctrl;
       return true;
 
-   case nir_op_ftanh:
-      b->cursor = nir_before_instr(&alu->instr);
-      b->fp_math_ctrl = alu->fp_math_ctrl;
-      nir_def *src = nir_ssa_for_alu_src(b, alu, 0);
-
-      /* Use the built-in emulation. */
-      nir_def *tanh = nir_tanh_emulated(b, src);
-
-      /* If the current core has RTZ rounding for f32, and we need an accurate
-       * result for src = +/-inf, then special-case to avoid accuracy loss.
-       */
-      bool needs_inf_handling =
-         !PVR_HAS_FEATURE(ctx->dev_info, usc_alu_roundingmode_rne) &&
-         (alu->fp_math_ctrl & nir_fp_preserve_inf);
-
-      if (needs_inf_handling) {
-         nir_def *finf = nir_imm_float(b, INFINITY);
-         nir_def *is_inf = nir_feq(b, nir_fabs(b, src), finf);
-
-         /* tanh(+/-inf) = +/-1.0f */
-         tanh = nir_bcsel(b,
-                          is_inf,
-                          nir_copysign(b, nir_imm_float(b, 1.0f), src),
-                          tanh);
-      }
-
-      nir_def_replace(&alu->def, tanh);
-
-      b->fp_math_ctrl = old_fp_math_ctrl;
-      return true;
-
    default:
       break;
    }
@@ -125,13 +90,12 @@ pco_nir_lower_alu_instr(nir_builder *b, nir_alu_instr *alu, void *cb_data)
  * \brief Pass that lowers ALU instructions based on special conditions.
  *
  * \param[in,out] shader NIR shader.
- * \param[in] ctx PCO compiler context.
  * \return True if the pass made progress.
  */
-bool pco_nir_lower_alu(nir_shader *shader, pco_ctx *ctx)
+bool pco_nir_lower_alu(nir_shader *shader)
 {
    return nir_shader_alu_pass(shader,
                               pco_nir_lower_alu_instr,
                               nir_metadata_control_flow,
-                              ctx);
+                              NULL);
 }

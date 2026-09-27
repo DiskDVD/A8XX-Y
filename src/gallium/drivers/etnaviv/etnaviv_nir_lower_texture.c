@@ -32,15 +32,16 @@ clamp_lod(nir_builder *b, nir_def *sampler, nir_def *lod)
 }
 
 static nir_def *
+level_size(nir_builder *b, nir_def *base_size, nir_def *lod)
+{
+   /* Mip levels are never smaller than 1x1 */
+   return nir_imax(b, nir_ushr(b, base_size, lod), nir_imm_int(b, 1));
+}
+
+static nir_def *
 calculate_coord(nir_builder *b, nir_tex_instr *tex, nir_def *coord, nir_def *base_size_int, nir_def *lod, nir_def *offset)
 {
-   lod = nir_f2i32(b, lod);
-
-   /* Calculate mipmap level dimensions by right-shifting base size by LOD */
-   nir_def *mip_size = nir_ushr(b, base_size_int, lod);
-
-   /* Ensure minimum size of 1 pixel - mipmaps can't be smaller than 1x1 */
-   mip_size = nir_imax(b, mip_size, nir_imm_int(b, 1));
+   nir_def *mip_size = level_size(b, base_size_int, nir_f2i32(b, lod));
 
    /* Convert mip size to float and calculate reciprocal to scale texel offsets into normalized coordinates */
    nir_def *mip_size_float = nir_i2f32(b, mip_size);
@@ -303,6 +304,77 @@ lower_tg4_offset(nir_builder *b, nir_tex_instr *tex, UNUSED void *data)
 }
 
 static bool
+lower_txf(nir_builder *b, nir_tex_instr *tex, UNUSED void *data)
+{
+   if (tex->op != nir_texop_txf)
+      return false;
+
+   b->cursor = nir_before_instr(&tex->instr);
+
+   int coord_index = nir_tex_instr_src_index(tex, nir_tex_src_coord);
+   int lod_index = nir_tex_instr_src_index(tex, nir_tex_src_lod);
+   assert(coord_index >= 0);
+   assert(lod_index >= 0);
+   assert(nir_tex_instr_src_index(tex, nir_tex_src_offset) < 0);
+
+   nir_def *coord = nir_i2f32(b, tex->src[coord_index].src.ssa);
+   nir_def *lod = tex->src[lod_index].src.ssa;
+   nir_def *sampler = nir_imm_int(b, tex->texture_index);
+   nir_def *size = nir_trim_vector(b, nir_load_texture_size_etna(b, 32, sampler),
+                                   tex->coord_components);
+   nir_def *mip_size = nir_i2f32(b, level_size(b, size, lod));
+   nir_def *center = nir_fdiv(b, nir_fadd_imm(b, coord, 0.5f), mip_size);
+
+   if (tex->is_array) {
+      const unsigned array_index = tex->coord_components - 1;
+
+      center = nir_vector_insert_imm(b, center, nir_channel(b, coord, array_index),
+                                     array_index);
+   }
+
+   nir_src_rewrite(&tex->src[coord_index].src, center);
+   nir_src_rewrite(&tex->src[lod_index].src, nir_i2f32(b, lod));
+   tex->op = nir_texop_txl;
+
+   return true;
+}
+
+static bool
+clamp_txf_coords(nir_builder *b, nir_tex_instr *tex, UNUSED void *data)
+{
+   if (tex->op != nir_texop_txf)
+      return false;
+
+   b->cursor = nir_before_instr(&tex->instr);
+
+   int coord_index = nir_tex_instr_src_index(tex, nir_tex_src_coord);
+   int lod_index = nir_tex_instr_src_index(tex, nir_tex_src_lod);
+   assert(coord_index >= 0);
+   assert(lod_index >= 0);
+
+   const unsigned spatial = tex->coord_components - tex->is_array;
+   nir_def *coord = tex->src[coord_index].src.ssa;
+   nir_src *lod = &tex->src[lod_index].src;
+   nir_def *sampler = nir_imm_int(b, tex->texture_index);
+   nir_def *size = nir_load_texture_size_etna(b, 32, sampler);
+   nir_def *limit = nir_trim_vector(b, size, spatial);
+
+   if (!nir_src_is_const(*lod) || nir_src_as_uint(*lod) != 0)
+      limit = level_size(b, limit, lod->ssa);
+
+   nir_def *clamped = nir_imin(b, nir_trim_vector(b, coord, spatial),
+                               nir_iadd_imm(b, limit, -1));
+
+   if (tex->is_array)
+      clamped = nir_vector_insert_imm(b, nir_pad_vector(b, clamped, spatial + 1),
+                                      nir_channel(b, coord, spatial), spatial);
+
+   nir_src_rewrite(&tex->src[coord_index].src, clamped);
+
+   return true;
+}
+
+static bool
 legalize_txf_lod(nir_builder *b, nir_tex_instr *tex, UNUSED void *data)
 {
    if (tex->op != nir_texop_txf)
@@ -527,8 +599,16 @@ etna_nir_lower_texture(nir_shader *s, struct etna_shader_key *key, const struct 
    NIR_PASS(progress, s, nir_shader_tex_pass, lower_tg4_offset,
       nir_metadata_control_flow, NULL);
 
-   NIR_PASS(progress, s, nir_shader_tex_pass, legalize_txf_lod,
-      nir_metadata_control_flow, NULL);
+   if (etna_core_has_feature(info, ETNA_FEATURE_TX_INTEGER_COORDINATE_V2)) {
+      NIR_PASS(progress, s, nir_shader_tex_pass, clamp_txf_coords,
+         nir_metadata_control_flow, NULL);
+
+      NIR_PASS(progress, s, nir_shader_tex_pass, legalize_txf_lod,
+         nir_metadata_control_flow, NULL);
+   } else {
+      NIR_PASS(progress, s, nir_shader_tex_pass, lower_txf,
+         nir_metadata_control_flow, NULL);
+   }
 
    NIR_PASS(progress, s, nir_shader_tex_pass, lower_txf_ms_dynamic,
       nir_metadata_control_flow, NULL);

@@ -641,6 +641,19 @@ pan_res_handle(unsigned table, unsigned index)
 void pan_disassemble(FILE *fp, const void *code, size_t size, uint64_t gpu_id,
                      bool verbose);
 
+void pan_stats_verbose_prologue(FILE *f, const char *prefix, uint64_t gpu_id,
+                                uint32_t gpu_variant, unsigned arch);
+
+void pan_valhall_stats_verbose(FILE *f, const struct valhall_stats *stats,
+                               const struct valhall_stats *min_stats,
+                               const struct valhall_stats *max_stats,
+                               unsigned tls_size);
+
+void pan_bifrost_stats_verbose(FILE *f, const struct bifrost_stats *stats,
+                               unsigned tls_size);
+
+void pan_stats_verbose_epilogue(FILE *f, const struct pan_shader_info *info);
+
 float pan_va_compute_alu_bound(uint8_t arch, float fma, float cvt, float sfu);
 
 static inline unsigned

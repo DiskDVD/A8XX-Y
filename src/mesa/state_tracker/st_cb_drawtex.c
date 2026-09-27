@@ -3,6 +3,8 @@
  * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
+ * SPDX-License-Identifier: MIT
+ *
  **************************************************************************/
 
 

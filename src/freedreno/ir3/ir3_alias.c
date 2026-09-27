@@ -142,7 +142,7 @@ alias_srcs(struct ir3_instruction *instr, const struct ir3_compiler *compiler)
     * scheduler to avoid putting potentially-aliasing instructions between mova
     * and the last use of the mova.
     */
-   if (num_aliases > 0 && compiler->info->props.alias_mova_quirk) {
+   if (num_aliases > 0 && IR3_QUIRK(compiler, QCTDD11147232_alias_mova)) {
       ir3_dst_create(instr, REG_A0_X, IR3_REG_HALF);
    }
 
@@ -176,7 +176,7 @@ ir3_create_alias_tex_regs(struct ir3 *ir)
       /* All current HW has a limitation where alias.tex is not allowed inside a
        * predt/predf/prede sequence.
        */
-      if (!ir->compiler->info->props.alias_predication_quirk ||
+      if (!IR3_QUIRK(ir->compiler, QCTDD11183148_alias_pred) ||
           !block_is_predicated) {
          foreach_instr (instr, &block->instr_list) {
             if (supports_alias_srcs(instr)) {

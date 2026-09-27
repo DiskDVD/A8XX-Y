@@ -8,7 +8,6 @@ dEQP-VK.api.fill_and_update_buffer.dedicated_alloc.fill_buffer_vk_whole_size_dev
 
 # VKCTS 1.4.5.3 -> 1.4.6.1 uprev
 dEQP-VK.api.copy_and_blit.core.use_after_copy.d16_unorm.general.32x32x2_img2img_msaa,Fail
-dEQP-VK.api.copy_and_blit.core.use_after_copy.d24_unorm_s8_uint.general.32x32x2,Fail
 dEQP-VK.api.copy_and_blit.core.use_after_copy.d32_sfloat.general.32x32x1,Fail
 dEQP-VK.api.copy_and_blit.core.use_after_copy.d32_sfloat.general.32x32x1_regions,Fail
 dEQP-VK.api.copy_and_blit.core.use_after_copy.d32_sfloat.general.32x32x2,Fail

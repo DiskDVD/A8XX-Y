@@ -61,6 +61,7 @@
 #include "pvr_tex_state.h"
 #include "pvr_types.h"
 #include "pvr_usc.h"
+#include "pvr_utrace.h"
 #include "pvr_winsys.h"
 #include "util/bitscan.h"
 #include "util/bitset.h"
@@ -74,6 +75,7 @@
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_common_entrypoints.h"
+#include "vk_descriptor_update_template.h"
 #include "vk_format.h"
 #include "vk_graphics_state.h"
 #include "vk_log.h"
@@ -191,6 +193,10 @@ static void pvr_cmd_buffer_free_sub_cmds(struct pvr_cmd_buffer *cmd_buffer)
 
 static void pvr_cmd_buffer_free_resources(struct pvr_cmd_buffer *cmd_buffer)
 {
+   vk_free(&cmd_buffer->vk.pool->alloc,
+           cmd_buffer->state.gfx_desc_state.push_set);
+   vk_free(&cmd_buffer->vk.pool->alloc,
+           cmd_buffer->state.compute_desc_state.push_set);
    pvr_cmd_buffer_attachments_free(cmd_buffer);
    pvr_cmd_buffer_clear_values_free(cmd_buffer);
 
@@ -238,6 +244,9 @@ static void pvr_cmd_buffer_destroy(struct vk_command_buffer *vk_cmd_buffer)
    struct pvr_cmd_buffer *cmd_buffer =
       container_of(vk_cmd_buffer, struct pvr_cmd_buffer, vk);
 
+   /* Cleanup command buffer tracing */
+   pvr_cmd_buffer_utrace_fini(cmd_buffer);
+
    pvr_cmd_buffer_free_resources(cmd_buffer);
    vk_command_buffer_finish(&cmd_buffer->vk);
    vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer);
@@ -271,6 +280,9 @@ static VkResult pvr_cmd_buffer_create(struct pvr_device *device,
    }
 
    cmd_buffer->device = device;
+
+   /* Initialize tracing for this command buffer */
+   pvr_cmd_buffer_utrace_init(cmd_buffer);
 
    cmd_buffer->depth_bias_array = UTIL_DYNARRAY_INIT;
    cmd_buffer->scissor_array = UTIL_DYNARRAY_INIT;
@@ -2966,9 +2978,110 @@ void PVR_PER_ARCH(CmdSetDepthBounds)(VkCommandBuffer commandBuffer,
    mesa_logd("No support for depth bounds testing.");
 }
 
-void PVR_PER_ARCH(CmdBindDescriptorSets2KHR)(
-   VkCommandBuffer commandBuffer,
-   const VkBindDescriptorSetsInfoKHR *pBindDescriptorSetsInfo)
+static struct pvr_push_descriptor_set *
+pvr_get_push_descriptors(struct pvr_cmd_buffer *cmd,
+                         struct pvr_descriptor_state *desc,
+                         uint32_t set)
+{
+   assert(set < PVR_MAX_DESCRIPTOR_SETS);
+   if (unlikely(desc->push_set == NULL)) {
+      desc->push_set = vk_zalloc(&cmd->vk.pool->alloc,
+                                 sizeof(*desc->push_set), 8,
+                                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (unlikely(desc->push_set == NULL)) {
+         vk_command_buffer_set_error(&cmd->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+         return NULL;
+      }
+   }
+
+   /* Pushing descriptors replaces the set that was bound */
+   desc->sets[set] = NULL;
+   desc->push_set_dirty = true;
+   return desc->push_set;
+}
+
+static void
+pvr_cmd_push_descriptor_set(struct pvr_cmd_buffer *cmd_buffer,
+                            const VkPushDescriptorSetInfoKHR *info,
+                            VkPipelineBindPoint bind_point)
+{
+   struct pvr_device *device = cmd_buffer->device;
+   VK_FROM_HANDLE(vk_pipeline_layout, pipe_layout, info->layout);
+   struct pvr_descriptor_state *desc_state =
+      pvr_get_descriptors_state(cmd_buffer, bind_point);
+   struct pvr_push_descriptor_set *push_set =
+      pvr_get_push_descriptors(cmd_buffer, desc_state, info->set);
+   struct pvr_descriptor_set_layout *layout =
+      (struct pvr_descriptor_set_layout *)pipe_layout->set_layouts[info->set];
+
+   if (unlikely(push_set == NULL))
+      return;
+
+   desc_state->sets[info->set] = &push_set->instantiate_set;
+   PVR_PER_ARCH(push_descriptor_set_update)(push_set, layout, info->descriptorWriteCount,
+                                            info->pDescriptorWrites, &device->pdevice->dev_info);
+}
+
+static void
+pvr_cmd_push_descriptor_set_template(struct pvr_cmd_buffer *cmd_buffer,
+                                     const VkPushDescriptorSetWithTemplateInfoKHR *info,
+                                     VkPipelineBindPoint bind_point)
+{
+   VK_FROM_HANDLE(vk_pipeline_layout, pipe_layout, info->layout);
+
+   struct pvr_device *device = cmd_buffer->device;
+   struct pvr_descriptor_state *desc_state =
+      pvr_get_descriptors_state(cmd_buffer, bind_point);
+   struct pvr_push_descriptor_set *push_set =
+      pvr_get_push_descriptors(cmd_buffer, desc_state, info->set);
+   struct pvr_descriptor_set_layout *layout =
+      (struct pvr_descriptor_set_layout *)pipe_layout->set_layouts[info->set];
+
+   if (unlikely(push_set == NULL))
+      return;
+
+   desc_state->sets[info->set] = &push_set->instantiate_set;
+
+   PVR_PER_ARCH(push_descriptor_set_update_template)(push_set, layout, info,
+                                                     &device->pdevice->dev_info);
+}
+
+void PVR_PER_ARCH(CmdPushDescriptorSet2KHR)(VkCommandBuffer commandBuffer,
+                                            const VkPushDescriptorSetInfoKHR *pPushDescriptorSetInfo)
+{
+   VK_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
+
+   if (pPushDescriptorSetInfo->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+      pvr_cmd_push_descriptor_set(cmd_buffer, pPushDescriptorSetInfo,
+                                  VK_PIPELINE_BIND_POINT_COMPUTE);
+      cmd_buffer->state.dirty.compute_desc_dirty = true;
+   }
+
+   if (pPushDescriptorSetInfo->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+      pvr_cmd_push_descriptor_set(cmd_buffer, pPushDescriptorSetInfo,
+                                  VK_PIPELINE_BIND_POINT_GRAPHICS);
+      cmd_buffer->state.dirty.gfx_desc_dirty = true;
+   }
+}
+
+void PVR_PER_ARCH(CmdPushDescriptorSetWithTemplate2KHR)(VkCommandBuffer commandBuffer,
+                                            const VkPushDescriptorSetWithTemplateInfoKHR *pPushDescriptorSetInfo)
+{
+   VK_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
+   VK_FROM_HANDLE(vk_descriptor_update_template, template,
+                  pPushDescriptorSetInfo->descriptorUpdateTemplate);
+
+   pvr_cmd_push_descriptor_set_template(cmd_buffer, pPushDescriptorSetInfo,
+                                        template->bind_point);
+
+   if (template->bind_point == VK_PIPELINE_BIND_POINT_COMPUTE)
+      cmd_buffer->state.dirty.compute_desc_dirty = true;
+   else
+      cmd_buffer->state.dirty.gfx_desc_dirty = true;
+}
+
+void PVR_PER_ARCH(CmdBindDescriptorSets2KHR)(VkCommandBuffer commandBuffer,
+                                             const VkBindDescriptorSetsInfoKHR *pBindDescriptorSetsInfo)
 {
    VK_FROM_HANDLE(pvr_cmd_buffer, cmd_buffer, commandBuffer);
    VK_FROM_HANDLE(vk_pipeline_layout,
@@ -5180,6 +5293,9 @@ PVR_PER_ARCH(BeginCommandBuffer)(VkCommandBuffer commandBuffer,
           0xFF,
           sizeof(*state->barriers_needed) * ARRAY_SIZE(state->barriers_needed));
 
+   state->gfx_desc_state.push_set_dirty = false;
+   state->compute_desc_state.push_set_dirty = false;
+
    return VK_SUCCESS;
 }
 
@@ -5492,6 +5608,31 @@ pvr_setup_vertex_buffers(struct pvr_cmd_buffer *cmd_buffer,
 
 static VkResult pvr_cmd_upload_push_consts(struct pvr_cmd_buffer *cmd_buffer,
                                            enum pvr_stage_allocation stage);
+
+static VkResult pvr_flush_push_descriptors(
+   struct pvr_cmd_buffer *cmd_buffer,
+   struct pvr_descriptor_state *desc_state)
+{
+   if (desc_state->push_set_dirty) {
+      struct pvr_push_descriptor_set *push_set = desc_state->push_set;
+      struct pvr_suballoc_bo *bo;
+
+      VkResult result = pvr_arch_cmd_buffer_upload_general(
+         cmd_buffer, push_set->data, push_set->layout->size, &bo);
+      if (result != VK_SUCCESS)
+         return result;
+
+      /* instantiate the definite set */
+      push_set->instantiate_set.layout = push_set->layout;
+      push_set->instantiate_set.pool = NULL;
+      push_set->instantiate_set.size = push_set->layout->size;
+      push_set->instantiate_set.dev_addr = bo->dev_addr;
+      push_set->instantiate_set.mapping = pvr_bo_suballoc_get_map_addr(bo);
+
+      desc_state->push_set_dirty = false;
+   }
+   return VK_SUCCESS;
+}
 
 static VkResult pvr_setup_descriptor_mappings(
    struct pvr_cmd_buffer *const cmd_buffer,
@@ -6414,6 +6555,8 @@ static void pvr_cmd_dispatch(
    struct pvr_sub_cmd_compute *sub_cmd;
    VkResult result;
 
+   PVR_TRACE_BEGIN_COMPUTE(cmd_buffer);
+
    pvr_arch_cmd_buffer_start_sub_cmd(cmd_buffer, PVR_SUB_CMD_TYPE_COMPUTE);
 
    sub_cmd = &state->current_sub_cmd->compute;
@@ -6424,12 +6567,15 @@ static void pvr_cmd_dispatch(
       result =
          pvr_cmd_upload_push_consts(cmd_buffer, PVR_STAGE_ALLOCATION_COMPUTE);
       if (result != VK_SUCCESS)
-         return;
+         goto end_cmd_dispatch;
 
       /* Regenerate the PDS program to use the new push consts buffer. */
       state->dirty.compute_desc_dirty = true;
    }
 
+   result = pvr_flush_push_descriptors(cmd_buffer, &state->compute_desc_state);
+   if (result != VK_SUCCESS)
+      return;
    if (state->dirty.compute_desc_dirty ||
        state->dirty.compute_pipeline_binding) {
       result = pvr_setup_descriptor_mappings(
@@ -6439,7 +6585,7 @@ static void pvr_cmd_dispatch(
          NULL,
          &state->pds_compute_descriptor_data_offset);
       if (result != VK_SUCCESS)
-         return;
+         goto end_cmd_dispatch;
    }
 
    pvr_compute_update_shared(cmd_buffer, sub_cmd);
@@ -6448,6 +6594,8 @@ static void pvr_cmd_dispatch(
                              indirect_addr,
                              base_group,
                              workgroup_size);
+end_cmd_dispatch:
+   PVR_TRACE_END_COMPUTE(cmd_buffer);
 }
 
 void PVR_PER_ARCH(CmdDispatchBase)(VkCommandBuffer commandBuffer,
@@ -8391,6 +8539,10 @@ static VkResult pvr_validate_draw_state(struct pvr_cmd_buffer *cmd_buffer)
    bool skip_fs = fragment_shader_state->is_passthrough &&
                   !pvr_needs_fs_passthrough(dynamic_state);
 
+   result = pvr_flush_push_descriptors(cmd_buffer, &state->gfx_desc_state);
+   if (result != VK_SUCCESS)
+      return result;
+
    if (state->dirty.fragment_descriptors && !skip_fs) {
       result = pvr_setup_descriptor_mappings(
          cmd_buffer,
@@ -8781,11 +8933,13 @@ void PVR_PER_ARCH(CmdDraw)(VkCommandBuffer commandBuffer,
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
+   PVR_TRACE_BEGIN_DRAW(cmd_buffer, PVR_DRAW);
+
    pvr_update_draw_state(state, &draw_state);
 
    result = pvr_validate_draw_state(cmd_buffer);
    if (result != VK_SUCCESS)
-      return;
+      goto end_cmd_draw;
 
    /* Write the VDM control stream for the primitive. */
    pvr_emit_vdm_index_list(cmd_buffer,
@@ -8799,6 +8953,9 @@ void PVR_PER_ARCH(CmdDraw)(VkCommandBuffer commandBuffer,
                            0U,
                            0U,
                            0U);
+
+end_cmd_draw:
+   PVR_TRACE_END_DRAW(cmd_buffer);
 }
 
 void PVR_PER_ARCH(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
@@ -8822,11 +8979,13 @@ void PVR_PER_ARCH(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
+   PVR_TRACE_BEGIN_DRAW(cmd_buffer, PVR_DRAW_INDEXED);
+
    pvr_update_draw_state(state, &draw_state);
 
    result = pvr_validate_draw_state(cmd_buffer);
    if (result != VK_SUCCESS)
-      return;
+      goto end_cmd_draw_indexed;
 
    /* Write the VDM control stream for the primitive. */
    pvr_emit_vdm_index_list(cmd_buffer,
@@ -8840,6 +8999,9 @@ void PVR_PER_ARCH(CmdDrawIndexed)(VkCommandBuffer commandBuffer,
                            0U,
                            0U,
                            0U);
+
+end_cmd_draw_indexed:
+   PVR_TRACE_END_DRAW(cmd_buffer);
 }
 
 void PVR_PER_ARCH(CmdDrawIndexedIndirect)(VkCommandBuffer commandBuffer,
@@ -8862,11 +9024,13 @@ void PVR_PER_ARCH(CmdDrawIndexedIndirect)(VkCommandBuffer commandBuffer,
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
+   PVR_TRACE_BEGIN_DRAW(cmd_buffer, PVR_DRAW_INDEXED_INDIRECT);
+
    pvr_update_draw_state(state, &draw_state);
 
    result = pvr_validate_draw_state(cmd_buffer);
    if (result != VK_SUCCESS)
-      return;
+      goto end_cmd_draw_indexed_indirect;
 
    /* Write the VDM control stream for the primitive. */
    pvr_emit_vdm_index_list(cmd_buffer,
@@ -8880,6 +9044,9 @@ void PVR_PER_ARCH(CmdDrawIndexedIndirect)(VkCommandBuffer commandBuffer,
                            offset,
                            drawCount,
                            stride);
+
+end_cmd_draw_indexed_indirect:
+   PVR_TRACE_END_DRAW(cmd_buffer);
 }
 
 void PVR_PER_ARCH(CmdDrawIndirect)(VkCommandBuffer commandBuffer,
@@ -8901,11 +9068,13 @@ void PVR_PER_ARCH(CmdDrawIndirect)(VkCommandBuffer commandBuffer,
 
    PVR_CHECK_COMMAND_BUFFER_BUILDING_STATE(cmd_buffer);
 
+   PVR_TRACE_BEGIN_DRAW(cmd_buffer, PVR_DRAW_INDIRECT);
+
    pvr_update_draw_state(state, &draw_state);
 
    result = pvr_validate_draw_state(cmd_buffer);
    if (result != VK_SUCCESS)
-      return;
+      goto end_cmd_draw_indirect;
 
    /* Write the VDM control stream for the primitive. */
    pvr_emit_vdm_index_list(cmd_buffer,
@@ -8919,6 +9088,9 @@ void PVR_PER_ARCH(CmdDrawIndirect)(VkCommandBuffer commandBuffer,
                            offset,
                            drawCount,
                            stride);
+
+end_cmd_draw_indirect:
+   PVR_TRACE_END_DRAW(cmd_buffer);
 }
 
 void PVR_PER_ARCH(CmdEndRenderPass2)(VkCommandBuffer commandBuffer,

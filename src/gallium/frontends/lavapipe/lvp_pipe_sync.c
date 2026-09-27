@@ -250,8 +250,8 @@ lvp_pipe_import_sync_file(struct vk_device *vk_device,
    struct lvp_pipe_sync *sync = vk_sync_as_lvp_pipe_sync(vk_sync);
 
    struct pipe_fence_handle *fence;
-   device->queue.ctx->create_fence_fd(
-         device->queue.ctx, &fence, sync_file, PIPE_FD_TYPE_NATIVE_SYNC);
+   device->queue[0].ctx->create_fence_fd(
+         device->queue[0].ctx, &fence, sync_file, PIPE_FD_TYPE_NATIVE_SYNC);
 
    if (fence == NULL)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -285,7 +285,7 @@ lvp_pipe_export_sync_file(struct vk_device *vk_device,
       return *sync_file != -1 ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
    } else {
       struct pipe_fence_handle *handle = NULL;
-      device->queue.ctx->flush(device->queue.ctx, &handle, 0);
+      device->queue[0].ctx->flush(device->queue[0].ctx, &handle, 0);
       device->pscreen->fence_finish(device->pscreen, NULL,
                                     handle, OS_TIMEOUT_INFINITE);
       device->pscreen->fence_reference(device->pscreen, &handle, NULL);

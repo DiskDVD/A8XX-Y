@@ -219,8 +219,8 @@ void radv_cs_emit_write_event_eop(struct radv_cmd_stream *cs, enum amd_gfx_level
                                   uint64_t va, uint32_t new_fence, uint64_t gfx9_eop_bug_va);
 
 void radv_cs_emit_cache_flush(struct radeon_winsys *ws, struct radv_cmd_stream *cs, enum amd_gfx_level gfx_level,
-                              uint32_t *flush_cnt, uint64_t flush_va, enum radv_cmd_flush_bits flush_bits,
-                              enum ac_rgp_flush_bits *rgp_flush_bits, enum radv_pws_acquire_point pws_acquire_point,
+                              uint32_t *flush_cnt, uint64_t flush_va, enum ac_barrier_flags flush_bits,
+                              enum ac_rgp_flush_bits *rgp_flush_bits, enum ac_pws_acquire_point pws_acquire_point,
                               uint64_t gfx9_eop_bug_va);
 
 VkResult radv_create_cmd_stream(const struct radv_device *device, const enum amd_ip_type ip_type,

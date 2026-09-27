@@ -226,7 +226,21 @@ update_shader_samplers(struct st_context *st,
    struct pipe_sampler_state local_samplers[PIPE_MAX_SAMPLERS];
    const struct pipe_sampler_state *states[PIPE_MAX_SAMPLERS];
 
-   if (samplers_used == 0x0) {
+   /* For emulated polygon stipple: a nearest-filtered, repeating sampler for
+    * the stipple texture, matching util_pstipple_create_sampler().
+    */
+   static const struct pipe_sampler_state stipple_sampler = {
+      .wrap_s = PIPE_TEX_WRAP_REPEAT,
+      .wrap_t = PIPE_TEX_WRAP_REPEAT,
+      .wrap_r = PIPE_TEX_WRAP_REPEAT,
+      .min_img_filter = PIPE_TEX_FILTER_NEAREST,
+      .mag_img_filter = PIPE_TEX_FILTER_NEAREST,
+      .min_mip_filter = PIPE_TEX_MIPFILTER_NONE,
+   };
+   const int stipple_unit =
+      shader_stage == MESA_SHADER_FRAGMENT ? st->fp_stipple_sampler : -1;
+
+   if (samplers_used == 0x0 && stipple_unit < 0) {
       if (out_num_samplers)
          *out_num_samplers = 0;
       return;
@@ -348,6 +362,14 @@ update_shader_samplers(struct st_context *st,
       }
 
       num_samplers = MAX2(num_samplers, extra + 1);
+   }
+
+   if (stipple_unit >= 0) {
+      assert(stipple_unit < PIPE_MAX_SAMPLERS);
+      for (unsigned i = num_samplers; i < (unsigned)stipple_unit; i++)
+         states[i] = NULL;
+      states[stipple_unit] = &stipple_sampler;
+      num_samplers = MAX2(num_samplers, (unsigned)stipple_unit + 1);
    }
 
    cso_set_samplers(st->cso_context, shader_stage, num_samplers, states);

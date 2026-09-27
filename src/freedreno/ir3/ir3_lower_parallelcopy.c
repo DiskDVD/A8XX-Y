@@ -281,6 +281,15 @@ split_32bit_copy(struct copy_ctx *ctx, struct copy_entry *entry)
    ctx->physreg_dst[entry->dst + 1] = new_entry;
 }
 
+static int
+cmp_half_last(const void *ptr1, const void *ptr2)
+{
+   const struct copy_entry *cp1 = ptr1;
+   const struct copy_entry *cp2 = ptr2;
+
+   return !!(cp1->flags & IR3_REG_HALF) - !!(cp2->flags & IR3_REG_HALF);
+}
+
 static void
 _handle_copies(struct ir3_compiler *compiler, struct ir3_instruction *instr,
                struct copy_ctx *ctx)
@@ -391,6 +400,13 @@ _handle_copies(struct ir3_compiler *compiler, struct ir3_instruction *instr,
     *  and we can keep repeating this until the cycle is empty.
     */
 
+   /* Swapping half copies whose dst partially overlaps with an outstanding full
+    * copy would require us to split that full copy. Prevent this by handling
+    * half copies last.
+    */
+   qsort(ctx->entries, ctx->entry_count, sizeof(ctx->entries[0]),
+         cmp_half_last);
+
    for (unsigned i = 0; i < ctx->entry_count; i++) {
       struct copy_entry *entry = &ctx->entries[i];
       if (entry->done)
@@ -405,24 +421,6 @@ _handle_copies(struct ir3_compiler *compiler, struct ir3_instruction *instr,
       }
 
       do_swap(compiler, instr, entry);
-
-      /* Split any blocking copies whose sources are only partially
-       * contained within our destination.
-       */
-      if (entry->flags & IR3_REG_HALF) {
-         for (unsigned j = 0; j < ctx->entry_count; j++) {
-            struct copy_entry *blocking = &ctx->entries[j];
-
-            if (blocking->done)
-               continue;
-
-            if (blocking->src.reg <= entry->dst &&
-                blocking->src.reg + 1 >= entry->dst &&
-                !(blocking->flags & IR3_REG_HALF)) {
-               split_32bit_copy(ctx, blocking);
-            }
-         }
-      }
 
       /* Update sources of blocking copies.
        *
@@ -557,7 +555,7 @@ ir3_lower_copies(struct ir3_shader_variant *v)
              * components of the normal src and its even neighbor and then
              * unswap afterwords to make it work for everything.
              */
-            if (v->compiler->info->props.mov_half_shared_quirk &&
+            if (IR3_QUIRK(v->compiler, QCTDD06363318_movs_half) &&
                 (instr->dsts[0]->flags & IR3_REG_SHARED) &&
                 (instr->dsts[0]->flags & IR3_REG_HALF) &&
                 !(instr->srcs[0]->flags & (IR3_REG_SHARED | IR3_REG_IMMED |

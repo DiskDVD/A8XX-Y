@@ -45,11 +45,10 @@ radv_emit_wait_for_idle(const struct radv_device *device, struct radv_cmd_stream
    enum ac_rgp_flush_bits rgp_flush_bits = 0;
    radv_cs_emit_cache_flush(
       device->ws, cs, pdev->info.gfx_level, NULL, 0,
-      (cs->hw_ip == AMD_IP_COMPUTE
-          ? RADV_CMD_FLAG_CS_PARTIAL_FLUSH
-          : (RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_VS_PARTIAL_FLUSH | RADV_CMD_FLAG_PS_PARTIAL_FLUSH)) |
-         RADV_CMD_FLAG_INV_ICACHE | RADV_CMD_FLAG_INV_SCACHE | RADV_CMD_FLAG_INV_VCACHE | RADV_CMD_FLAG_INV_L2,
-      &rgp_flush_bits, RADV_PWS_ACQUIRE_POINT_PFP, 0);
+      (cs->hw_ip == AMD_IP_COMPUTE ? AC_BARRIER_SYNC_CS
+                                   : (AC_BARRIER_SYNC_CS | AC_BARRIER_SYNC_VS | AC_BARRIER_SYNC_PS)) |
+         AC_BARRIER_INV_ICACHE | AC_BARRIER_INV_SMEM | AC_BARRIER_INV_VMEM | AC_BARRIER_INV_L2,
+      &rgp_flush_bits, AC_PWS_ACQUIRE_POINT_PFP, 0);
 }
 
 static void

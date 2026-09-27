@@ -519,17 +519,6 @@ svga_cleanup_sampler_state(struct svga_context *svga)
                                      NULL);
       }
    }
-
-   /* free polygon stipple state */
-   if (svga->polygon_stipple.sampler) {
-      svga->pipe.delete_sampler_state(&svga->pipe, svga->polygon_stipple.sampler);
-   }
-
-   if (svga->polygon_stipple.sampler_view) {
-      svga->pipe.sampler_view_destroy(&svga->pipe,
-                                      &svga->polygon_stipple.sampler_view->base);
-   }
-   pipe_resource_reference(&svga->polygon_stipple.texture, NULL);
 }
 
 

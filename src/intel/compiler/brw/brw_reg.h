@@ -1588,4 +1588,15 @@ byte_stride(const brw_reg &reg)
    }
 }
 
+/**
+ * Determine which SIMD8 parts of the accumulator register space are accessed.
+ *
+ * SIMD8 parts are used regardless of platform. A mask of 0x02 on DG2 means
+ * all SIMD8 of acc1, and a mask of 0x0c on BMG means all SIMD16 of acc1.
+ */
+unsigned brw_explicit_accumulator_bits(unsigned exec_size, const brw_reg &);
+
+unsigned brw_implicit_accumulator_bits(unsigned exec_size, unsigned group,
+                                       brw_reg_type);
+
 #endif /* __cplusplus */

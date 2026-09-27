@@ -13,11 +13,13 @@ use crate::ir::*;
 use crate::model::{Model, model_for_gpu_id};
 use crate::ops::*;
 use crate::ssa_value::{AllocSSA, SSAValueAllocator};
-use crate::swizzle::AsmSwizzleWiden;
+use crate::swizzle::{AsmSwizzleWiden, SwizzleByte, SwizzleWord};
 use acorn::Acorn;
 use compiler::cfg::CFGBuilder;
+use compiler::enum_as_u8::EnumAsU8;
 use compiler::float16::F16;
 use kraid_hw_runner::{HwError, InvocationInfo, TestRunner};
+use mesa_util::bitview::BitViewable;
 use rustc_hash::FxBuildHasher;
 
 /// Enables libpanfrost_decode logs for debugging purposes.
@@ -574,7 +576,10 @@ impl<'a> RawTestShaderBuilder<'a> {
         instr.flow.set_wait_bit(FlowWaitBit::Slot0);
     }
 
-    fn compile(self) -> CompiledTestCase {
+    fn compile_with(
+        self,
+        run_pass: impl FnOnce(&mut Shader),
+    ) -> CompiledTestCase {
         let Self {
             model,
             mut b,
@@ -592,7 +597,7 @@ impl<'a> RawTestShaderBuilder<'a> {
             CFGBuilder::new();
         cfg.add_node(start_block.label, start_block);
 
-        let s = Shader {
+        let mut s = Shader {
             model,
             ssa_alloc: Default::default(),
             phi_alloc: Default::default(),
@@ -605,6 +610,8 @@ impl<'a> RawTestShaderBuilder<'a> {
             eprintln!("Kraid raw shader before encoding:\n{s}");
         }
 
+        run_pass(&mut s);
+
         let bin = model.encode_shader(&s);
 
         CompiledTestCase {
@@ -614,6 +621,10 @@ impl<'a> RawTestShaderBuilder<'a> {
             fau_args_offset: 0,
             info: s.info,
         }
+    }
+
+    fn compile(self) -> CompiledTestCase {
+        self.compile_with(|_| {})
     }
 }
 
@@ -862,6 +873,73 @@ fn test_ld_pka() {
     assert!(expected, "LD_PKA assumptions wrong for lanes: {failures:?}");
 }
 
+/// Test lower_copy.rs
+#[test]
+fn test_lower_copy() {
+    let run = RunSingleton::get();
+
+    const SOURCE: u32 = 0x89ABCDEF;
+    const INIT_DST: u32 = 0x41424344;
+
+    for test_imm in [false, true] {
+        for range in [
+            RegRange::Byte0,
+            RegRange::Byte1,
+            RegRange::Byte2,
+            RegRange::Byte3,
+            RegRange::Half0,
+            RegRange::Half1,
+            RegRange::Regs(1),
+        ] {
+            let lanes = DstLanes::from(range);
+            let mask = lanes.u32_mask().unwrap();
+
+            let bin = {
+                let mut b = RawTestShaderBuilder::new(&*run.model);
+                let copy_src = if test_imm {
+                    let start = usize::from(range.byte_offset() * 8);
+                    let end = start + usize::from(range.bytes() * 8);
+                    let imm = SOURCE.get_bit_range_u64(start..end) as u32;
+                    // The width picks the replicating swizzle lower_copy folds.
+                    match range.bytes() {
+                        1 => Src::from(imm as u8),
+                        2 => Src::from(imm as u16),
+                        _ => Src::from(imm),
+                    }
+                } else {
+                    let src = RegRef::new(2, RegRange::Regs(1));
+                    b.ld_test_data_to(src.into(), 0, 32);
+                    Src::from(src).swizzle(range.into())
+                };
+
+                let copy_reg = RegRef::new(3, RegRange::Regs(1));
+                b.ld_test_data_to(copy_reg.into(), 4, 32);
+
+                b.push_op(OpCopy {
+                    dst: RegRef::new(3, range).into(),
+                    dst_type: DataType::i(range.bytes() * 8),
+                    src: copy_src,
+                });
+
+                b.st_test_data(8, copy_reg);
+                b.compile_with(|s| s.lower_copy())
+            };
+
+            let mut data = [SOURCE, INIT_DST, 0xDEFDEFDE];
+            let case = bin.with_data(&mut data);
+            run.execute(case);
+
+            let expected = (INIT_DST & !mask) | (SOURCE & mask);
+            let got = data[2];
+
+            assert_eq!(
+                expected, got,
+                "lane {lanes} expected {expected:08x} got {got:08x}"
+            );
+        }
+    }
+}
+
 fn parse_folded(folded: &mut [u64], words: &[u32], types: DataTypeIter) {
     let mut offset = 0;
     for (comp, dtype) in folded.iter_mut().zip(types) {
@@ -989,11 +1067,9 @@ pub fn test_foldable_op_with(
         let write_bits = dst_type.total_bits();
         dst.dst_ref = b.alloc_ref(write_bits.into()).into();
         dst.lanes = match (dst.lanes, write_bits) {
-            (DstLanes::None | DstLanes::All, 8) => DstLanes::B0,
-            (DstLanes::None | DstLanes::All, 16) => DstLanes::H0,
+            (DstLanes::None | DstLanes::All, 8) => DstLanes::AnyB,
+            (DstLanes::None | DstLanes::All, 16) => DstLanes::AnyH,
             (DstLanes::None | DstLanes::All, _) => DstLanes::All,
-            (DstLanes::AnyB, _) => DstLanes::B0,
-            (DstLanes::AnyH, _) => DstLanes::H0,
             (lanes, _) => lanes,
         };
     }
@@ -1203,6 +1279,13 @@ fn test_op_f16_to_f32() {
 
 #[test]
 fn test_op_f32_to_f16() {
+    let run = RunSingleton::get();
+
+    // F32_TO_F16 only available from v11
+    if run.model.arch() < 11 {
+        return;
+    }
+
     const ROUND_MODES: &[FRound] = &[
         FRound::NearestEven,
         FRound::Up,
@@ -1460,20 +1543,6 @@ fn test_op_fmin() {
 }
 
 #[test]
-fn test_op_fmul() {
-    const DATA_TYPES: &[DataType] = &[DataType::F32, DataType::V2F16];
-
-    for &dst_type in DATA_TYPES {
-        let op = OpFMul {
-            dst: DstRef::None.into(),
-            dst_type,
-            srcs: [0_u32.into(), 0_u32.into()],
-        };
-        test_foldable_op(op, Precision::Ulp(0));
-    }
-}
-
-#[test]
 fn test_op_fmax() {
     const DATA_TYPES: &[DataType] = &[DataType::F32, DataType::V2F16];
 
@@ -1517,6 +1586,8 @@ fn test_op_frcp() {
 
 #[test]
 fn test_op_fround() {
+    const DATA_TYPES: &[DataType] = &[DataType::F32, DataType::V2F16];
+
     const ROUND_MODES: &[FRound] = &[
         FRound::NearestEven,
         FRound::Up,
@@ -1525,13 +1596,21 @@ fn test_op_fround() {
         FRound::NearestValue,
     ];
 
-    for &round in ROUND_MODES {
-        let op = OpFRound {
-            dst: DstRef::None.into(),
-            round,
-            src: 0_u32.into(),
-        };
-        test_foldable_op(op, Precision::Ulp(0));
+    let run = RunSingleton::get();
+    for &src_type in DATA_TYPES {
+        // 16-bits are only available in arch <= 10
+        if src_type.bits() == 16 && run.model.arch() > 10 {
+            continue;
+        }
+        for &round in ROUND_MODES {
+            let op = OpFRound {
+                dst: DstRef::None.into(),
+                src_type,
+                round,
+                src: 0_u32.into(),
+            };
+            test_foldable_op(op, Precision::Ulp(0));
+        }
     }
 }
 
@@ -1551,8 +1630,59 @@ fn test_op_frsq() {
 }
 
 #[test]
+fn test_op_hadd() {
+    let run = RunSingleton::get();
+
+    // HADD was removed in v11
+    if run.model.arch() > 10 {
+        return;
+    }
+
+    const DATA_TYPES: &[DataType] = &[
+        DataType::V4S8,
+        DataType::V4U8,
+        DataType::V2S16,
+        DataType::V2U16,
+        DataType::S32,
+        DataType::U32,
+    ];
+
+    const WIDENS: &[AsmSwizzleWiden] = &[
+        AsmSwizzleWiden::None,
+        AsmSwizzleWiden::B00,
+        AsmSwizzleWiden::B02,
+        AsmSwizzleWiden::B20,
+        AsmSwizzleWiden::H00,
+        AsmSwizzleWiden::H10,
+        AsmSwizzleWiden::H0,
+        AsmSwizzleWiden::H1,
+    ];
+
+    for &dst_type in DATA_TYPES {
+        for widen in WIDENS {
+            let Some(src0_swizzle) = widen.to_swizzle(dst_type) else {
+                continue;
+            };
+            for round_up in [false, true] {
+                let op = OpHAdd {
+                    dst: DstRef::None.into(),
+                    dst_type,
+                    round_up,
+                    srcs: [
+                        Src::from(0_u32).swizzle(src0_swizzle),
+                        0_u32.into(),
+                    ],
+                };
+                test_foldable_op(op, Precision::Exact);
+            }
+        }
+    }
+}
+
+#[test]
 fn test_op_iabs() {
-    const DATA_TYPES: &[DataType] = &[DataType::V2S16, DataType::S32];
+    const DATA_TYPES: &[DataType] =
+        &[DataType::V4S8, DataType::V2S16, DataType::S32];
 
     const WIDENS: &[AsmSwizzleWiden] = &[
         AsmSwizzleWiden::None,
@@ -1561,7 +1691,12 @@ fn test_op_iabs() {
         AsmSwizzleWiden::B2,
     ];
 
+    let run = RunSingleton::get();
     for &dst_type in DATA_TYPES {
+        // 8-bits are only supported in arch <= v10
+        if dst_type.bits() == 8 && run.model.arch() > 10 {
+            continue;
+        }
         for widen in WIDENS {
             let Some(src0_swizzle) = widen.to_swizzle(dst_type) else {
                 continue;
@@ -1580,6 +1715,8 @@ fn test_op_iabs() {
 #[test]
 fn test_op_iadd() {
     const DATA_TYPES: &[DataType] = &[
+        DataType::V4S8,
+        DataType::V4U8,
         DataType::V2S16,
         DataType::V2U16,
         DataType::S32,
@@ -1597,12 +1734,17 @@ fn test_op_iadd() {
         AsmSwizzleWiden::H10,
         AsmSwizzleWiden::H0,
         AsmSwizzleWiden::H1,
-        // AsmSwizzleWiden::W0, // TODO: 64-bit swizzles
-        // AsmSwizzleWiden::W1,
+        AsmSwizzleWiden::W0,
+        // w1 is not supported on src0
     ];
 
+    let run = RunSingleton::get();
     for &dst_type in DATA_TYPES {
-        for widen in WIDENS {
+        // 8-bits are only supported in arch <= v10
+        if dst_type.bits() == 8 && run.model.arch() > 10 {
+            continue;
+        }
+        for &widen in WIDENS {
             let Some(src0_swizzle) = widen.to_swizzle(dst_type) else {
                 continue;
             };
@@ -1630,6 +1772,8 @@ fn test_op_iadd() {
 #[test]
 fn test_op_icmp() {
     const DATA_TYPES: &[DataType] = &[
+        DataType::V4S8,
+        DataType::V4U8,
         DataType::V2S16,
         DataType::V2U16,
         DataType::S32,
@@ -1652,10 +1796,20 @@ fn test_op_icmp() {
         &[CmpResultType::I1, CmpResultType::F1, CmpResultType::M1];
 
     let mut a = Acorn::new();
+    let run = RunSingleton::get();
     for &src_type in DATA_TYPES {
+        // 8-bits are only supported in arch <= v10
+        if src_type.bits() == 8 && run.model.arch() > 10 {
+            continue;
+        }
         for &cmp_op in CMP_OPS {
             for &accum_op in ACCUM_OPS {
                 for &res_type in RES_TYPES {
+                    // No 8-bit floats
+                    if src_type.bits() == 8 && res_type == CmpResultType::F1 {
+                        continue;
+                    }
+
                     let op = OpICmp {
                         dst: DstRef::None.into(),
                         src_type,
@@ -1772,6 +1926,8 @@ fn test_op_imul() {
         DataType::V2U16,
         DataType::S32,
         DataType::U32,
+        DataType::S64,
+        DataType::U64,
     ];
 
     const WIDENS: &[AsmSwizzleWiden] = &[
@@ -1783,22 +1939,28 @@ fn test_op_imul() {
         AsmSwizzleWiden::H10,
         AsmSwizzleWiden::H0,
         AsmSwizzleWiden::H1,
-        // AsmSwizzleWiden::W0, // TODO: 64-bit swizzles
-        // AsmSwizzleWiden::W1,
+        AsmSwizzleWiden::W0,
+        // w1 is not supported
     ];
 
     for &dst_type in DATA_TYPES {
-        for widen in WIDENS {
+        for &widen in WIDENS {
             let Some(src0_swizzle) = widen.to_swizzle(dst_type) else {
                 continue;
             };
             for saturate in [false, true] {
+                let mut src1 = Src::from(0_u32);
+                // IMUL.64 is a 32x32->64 multiply, None swizzle is not supported
+                if dst_type.bits() == 64 {
+                    if saturate || widen == AsmSwizzleWiden::None {
+                        continue;
+                    }
+                    src1 = src1.swizzle(Swizzle::widen_wx(dst_type, 0));
+                }
+
                 let op = OpIMul {
                     dst: DstRef::None.into(),
-                    srcs: [
-                        Src::from(0_u32).swizzle(src0_swizzle),
-                        0_u32.into(),
-                    ],
+                    srcs: [Src::from(0_u32).swizzle(src0_swizzle), src1],
                     dst_type,
                     saturate,
                 };
@@ -1828,12 +1990,12 @@ fn test_op_isub() {
         AsmSwizzleWiden::H10,
         AsmSwizzleWiden::H0,
         AsmSwizzleWiden::H1,
-        // AsmSwizzleWiden::W0, // TODO: 64-bit swizzles
-        // AsmSwizzleWiden::W1,
+        AsmSwizzleWiden::W0,
+        // w1 is not supported on src0
     ];
 
     for &dst_type in DATA_TYPES {
-        for widen in WIDENS {
+        for &widen in WIDENS {
             let Some(src0_swizzle) = widen.to_swizzle(dst_type) else {
                 continue;
             };
@@ -1942,6 +2104,97 @@ fn test_op_shift_lop() {
                     }
                 }
             }
+        }
+    }
+}
+
+fn sample_swizzle(rng: &mut Acorn, src_type: DataType) -> Option<Swizzle> {
+    let sample_swizzle_byte = |rng: &mut Acorn| match rng.get_u32() % 9 {
+        0 => SwizzleByte::Zero,
+        n @ 1..=4 => SwizzleByte::byte((n - 1) as u8),
+        n => SwizzleByte::sign((n - 5) as u8),
+    };
+
+    let swizzle = match src_type.total_bits() {
+        8 => Swizzle::from_swizzle_bytes([sample_swizzle_byte(rng); 4])?,
+        16 => {
+            let [b0, b1] = std::array::from_fn(|_| sample_swizzle_byte(rng));
+            Swizzle::from_swizzle_bytes([b0, b1, b0, b1])?
+        }
+        32 => Swizzle::from_swizzle_bytes(std::array::from_fn(|_| {
+            sample_swizzle_byte(rng)
+        }))?,
+        64 => {
+            if rng.get_u32() % 2 == 0 {
+                // Word swizzles
+                Swizzle::from_swizzle_words(std::array::from_fn(|_| {
+                    let i =
+                        rng.get_u32() as usize % SwizzleWord::VARIANTS.len();
+                    SwizzleWord::VARIANTS.iter().nth(i).unwrap()
+                }))
+            } else {
+                // Byte swizzles
+                Swizzle::from_swizzle_bytes(std::array::from_fn(|_| {
+                    sample_swizzle_byte(rng)
+                }))?
+            }
+        }
+        _ => panic!("Invalid src_type"),
+    };
+
+    // Swizzle::ZERO is never legal
+    Some(swizzle).filter(|x| *x != Swizzle::ZERO)
+}
+
+#[test]
+fn test_op_swz() {
+    const DATA_TYPES: &[DataType] = &[
+        DataType::I8,
+        DataType::V2I8,
+        DataType::V4I8,
+        DataType::F16,
+        DataType::I16,
+        DataType::V2F16,
+        DataType::V2I16,
+        DataType::F32,
+        DataType::I32,
+        DataType::I64,
+        DataType::S64,
+        DataType::U64,
+    ];
+    const SAMPLES: usize = 64;
+
+    let mut rng = Acorn::new();
+    for &src_type in DATA_TYPES {
+        // OpSwz must be able to handle all hw variants
+        let mut cases: Vec<Swizzle> = AsmSwizzleWiden::VARIANTS
+            .iter()
+            .filter_map(|widen| widen.to_swizzle(src_type))
+            .collect();
+
+        // It should also be able to encode all "weird" variants, let's sample
+        // some at random
+        cases.extend(
+            std::iter::repeat_with(|| sample_swizzle(&mut rng, src_type))
+                .flatten()
+                .take(SAMPLES),
+        );
+
+        if src_type == DataType::F32 {
+            cases.push(Swizzle::HF0);
+            cases.push(Swizzle::HF1);
+        }
+
+        for swizzle in cases {
+            let op = OpSwz {
+                dst: DstRef::None.into(),
+                src_type,
+                src: Src::from(0_u32).swizzle(swizzle),
+            };
+            if !op.src_supports_swizzle(&op.src, swizzle) {
+                continue;
+            }
+            test_foldable_op(op, Precision::Exact);
         }
     }
 }

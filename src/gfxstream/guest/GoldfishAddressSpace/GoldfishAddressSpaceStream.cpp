@@ -15,7 +15,8 @@ AddressSpaceStream* createGoldfishAddressSpaceStream(size_t ignored_bufSize) {
     auto handle = goldfish_address_space_open();
     address_space_handle_t child_device_handle;
 
-    if (!goldfish_address_space_set_subdevice_type(handle, GoldfishAddressSpaceSubdeviceType::Graphics, &child_device_handle)) {
+    if (!goldfish_address_space_set_subdevice_type(
+            handle, GoldfishAddressSpaceSubdeviceType::Graphics, &child_device_handle)) {
         mesa_loge("AddressSpaceStream::create failed (initial device create)\n");
         goldfish_address_space_close(handle);
         return nullptr;
@@ -41,23 +42,22 @@ AddressSpaceStream* createGoldfishAddressSpaceStream(size_t ignored_bufSize) {
     uint64_t bufferOffset = request.metadata;
     uint64_t bufferSize = request.size;
 
-    if (!goldfish_address_space_claim_shared(
-        child_device_handle, ringOffset, sizeof(asg_ring_storage))) {
+    if (!goldfish_address_space_claim_shared(child_device_handle, ringOffset,
+                                             sizeof(asg_ring_storage))) {
         mesa_loge("AddressSpaceStream::create failed (claim ring storage)\n");
         goldfish_address_space_close(child_device_handle);
         return nullptr;
     }
 
-    if (!goldfish_address_space_claim_shared(
-        child_device_handle, bufferOffset, bufferSize)) {
+    if (!goldfish_address_space_claim_shared(child_device_handle, bufferOffset, bufferSize)) {
         mesa_loge("AddressSpaceStream::create failed (claim buffer storage)\n");
         goldfish_address_space_unclaim_shared(child_device_handle, ringOffset);
         goldfish_address_space_close(child_device_handle);
         return nullptr;
     }
 
-    char* ringPtr = (char*)goldfish_address_space_map(
-        child_device_handle, ringOffset, sizeof(struct asg_ring_storage));
+    char* ringPtr = (char*)goldfish_address_space_map(child_device_handle, ringOffset,
+                                                      sizeof(struct asg_ring_storage));
 
     if (!ringPtr) {
         mesa_loge("AddressSpaceStream::create failed (map ring storage)\n");
@@ -67,8 +67,8 @@ AddressSpaceStream* createGoldfishAddressSpaceStream(size_t ignored_bufSize) {
         return nullptr;
     }
 
-    char* bufferPtr = (char*)goldfish_address_space_map(
-        child_device_handle, bufferOffset, bufferSize);
+    char* bufferPtr =
+        (char*)goldfish_address_space_map(child_device_handle, bufferOffset, bufferSize);
 
     if (!bufferPtr) {
         mesa_loge("AddressSpaceStream::create failed (map buffer storage)\n");
@@ -79,12 +79,10 @@ AddressSpaceStream* createGoldfishAddressSpaceStream(size_t ignored_bufSize) {
         return nullptr;
     }
 
-    struct asg_context context =
-        asg_context_create(
-            ringPtr, bufferPtr, bufferSize);
+    struct asg_context context = asg_context_create(ringPtr, bufferPtr, bufferSize);
 
     request.metadata = ASG_SET_VERSION;
-    request.size = 1; // version 1
+    request.size = 1;  // version 1
 
     if (!goldfish_address_space_ping(child_device_handle, &request)) {
         mesa_loge("AddressSpaceStream::create failed (get buffer)\n");

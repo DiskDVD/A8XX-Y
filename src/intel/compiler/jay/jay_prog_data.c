@@ -366,11 +366,12 @@ populate_fs_prog_data(nir_shader *shader,
    prog_data->dual_src_blend =
       shader->info.outputs_written & BITFIELD64_BIT(FRAG_RESULT_DUAL_SRC_BLEND);
 
-   /* Currently only the Vulkan API allows alpha_to_coverage to be dynamic. If
-    * persample_dispatch & multisample_fbo are not dynamic, Anv should be able
-    * to definitively tell whether alpha_to_coverage is on or off.
-    */
-   prog_data->alpha_to_coverage = key->alpha_to_coverage;
+   /* Gate alpha to coverage with the draw buffer 0 being written. */
+   prog_data->alpha_to_coverage = (shader->info.outputs_written &
+                                   (BITFIELD64_BIT(FRAG_RESULT_COLOR) |
+                                    BITFIELD64_BIT(FRAG_RESULT_DATA0))) != 0 ?
+                                     key->alpha_to_coverage :
+                                     INTEL_NEVER;
 
    assert(devinfo->verx10 >= 125 || key->mesh_input == INTEL_NEVER);
 
@@ -601,6 +602,8 @@ jay_populate_prog_data(const struct intel_device_info *devinfo,
                        union brw_any_prog_key *key,
                        struct jay_fs_perprim_data *fs_perprim)
 {
+   prog_data->base.is_jay = true;
+
    if (nir->info.stage == MESA_SHADER_VERTEX) {
       populate_vs_prog_data(nir, devinfo, &key->vs, &prog_data->vs);
    } else if (nir->info.stage == MESA_SHADER_TESS_CTRL) {

@@ -22,6 +22,12 @@
 
 #define R600_GS_VERTEX_INDIRECT_TOTAL 6
 
+#define R600_SHADERIO_SLOT_POS_LOCATION 256
+#define R600_SHADERIO_FIXED_PT_LOCATION 257
+#define R600_SHADERIO_FACE_LOCATION     258
+#define R600_SHADERIO_BARY_SAMPLE       259
+#define R600_SHADERIO_BARY_AT           260
+
 struct nir_shader;
 struct nir_cf_node;
 struct nir_if;
@@ -171,6 +177,8 @@ public:
    void add_output(const ShaderOutput& output) { m_outputs[output.location()] = output; }
 
    void add_input(const ShaderInput& input) { m_inputs[input.location()] = input; }
+
+   inline unsigned input_count(const int location) { return m_inputs.count(location); }
 
    void set_input_gpr(int driver_lcation, int gpr);
 

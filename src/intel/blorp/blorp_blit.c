@@ -1949,8 +1949,7 @@ blorp_surf_convert_to_single_level_tile(const struct isl_device *isl_dev,
                                         struct blorp_surface_info *info,
                                         bool with_scaling)
 {
-   if (!isl_tiling_is_64(info->surf.tiling) &&
-       !isl_tiling_is_std_y(info->surf.tiling)) {
+   if (!isl_tiling_is_standard(info->surf.tiling)) {
       UNREACHABLE("Use blorp_surf_convert_to_single_slice() instead");
    }
 
@@ -3303,8 +3302,7 @@ blorp_surf_convert_to_uncompressed(const struct isl_device *isl_dev,
     * tilings don't need intratile offsets because each subresource is aligned
     * to a bpb-based tile boundary or miptail slot offset.
     */
-  if (isl_tiling_is_64(info->surf.tiling) ||
-      isl_tiling_is_std_y(info->surf.tiling)) {
+  if (isl_tiling_is_standard(info->surf.tiling)) {
       assert(info->tile_x_sa == 0 && info->tile_y_sa == 0);
    } else {
       assert(info->surf.dim == ISL_SURF_DIM_2D);
@@ -3521,8 +3519,7 @@ format_scale_copy(const struct isl_device *isl_dev,
    uint32_t orig_fmt_bpb = isl_format_get_layout(info->surf.format)->bpb;
    info->view.format = get_copy_format_for_bpb(isl_dev, orig_fmt_bpb * scale);
 
-   if (isl_tiling_is_64(info->surf.tiling) ||
-       isl_tiling_is_std_y(info->surf.tiling)) {
+   if (isl_tiling_is_standard(info->surf.tiling)) {
       blorp_surf_convert_to_single_level_tile(isl_dev, info, true);
    } else {
       blorp_surf_convert_to_single_slice(isl_dev, info);

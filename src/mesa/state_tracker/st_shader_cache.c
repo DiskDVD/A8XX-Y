@@ -152,7 +152,7 @@ st_deserialise_nir_program(struct gl_context *ctx,
 
    MESA_TRACE_FUNC();
 
-   st_set_prog_affected_state_flags(prog);
+   st_set_prog_affected_state_flags(st, prog);
 
    /* Avoid reallocation of the program parameter list, because the uniform
     * storage is only associated with the original parameter list.

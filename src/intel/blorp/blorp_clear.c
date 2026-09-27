@@ -457,8 +457,7 @@ convert_rt_from_3d_to_2d(const struct isl_device *isl_dev,
    /* Some tilings have different swizzling between 2D/3D images. So,
     * conversion would not be possible.
     */
-   assert(!isl_tiling_is_std_y(info->surf.tiling));
-   assert(!isl_tiling_is_64(info->surf.tiling));
+   assert(!isl_tiling_is_standard(info->surf.tiling));
 
    /* Convert from 3D to 2D-array. */
    uint32_t array_pitch_el_rows = info->surf.array_pitch_el_rows;
@@ -590,7 +589,7 @@ blorp_fast_clear(struct blorp_batch *batch,
                                           &start_tile_B, &end_tile_B)) {
          size_B = end_tile_B - start_tile_B;
          addr.offset += start_tile_B;
-      } else if (isl_tiling_is_64(surf->surf->tiling)) {
+      } else if (isl_tiling_is_standard(surf->surf->tiling)) {
          /* If not supported above, clear the range without redescription.
           * Thankfully, we haven't run into this outside of conformance tests.
           */

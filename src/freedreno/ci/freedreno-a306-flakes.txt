@@ -17,6 +17,7 @@ glx@glx_ext_no_config_context@no fbconfig
 
 spec@arb_map_buffer_alignment@arb_map_buffer_alignment-map-invalidate-range
 spec@arb_vertex_buffer_object@vbo-subdata-many drawelements
+spec@arb_vertex_buffer_object@vbo-subdata-many drawrangeelements
 spec@egl_chromium_sync_control@conformance
 spec@egl_chromium_sync_control@conformance@eglGetSyncValuesCHROMIUM_msc_and_sbc_test
 

@@ -702,7 +702,9 @@ pick_regs_from_block(jay_ra_state *ra,
          /* If we are the collect representative but the final collect won't
           * actually be usable, the whole vector will need to be copied.
           */
-         if (i < affinity.offset || !util_is_aligned(i - affinity.offset, 4)) {
+         if (i < affinity.offset ||
+             !util_is_aligned(i - affinity.offset, 4) ||
+             (i - affinity.offset) + affinity.nr >= block.len_gpr) {
             cost += affinity.nr;
          }
       } else if (affinity.repr) {
@@ -787,7 +789,8 @@ pick_regs(jay_ra_state *ra,
    struct affinity affinity =
       ra->phi_web[phi_web_find(ra->phi_web, jay_channel(var, 0))].affinity;
 
-   assert(alignment >= size && "alignment must be a multiple of size");
+   /* The shuffle code relies on size being a multiple of alignment */
+   alignment = MAX2(alignment, size);
 
    /* We select registers roundrobin. This has several benefits:
     *
@@ -954,11 +957,10 @@ assign_regs_for_inst(jay_ra_state *ra, jay_inst *I)
       bool killed = false;
       jay_def var = *(vars[i]);
       unsigned size = jay_num_values(var);
-      unsigned alignment =
-         I->op == JAY_OPCODE_EXPAND_QUAD ||
-               (I->op == JAY_OPCODE_VECTOR_EXTRACT && is_src) ?
-            1 :
-            util_next_power_of_two(size);
+      unsigned alignment = I->op == JAY_OPCODE_EXPAND_QUAD ||
+                                 (I->op == JAY_OPCODE_SHUFFLE && is_src) ?
+                              1 :
+                              util_next_power_of_two(size);
       enum jay_file file = var.file;
       enum jay_stride min_stride = JAY_STRIDE_2, max_stride = JAY_STRIDE_8;
 

@@ -428,10 +428,12 @@ ir2_compile(struct fd2_shader_stateobj *so, unsigned variant,
 
    if (fp)
       so->variant[variant].f = fp->variant[0].f;
+   so->variant[variant].binning = binning;
 
    ctx.so = so;
    ctx.info = &so->variant[variant].info;
    ctx.f = &so->variant[variant].f;
+   ctx.tex_mag_switchover = so->variant[variant].tex_mag_switchover;
    ctx.info->max_reg = -1;
 
    /* convert nir to internal representation */

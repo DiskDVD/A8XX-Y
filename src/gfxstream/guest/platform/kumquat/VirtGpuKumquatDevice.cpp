@@ -16,8 +16,7 @@
 #include "VirtGpuKumquat.h"
 #include "util/log.h"
 
-#define PARAM(x) \
-    (struct VirtGpuParam) { x, #x, 0 }
+#define PARAM(x) (struct VirtGpuParam){x, #x, 0}
 
 static inline uint32_t align_up(uint32_t n, uint32_t a) { return ((n + a - 1) / a) * a; }
 

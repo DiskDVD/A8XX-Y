@@ -512,7 +512,7 @@ fixup_gfx9_cs_copy(struct radv_cmd_buffer *cmd_buffer, const struct radv_meta_bl
        * while we're fixing them. If we're writing to an image, we do not need
        * to wait because the compute shader cannot write to those texels
        */
-      cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_CS_PARTIAL_FLUSH | RADV_CMD_FLAG_INV_L2 | RADV_CMD_FLAG_INV_VCACHE;
+      cmd_buffer->state.flush_bits |= AC_BARRIER_SYNC_CS | AC_BARRIER_INV_L2 | AC_BARRIER_INV_VMEM;
    }
 
    if (image->bindings[0].bo)

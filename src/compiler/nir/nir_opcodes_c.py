@@ -42,12 +42,16 @@ nir_type_conversion_op(nir_alu_type src, nir_alu_type dst, nir_rounding_mode rnd
    } else if (src == dst && src_base == nir_type_bool) {
       return nir_op_mov;
    } else if ((src_base == nir_type_int || src_base == nir_type_uint) &&
-              (dst_base == nir_type_int || dst_base == nir_type_uint) &&
-              src_bit_size == dst_bit_size) {
+              (dst_base == nir_type_int || dst_base == nir_type_uint)) {
       /* Integer <-> integer conversions with the same bit-size on both
        * ends are just no-op moves.
        */
-      return nir_op_mov;
+      if (src_bit_size == dst_bit_size)
+         return nir_op_mov;
+
+      /* For downcasts, always use uint. */
+      if (src_bit_size > dst_bit_size)
+         src_base = dst_base = nir_type_uint;
    }
 
    /* f2b, i2b, and u2b do not exist.  Use ine or fne (via nir_type_conversion)

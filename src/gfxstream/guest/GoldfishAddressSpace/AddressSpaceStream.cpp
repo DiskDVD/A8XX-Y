@@ -80,8 +80,7 @@ void* AddressSpaceStream::allocBuffer(size_t minSize) {
         m_readBuf = (unsigned char*)malloc(kReadSize);
     }
 
-    size_t allocSize =
-        (m_writeStep < minSize ? minSize : m_writeStep);
+    size_t allocSize = (m_writeStep < minSize ? minSize : m_writeStep);
 
     if (m_writeStep < allocSize) {
         if (!m_tmpBuf) {
@@ -112,8 +111,7 @@ void* AddressSpaceStream::allocBuffer(size_t minSize) {
     }
 }
 
-int AddressSpaceStream::commitBuffer(size_t size)
-{
+int AddressSpaceStream::commitBuffer(size_t size) {
     if (size == 0) return 0;
 
     if (m_usingTmpBuf) {
@@ -128,9 +126,7 @@ int AddressSpaceStream::commitBuffer(size_t size)
     }
 }
 
-const unsigned char *AddressSpaceStream::readFully(void *ptr, size_t totalReadSize)
-{
-
+const unsigned char* AddressSpaceStream::readFully(void* ptr, size_t totalReadSize) {
     unsigned char* userReadBuf = static_cast<unsigned char*>(ptr);
 
     if (!userReadBuf) {
@@ -147,13 +143,10 @@ const unsigned char *AddressSpaceStream::readFully(void *ptr, size_t totalReadSi
 
     // Advance buffered read if not yet consumed.
     size_t remaining = totalReadSize;
-    size_t bufferedReadSize =
-        m_readLeft < remaining ? m_readLeft : remaining;
+    size_t bufferedReadSize = m_readLeft < remaining ? m_readLeft : remaining;
 
     if (bufferedReadSize) {
-        memcpy(userReadBuf,
-               m_readBuf + (m_read - m_readLeft),
-               bufferedReadSize);
+        memcpy(userReadBuf, m_readBuf + (m_read - m_readLeft), bufferedReadSize);
         remaining -= bufferedReadSize;
         m_readLeft -= bufferedReadSize;
     }
@@ -182,8 +175,7 @@ const unsigned char *AddressSpaceStream::readFully(void *ptr, size_t totalReadSi
     while (remaining) {
         bufferedReadSize = m_readLeft < remaining ? m_readLeft : remaining;
         if (bufferedReadSize) {
-            memcpy(userReadBuf + (totalReadSize - remaining),
-                   m_readBuf + (m_read - m_readLeft),
+            memcpy(userReadBuf + (totalReadSize - remaining), m_readBuf + (m_read - m_readLeft),
                    bufferedReadSize);
             remaining -= bufferedReadSize;
             m_readLeft -= bufferedReadSize;
@@ -207,7 +199,7 @@ const unsigned char *AddressSpaceStream::readFully(void *ptr, size_t totalReadSi
     return userReadBuf;
 }
 
-const unsigned char *AddressSpaceStream::read(void *buf, size_t *inout_len) {
+const unsigned char* AddressSpaceStream::read(void* buf, size_t* inout_len) {
     unsigned char* dst = (unsigned char*)buf;
     size_t wanted = *inout_len;
     ssize_t actual = speculativeRead(dst, wanted);
@@ -239,11 +231,9 @@ int AddressSpaceStream::writeFully(const void* buf, size_t size) {
         size_t remaining = size - sent;
         size_t sendThisTime = remaining < chunkSize ? remaining : chunkSize;
 
-        long sentChunks =
-            ring_buffer_view_write(
-                m_context.to_host_large_xfer.ring,
-                &m_context.to_host_large_xfer.view,
-                bufferBytes + sent, sendThisTime, 1);
+        long sentChunks = ring_buffer_view_write(m_context.to_host_large_xfer.ring,
+                                                 &m_context.to_host_large_xfer.view,
+                                                 bufferBytes + sent, sendThisTime, 1);
 
         if (!hostPinged && *(m_context.host_state) != ASG_HOST_STATE_CAN_CONSUME &&
             *(m_context.host_state) != ASG_HOST_STATE_RENDERING) {
@@ -263,7 +253,8 @@ int AddressSpaceStream::writeFully(const void* buf, size_t size) {
         }
     }
 
-    bool isRenderingAfter = ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
+    bool isRenderingAfter =
+        ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
 
     if (!isRenderingAfter) {
         notifyAvailable();
@@ -304,16 +295,13 @@ int AddressSpaceStream::writeFullyAsync(const void* buf, size_t size) {
         size_t remaining = size - sent;
         size_t sendThisTime = remaining < chunkSize ? remaining : chunkSize;
 
-        long sentChunks =
-            ring_buffer_view_write(
-                m_context.to_host_large_xfer.ring,
-                &m_context.to_host_large_xfer.view,
-                bufferBytes + sent, sendThisTime, 1);
+        long sentChunks = ring_buffer_view_write(m_context.to_host_large_xfer.ring,
+                                                 &m_context.to_host_large_xfer.view,
+                                                 bufferBytes + sent, sendThisTime, 1);
 
         uint32_t hostState = __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
 
-        if (!pingedHost &&
-            hostState != ASG_HOST_STATE_CAN_CONSUME &&
+        if (!pingedHost && hostState != ASG_HOST_STATE_CAN_CONSUME &&
             hostState != ASG_HOST_STATE_RENDERING) {
             pingedHost = true;
             notifyAvailable();
@@ -331,8 +319,8 @@ int AddressSpaceStream::writeFullyAsync(const void* buf, size_t size) {
         }
     }
 
-
-    bool isRenderingAfter = ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
+    bool isRenderingAfter =
+        ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
 
     if (!isRenderingAfter) {
         notifyAvailable();
@@ -352,9 +340,9 @@ int AddressSpaceStream::writeFullyAsync(const void* buf, size_t size) {
     return 0;
 }
 
-const unsigned char *AddressSpaceStream::commitBufferAndReadFully(
-    size_t writeSize, void *userReadBufPtr, size_t totalReadSize) {
-
+const unsigned char* AddressSpaceStream::commitBufferAndReadFully(size_t writeSize,
+                                                                  void* userReadBufPtr,
+                                                                  size_t totalReadSize) {
     if (m_usingTmpBuf) {
         writeFully(m_tmpBuf, writeSize);
         m_usingTmpBuf = false;
@@ -366,9 +354,7 @@ const unsigned char *AddressSpaceStream::commitBufferAndReadFully(
     }
 }
 
-bool AddressSpaceStream::isInError() const {
-    return 1 == m_context.ring_config->in_error;
-}
+bool AddressSpaceStream::isInError() const { return 1 == m_context.ring_config->in_error; }
 
 ssize_t AddressSpaceStream::speculativeRead(unsigned char* readBuffer, size_t trySize) {
     ensureType3Finished();
@@ -377,11 +363,8 @@ ssize_t AddressSpaceStream::speculativeRead(unsigned char* readBuffer, size_t tr
     size_t actuallyRead = 0;
 
     while (!actuallyRead) {
-
-        uint32_t readAvail =
-            ring_buffer_available_read(
-                m_context.from_host_large_xfer.ring,
-                &m_context.from_host_large_xfer.view);
+        uint32_t readAvail = ring_buffer_available_read(m_context.from_host_large_xfer.ring,
+                                                        &m_context.from_host_large_xfer.view);
 
         if (!readAvail) {
             ring_buffer_yield();
@@ -389,12 +372,11 @@ ssize_t AddressSpaceStream::speculativeRead(unsigned char* readBuffer, size_t tr
             continue;
         }
 
-        uint32_t toRead = readAvail > trySize ?  trySize : readAvail;
+        uint32_t toRead = readAvail > trySize ? trySize : readAvail;
 
-        long stepsRead = ring_buffer_view_read(
-            m_context.from_host_large_xfer.ring,
-            &m_context.from_host_large_xfer.view,
-            readBuffer, toRead, 1);
+        long stepsRead =
+            ring_buffer_view_read(m_context.from_host_large_xfer.ring,
+                                  &m_context.from_host_large_xfer.view, readBuffer, toRead, 1);
 
         actuallyRead += stepsRead * toRead;
 
@@ -415,9 +397,7 @@ void AddressSpaceStream::notifyAvailable() {
     ++m_notifs;
 }
 
-uint32_t AddressSpaceStream::getRelativeBufferPos(uint32_t pos) {
-    return pos & m_writeBufferMask;
-}
+uint32_t AddressSpaceStream::getRelativeBufferPos(uint32_t pos) { return pos & m_writeBufferMask; }
 
 void AddressSpaceStream::advanceWrite() {
     m_writeStart += m_context.ring_config->flush_interval;
@@ -451,8 +431,7 @@ void AddressSpaceStream::ensureConsumerFinishing() {
 void AddressSpaceStream::ensureType1Finished() {
     MESA_TRACE_SCOPE("ensureType1Finished");
 
-    uint32_t currAvailRead =
-        ring_buffer_available_read(m_context.to_host, 0);
+    uint32_t currAvailRead = ring_buffer_available_read(m_context.to_host, 0);
 
     while (currAvailRead) {
         backoff();
@@ -466,17 +445,13 @@ void AddressSpaceStream::ensureType1Finished() {
 
 void AddressSpaceStream::ensureType3Finished() {
     MESA_TRACE_SCOPE("ensureType3Finished");
-    uint32_t availReadLarge =
-        ring_buffer_available_read(
-            m_context.to_host_large_xfer.ring,
-            &m_context.to_host_large_xfer.view);
+    uint32_t availReadLarge = ring_buffer_available_read(m_context.to_host_large_xfer.ring,
+                                                         &m_context.to_host_large_xfer.view);
     while (availReadLarge) {
         ring_buffer_yield();
         backoff();
-        availReadLarge =
-            ring_buffer_available_read(
-                m_context.to_host_large_xfer.ring,
-                &m_context.to_host_large_xfer.view);
+        availReadLarge = ring_buffer_available_read(m_context.to_host_large_xfer.ring,
+                                                    &m_context.to_host_large_xfer.view);
         if (*(m_context.host_state) != ASG_HOST_STATE_CAN_CONSUME &&
             *(m_context.host_state) != ASG_HOST_STATE_RENDERING) {
             notifyAvailable();
@@ -503,8 +478,7 @@ int AddressSpaceStream::type1Write(uint32_t bufferOffset, size_t size) {
     uint8_t* writeBufferBytes = (uint8_t*)(&xfer);
 
     uint32_t maxOutstanding = 1;
-    uint32_t maxSteps = m_context.ring_config->buffer_size /
-            m_context.ring_config->flush_interval;
+    uint32_t maxSteps = m_context.ring_config->buffer_size / m_context.ring_config->flush_interval;
 
     if (maxSteps > 1) maxOutstanding = maxSteps - 1;
 
@@ -516,14 +490,10 @@ int AddressSpaceStream::type1Write(uint32_t bufferOffset, size_t size) {
 
     bool hostPinged = false;
     while (sent < sizeForRing) {
+        long sentChunks =
+            ring_buffer_write(m_context.to_host, writeBufferBytes + sent, sizeForRing - sent, 1);
 
-        long sentChunks = ring_buffer_write(
-            m_context.to_host,
-            writeBufferBytes + sent,
-            sizeForRing - sent, 1);
-
-        if (!hostPinged &&
-            *(m_context.host_state) != ASG_HOST_STATE_CAN_CONSUME &&
+        if (!hostPinged && *(m_context.host_state) != ASG_HOST_STATE_CAN_CONSUME &&
             *(m_context.host_state) != ASG_HOST_STATE_RENDERING) {
             notifyAvailable();
             hostPinged = true;
@@ -541,7 +511,8 @@ int AddressSpaceStream::type1Write(uint32_t bufferOffset, size_t size) {
         }
     }
 
-    bool isRenderingAfter = ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
+    bool isRenderingAfter =
+        ASG_HOST_STATE_RENDERING == __atomic_load_n(m_context.host_state, __ATOMIC_ACQUIRE);
 
     if (!isRenderingAfter) {
         notifyAvailable();

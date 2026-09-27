@@ -38,6 +38,11 @@
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h>
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
+#if LLVM_VERSION_MAJOR >= 18
+#include "llvm/ExecutionEngine/Orc/Debugging/DebugInfoSupport.h"
+#include "llvm/ExecutionEngine/Orc/Debugging/PerfSupportPlugin.h"
+#include "llvm/ExecutionEngine/Orc/TargetProcess/JITLoaderPerf.h"
+#endif
 #include <llvm/ExecutionEngine/ObjectCache.h>
 #include "llvm/ExecutionEngine/JITLink/JITLink.h"
 #include <llvm/Target/TargetMachine.h>
@@ -357,6 +362,27 @@ LPJit::LPJit() :jit_dylib_count(0) {
 #endif
 #endif
          .create());
+
+#if defined(USE_JITLINK) && LLVM_VERSION_MAJOR >= 18 && DETECT_OS_LINUX
+   if (gallivm_debug & GALLIVM_DEBUG_SYMBOLS) {
+      ExecutionSession &ES = lljit->getExecutionSession();
+      ObjectLinkingLayer &OL = dynamic_cast<ObjectLinkingLayer&>(lljit->getObjLinkingLayer());
+      JITDylib &plugin_jd = ES.createBareJITDylib("orc_plugin");
+      MangleAndInterner mangle(ES, lljit->getDataLayout());
+      llvm::cantFail(plugin_jd.define(absoluteSymbols(SymbolMap({
+#define SYMBOL(s) { mangle(#s), \
+   { ExecutorAddr::fromPtr(&s), \
+     llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Callable } }
+         SYMBOL(llvm_orc_registerJITLoaderPerfStart),
+         SYMBOL(llvm_orc_registerJITLoaderPerfEnd),
+         SYMBOL(llvm_orc_registerJITLoaderPerfImpl),
+#undef SYMBOL
+      }))));
+      OL.addPlugin(ExitOnErr(DebugInfoPreservationPlugin::Create()));
+      OL.addPlugin(ExitOnErr(PerfSupportPlugin::Create(
+         ES.getExecutorProcessControl(), plugin_jd, true, true)));
+   }
+#endif
 
    LLVMOrcIRTransformLayerRef TL = wrap(&lljit->getIRTransformLayer());
    LLVMOrcIRTransformLayerSetTransform(TL, *module_transform_wrapper, NULL);

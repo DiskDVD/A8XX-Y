@@ -449,7 +449,8 @@ etna_blit_clear_color_blt(struct pipe_context *pctx, unsigned idx,
    const uint64_t clear_bits = is_128bit_format ? 0 :
       etna_calculate_clear_bits(translate_pe_internal_format(dst->format, ctx->screen), clear_mask);
    bool fast_clear = etna_blt_will_fastclear(dst_level, scissor_state, clear_mask, 0xf);
-   bool use_ts = etna_framebuffer_rt_use_ts(ctx, idx);
+   bool use_ts = etna_framebuffer_rt_use_ts(ctx, idx) &&
+                 (etna_resource_level_ts_valid(dst_level) || dst_level->ts_needs_clear);
    int msaa_xscale = 1, msaa_yscale = 1;
 
    translate_samples_to_xyscale(dst->texture->nr_samples,
@@ -569,10 +570,12 @@ etna_blit_clear_zs_blt(struct pipe_context *pctx, struct pipe_surface *dst,
    switch (dst->format) {
    case PIPE_FORMAT_Z16_UNORM:
    case PIPE_FORMAT_X8Z24_UNORM:
+   case PIPE_FORMAT_Z32_FLOAT:
       clear_bits_depth = 0xffffffff;
       clear_bits_stencil = 0x00000000;
       break;
    case PIPE_FORMAT_S8_UINT_Z24_UNORM:
+   case PIPE_FORMAT_Z32_FLOAT_S8X24_UINT:
       clear_bits_depth = 0xffffff00;
       clear_bits_stencil = clear_mask;
       break;

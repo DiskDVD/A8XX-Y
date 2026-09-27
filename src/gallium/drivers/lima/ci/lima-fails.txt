@@ -468,7 +468,6 @@ spec@!opengl 1.0@gl-1.0-drawbuffer-modes,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-const,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag,Fail
 spec@!opengl 1.0@gl-1.0-edgeflag-quads,Fail
-spec@!opengl 1.0@gl-1.0-no-op-paths,Fail
 spec@!opengl 1.0@gl-1.0-ortho-pos,Fail
 spec@!opengl 1.0@gl-1.0-rastercolor,Fail
 spec@!opengl 1.0@gl-1.0-scissor-bitmap,Fail
@@ -1021,7 +1020,6 @@ spec@glsl-1.20@execution@variable-indexing@vs-temp-array-mat4-index-col-row-wr,C
 spec@!opengl 1.0@gl-1.0-drawpixels-color-index,Fail
 spec@!opengl 1.1@texture-al,Fail
 spec@!opengl 1.4@triangle-rasterization,Fail
-spec@!opengl 2.1@pbo@test_draw_pixels,Fail
 spec@arb_pixel_buffer_object@pbo-drawpixels,Fail
 spec@ext_framebuffer_object@fbo-fragcoord2,Fail
 spec@glsl-1.10@execution@samplers@glsl-fs-shadow2d-consecutive-draws,Fail

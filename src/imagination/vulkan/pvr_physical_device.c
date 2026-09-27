@@ -161,6 +161,7 @@ static void pvr_physical_device_get_supported_extensions(
       .KHR_present_id2 = PVR_USE_WSI_PLATFORM,
       .KHR_present_wait = PVR_USE_WSI_PLATFORM,
       .KHR_present_wait2 = PVR_USE_WSI_PLATFORM,
+      .KHR_push_descriptor = true,
       .KHR_relaxed_block_layout = true,
       .KHR_robustness2 = true,
       .KHR_sampler_mirror_clamp_to_edge = true,
@@ -206,6 +207,7 @@ static void pvr_physical_device_get_supported_extensions(
       .EXT_external_memory_dma_buf = true,
       .EXT_host_query_reset = true,
       .EXT_image_2d_view_of_3d = true,
+      .EXT_image_sliced_view_of_3d = true,
       .EXT_index_type_uint8 = true,
       .EXT_inline_uniform_block = true,
       .EXT_line_rasterization = true,
@@ -467,6 +469,9 @@ static void pvr_physical_device_get_supported_features(
       .image2DViewOf3D = true,
       .sampler2DViewOf3D = true,
 
+      /* VK_EXT_image_sliced_view_of_3d */
+      .imageSlicedViewOf3D = true,
+
       /* VK_EXT_map_memory_placed */
       .memoryMapPlaced = true,
       .memoryMapRangePlaced = false,
@@ -481,6 +486,9 @@ static void pvr_physical_device_get_supported_features(
       /* VK_EXT_provoking_vertex */
       .provokingVertexLast = true,
       .transformFeedbackPreservesProvokingVertex = false,
+
+      /* Vulkan 1.4 / VK_KHR_push_descriptor */
+      .pushDescriptor = true,
 
       /* Vulkan 1.2 / VK_EXT_scalar_block_layout */
       .scalarBlockLayout = true,
@@ -990,6 +998,9 @@ static bool pvr_physical_device_get_properties(
          VK_RESOLVE_MODE_SAMPLE_ZERO_BIT,
       .independentResolveNone = true,
       .independentResolve = true,
+
+      /* VK_KHR_push_descriptor */
+      .maxPushDescriptors = PVR_MAX_PUSH_DESCRIPTORS,
 
       /* VK_KHR_line_rasterization */
       .lineSubPixelPrecisionBits = line_sub_pixel_precision_bits,

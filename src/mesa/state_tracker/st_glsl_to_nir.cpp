@@ -365,7 +365,7 @@ st_glsl_to_nir_post_opts(struct st_context *st, struct gl_program *prog,
 
    NIR_PASS(_, nir, nir_opt_intrinsics);
 
-   st_set_prog_affected_state_flags(prog);
+   st_set_prog_affected_state_flags(st, prog);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    st_update_state_param_locations(st->ctx, prog, nir);
 

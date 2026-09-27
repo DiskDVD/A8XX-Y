@@ -40,6 +40,13 @@ then
   rustup toolchain install --profile minimal --component clippy,rustfmt "$MINIMUM_SUPPORTED_RUST_VERSION"
 fi
 
+# Install the cross-build target, if any
+if [[ -n "${rust_target:-}" ]]; then
+  for toolchain in $(rustup toolchain list -q); do
+    rustup target add --toolchain "${toolchain}" "${rust_target}"
+  done
+fi
+
 find "$HOME"/.rustup/toolchains/*/lib -type f -name "*.so" -exec strip {} \;
 find "$HOME"/.rustup/toolchains -type f -executable -exec strip {} \;
 

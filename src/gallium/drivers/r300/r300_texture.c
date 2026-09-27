@@ -53,6 +53,37 @@ enum pipe_format r300_unbyteswap_array_format(enum pipe_format format)
 #endif
 }
 
+/* Gallium reverses packed bitmask channel descriptions and swizzles on BE.
+ * The sampler still assigns lanes by numeric bit position within the texel.
+ * Undo the descriptor reversal so hardware format selection and sampler-view
+ * swizzling see the GPU's channel order. Border-color packing must use the
+ * same description to match sampled texels.
+ */
+const struct util_format_description *
+r300_get_sampler_format_desc(enum pipe_format format,
+                             struct util_format_description *storage)
+{
+    const struct util_format_description *desc = util_format_description(format);
+
+#if UTIL_ARCH_BIG_ENDIAN
+    if (desc->is_bitmask && !desc->is_array &&
+        ((desc->block.bits == 8 && desc->nr_channels == 2) ||
+         (desc->block.bits == 16 && desc->nr_channels == 4))) {
+        unsigned last_channel = desc->nr_channels - 1;
+        *storage = *desc;
+        for (unsigned i = 0; i < desc->nr_channels; i++)
+            storage->channel[i] = desc->channel[last_channel - i];
+        for (unsigned i = 0; i < 4; i++) {
+            storage->swizzle[i] = desc->swizzle[i] <= last_channel ?
+                last_channel - desc->swizzle[i] : desc->swizzle[i];
+        }
+        return storage;
+    }
+#endif
+
+    return desc;
+}
+
 static unsigned r300_get_endian_swap(enum pipe_format format,
                                      struct r300_resource *tex)
 {
@@ -195,6 +226,7 @@ uint32_t r300_translate_texformat(enum pipe_format format,
                                   bool dxtc_swizzle)
 {
     uint32_t result = 0;
+    struct util_format_description storage;
     const struct util_format_description *desc;
     int i;
     bool uniform = true;
@@ -206,7 +238,7 @@ uint32_t r300_translate_texformat(enum pipe_format format,
     };
 
     format = r300_unbyteswap_array_format(format);
-    desc = util_format_description(format);
+    desc = r300_get_sampler_format_desc(format, &storage);
 
     /* Colorspace (return non-RGB formats directly). */
     switch (desc->colorspace) {
@@ -323,18 +355,6 @@ uint32_t r300_translate_texformat(enum pipe_format format,
     if (format == PIPE_FORMAT_R8G8Bx_SNORM) {
         return R300_TX_FORMAT_CxV8U8 | result;
     }
-
-#if UTIL_ARCH_BIG_ENDIAN
-    /* Match the sampler lanes to RB3D's BE 1555 write convention. */
-    switch (format) {
-    case PIPE_FORMAT_B5G5R5A1_UNORM:
-        return R300_EASY_TX_FORMAT(X, Y, Z, W, W1Z5Y5X5);
-    case PIPE_FORMAT_B5G5R5X1_UNORM:
-        return R300_EASY_TX_FORMAT(X, Y, Z, ONE, W1Z5Y5X5);
-    default:
-        break;
-    }
-#endif
 
     /* Integer and fixed-point 16.16 textures are not supported. */
     for (i = 0; i < 4; i++) {

@@ -105,6 +105,11 @@ retrieve_variant(struct blob_reader *blob, struct etna_shader_variant *v)
 
    blob_copy_bytes(blob, v->uniforms.contents, v->uniforms.count * sizeof(*v->uniforms.contents));
    blob_copy_bytes(blob, v->uniforms.data, v->uniforms.count * sizeof(*v->uniforms.data));
+
+   if (v->constant_data_size) {
+      v->constant_data = malloc(v->constant_data_size);
+      blob_copy_bytes(blob, v->constant_data, v->constant_data_size);
+   }
 }
 
 static void
@@ -118,6 +123,8 @@ store_variant(struct blob *blob, const struct etna_shader_variant *v)
    blob_write_bytes(blob, &v->uniforms.count, sizeof(v->uniforms.count));
    blob_write_bytes(blob, v->uniforms.contents, imm_count * sizeof(*v->uniforms.contents));
    blob_write_bytes(blob, v->uniforms.data, imm_count * sizeof(*v->uniforms.data));
+   if (v->constant_data_size)
+      blob_write_bytes(blob, v->constant_data, v->constant_data_size);
 }
 
 bool

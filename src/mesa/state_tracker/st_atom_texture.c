@@ -369,6 +369,19 @@ update_textures(struct st_context *st,
    unsigned num_textures =
       st_get_sampler_views(st, shader_stage, prog, sampler_views, &extra_sampler_views);
 
+   /* Emulated polygon stipple: bind the stipple texture at the unit the bound
+    * fragment shader variant expects (see st_update_fp / nir_lower_pstipple_fs),
+    * filling any gap with NULL views.
+    */
+   if (shader_stage == MESA_SHADER_FRAGMENT && st->fp_stipple_sampler >= 0) {
+      unsigned unit = st->fp_stipple_sampler;
+      assert(unit < PIPE_MAX_SAMPLERS);
+      for (unsigned i = num_textures; i < unit; i++)
+         sampler_views[i] = NULL;
+      sampler_views[unit] = st->pstipple.sampler_view;
+      num_textures = MAX2(num_textures, unit + 1);
+   }
+
    unsigned old_num_textures = st->state.num_sampler_views[shader_stage];
    unsigned num_unbind = old_num_textures > num_textures ?
                             old_num_textures - num_textures : 0;

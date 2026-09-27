@@ -11,6 +11,7 @@
 #include "util/u_memory.h"
 #include "util/u_string.h"
 
+#include "fd2_context.h"
 #include "fd2_texture.h"
 #include "fd2_util.h"
 
@@ -106,18 +107,21 @@ static void
 fd2_sampler_states_bind(struct pipe_context *pctx, mesa_shader_stage shader,
                         unsigned start, unsigned nr, void **hwcso) in_dt
 {
+   struct fd_context *ctx = fd_context(pctx);
+
    if (!hwcso)
       nr = 0;
 
    if (shader == MESA_SHADER_FRAGMENT) {
-      struct fd_context *ctx = fd_context(pctx);
-
       /* on a2xx, since there is a flat address space for textures/samplers,
        * a change in # of fragment textures/samplers will trigger patching and
        * re-emitting the vertex shader:
        */
       if (nr != ctx->tex[MESA_SHADER_FRAGMENT].num_samplers)
          ctx->dirty |= FD_DIRTY_TEXSTATE;
+   } else if (fd2_context(ctx)->mag_switchover_half) {
+      /* the vertex shader variant depends on the sampler filters */
+      ctx->dirty |= FD_DIRTY_TEXSTATE;
    }
 
    fd_sampler_states_bind(pctx, shader, start, nr, hwcso);
@@ -160,7 +164,8 @@ fd2_sampler_view_create(struct pipe_context *pctx, struct pipe_resource *prsc,
    so->base.reference.count = 1;
    so->base.context = pctx;
 
-   so->tex0 = A2XX_SQ_TEX_0_SIGN_X(fmt.sign) | A2XX_SQ_TEX_0_SIGN_Y(fmt.sign) |
+   so->tex0 = A2XX_SQ_TEX_0_TYPE(SQ_TEX_TYPE_VALID_TEXTURE) |
+              A2XX_SQ_TEX_0_SIGN_X(fmt.sign) | A2XX_SQ_TEX_0_SIGN_Y(fmt.sign) |
               A2XX_SQ_TEX_0_SIGN_Z(fmt.sign) | A2XX_SQ_TEX_0_SIGN_W(fmt.sign) |
               A2XX_SQ_TEX_0_PITCH(fdl2_pitch_pixels(&rsc->layout, 0) *
                                   util_format_get_blockwidth(prsc->format)) |
@@ -168,7 +173,8 @@ fd2_sampler_view_create(struct pipe_context *pctx, struct pipe_resource *prsc,
    so->tex1 = A2XX_SQ_TEX_1_FORMAT(fmt.format) |
               A2XX_SQ_TEX_1_CLAMP_POLICY(SQ_TEX_CLAMP_POLICY_OGL);
    so->tex2 = A2XX_SQ_TEX_2_HEIGHT(prsc->height0 - 1) |
-              A2XX_SQ_TEX_2_WIDTH(prsc->width0 - 1);
+              A2XX_SQ_TEX_2_WIDTH(prsc->width0 - 1) |
+              COND(prsc->target == PIPE_TEXTURE_CUBE, A2XX_SQ_TEX_2_DEPTH(6));
    so->tex3 = A2XX_SQ_TEX_3_NUM_FORMAT(fmt.num_format) |
               fd2_tex_swiz(cso->format, cso->swizzle_r, cso->swizzle_g,
                            cso->swizzle_b, cso->swizzle_a) |
